@@ -6,7 +6,9 @@ export function useTodayAttendance() {
     queryKey: ['attendance-today'],
     queryFn: async () => {
       const res = await api.get('/attendance/today')
-      return res.data.data
+      const d = res.data.data
+      // How far the browser clock is from the server's, so the running timer matches the server to the second
+      return { ...d, offsetMs: d.serverTime ? Date.parse(d.serverTime) - Date.now() : 0 }
     },
     refetchInterval: 60000,
   })

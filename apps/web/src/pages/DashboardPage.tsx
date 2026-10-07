@@ -7,6 +7,7 @@ import { useReveal, useCountUp, gsap, reduced } from '../lib/motion'
 import { primaryRole } from '../components/AppShell'
 import { TimeTracker, TasksCard, CardHead } from '../components/dashboard/Widgets'
 import Icon, { type IconName } from '../components/ui/Icon'
+import { fmtHours } from '../lib/format'
 import Avatar from '../components/ui/Avatar'
 import Badge from '../components/ui/Badge'
 
@@ -77,7 +78,7 @@ function Kpis({ d, role }: { d: any; role: string }) {
   const has = (a: string) => d.apps.includes(a)
   const leaveLeft = s?.leave?.balances?.reduce((a: number, b: any) => a + b.available, 0) ?? 0
   const att = s?.attendance?.month
-  const tiles: { label: string; value: number; suffix?: string; icon: IconName; to?: string; tone?: 'honey' | 'night' }[] = []
+  const tiles: { label: string; value: number; suffix?: string; icon: IconName; to?: string; tone?: 'honey' | 'night'; format?: (v: number) => string }[] = []
   if (role === 'system_admin' || role === 'hr_admin') {
     tiles.push({ label: 'Employees', value: c?.headcount ?? 0, icon: 'users', to: '/employees', tone: 'night' })
     if (t?.today) tiles.push({ label: 'In today', value: t.today.in, suffix: `/ ${t.size}`, icon: 'clock', to: '/attendance' })
@@ -97,7 +98,7 @@ function Kpis({ d, role }: { d: any; role: string }) {
   } else {
     if (has('leave')) tiles.push({ label: 'Leave days left', value: Math.round(leaveLeft * 10) / 10, icon: 'leaf', to: '/leave', tone: 'night' })
     if (att) tiles.push({ label: 'Days present this month', value: att.present, suffix: `/ ${att.workingDays}`, icon: 'calendar', to: '/attendance' })
-    if (att) tiles.push({ label: 'Hours this month', value: Math.round(att.hours * 10) / 10, icon: 'clock', to: '/attendance' })
+    if (att) tiles.push({ label: 'Hours this month', value: att.hours, format: fmtHours, icon: 'clock', to: '/attendance' })
     tiles.push({ label: 'Open tasks', value: s?.tasks?.open ?? 0, icon: 'list', to: '/activities', tone: 'honey' })
     if (s?.payslip && tiles.length < 4) tiles.push({ label: `Net pay · ${fmt(s.payslip.start, { month: 'short' })}`, value: s.payslip.net, icon: 'wallet', to: `/payroll/payslips/${s.payslip.id}` })
   }
@@ -108,8 +109,8 @@ function Kpis({ d, role }: { d: any; role: string }) {
   )
 }
 
-function Kpi({ label, value, suffix, icon, to, tone }: { label: string; value: number; suffix?: string; icon: IconName; to?: string; tone?: 'honey' | 'night' }) {
-  const n = useCountUp(value, (v) => (Number.isInteger(value) ? Math.round(v).toLocaleString() : v.toFixed(1)))
+function Kpi({ label, value, suffix, icon, to, tone, format }: { label: string; value: number; suffix?: string; icon: IconName; to?: string; tone?: 'honey' | 'night'; format?: (v: number) => string }) {
+  const n = useCountUp(value, format ?? ((v) => (Number.isInteger(value) ? Math.round(v).toLocaleString() : v.toFixed(1))))
   const bg = tone === 'night' ? 'var(--night)' : tone === 'honey' ? 'var(--honey)' : undefined
   const fg = tone === 'night' ? 'var(--night-ink)' : 'var(--ink)'
   const body = (
@@ -289,7 +290,7 @@ function SelfRows({ d }: { d: any }) {
 function HoursCard({ last7 }: { last7: { date: string; hours: number }[] }) {
   const worked = last7.filter((x) => x.hours > 0)
   const avg = worked.length ? worked.reduce((a, b) => a + b.hours, 0) / worked.length : 0
-  const avgRef = useCountUp(avg, (v) => v.toFixed(1))
+  const avgRef = useCountUp(avg, fmtHours)
   const max = Math.max(10, ...last7.map((x) => x.hours))
   const [hot, setHot] = useState(6)
   const bars = useRef<HTMLDivElement>(null)
@@ -300,13 +301,13 @@ function HoursCard({ last7 }: { last7: { date: string; hours: number }[] }) {
     <section data-card className="card span-4" style={{ padding: 22, display: 'flex', flexDirection: 'column' }}>
       <CardHead title="Hours" to="/attendance" />
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
-        <span className="display num" style={{ fontSize: 38 }}><span ref={avgRef}>0</span> h</span>
+        <span className="display num" style={{ fontSize: 30 }}><span ref={avgRef}>00:00:00</span></span>
         <span className="dim" style={{ fontSize: 12, lineHeight: 1.3 }}>average workday<br />last 7 days</span>
       </div>
       <div ref={bars} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 14, minHeight: 120 }}>
         {last7.map((x, i) => (
           <div key={x.date} onMouseEnter={() => setHot(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', position: 'relative' }}>
-            {i === hot && x.hours > 0 && <span className="pill honey" style={{ position: 'absolute', top: -4, zIndex: 1, textTransform: 'none' }}>{x.hours.toFixed(1)}h</span>}
+            {i === hot && x.hours > 0 && <span className="pill honey" style={{ position: 'absolute', top: -4, zIndex: 1, textTransform: 'none' }}>{fmtHours(x.hours)}</span>}
             <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
               {x.hours > 0 ? <span data-bar style={{ width: 10, height: `${(x.hours / max) * 88}%`, borderRadius: 8, background: i === hot ? 'var(--honey)' : 'var(--night)' }} /> : <span style={{ width: 1, height: '100%', borderLeft: '1px dashed var(--line-2)' }} />}
             </div>

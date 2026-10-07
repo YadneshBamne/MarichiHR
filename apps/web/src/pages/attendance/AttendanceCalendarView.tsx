@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { useMyAttendanceCalendar } from '../../lib/hooks/useAttendance'
 import { gsap, reduced, useCountUp } from '../../lib/motion'
 import Icon from '../../components/ui/Icon'
+import { fmtHours } from '../../lib/format'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const CHIP: Record<string, { cls: string; label?: string }> = {
@@ -17,7 +18,7 @@ export default function AttendanceCalendarView() {
   const { data, isLoading } = useMyAttendanceCalendar(ym.y, ym.m)
   const calendar: any[] = data?.calendar || []
   const sum = data?.summary
-  const hours = useCountUp(sum?.totalWorkedHours ?? 0, (v) => v.toFixed(1))
+  const hours = useCountUp(sum?.totalWorkedHours ?? 0, fmtHours)
   const offset = (new Date(Date.UTC(ym.y, ym.m - 1, 1)).getUTCDay() + 6) % 7
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const working = calendar.filter((d) => !d.isWeekend).length || 1
@@ -39,8 +40,8 @@ export default function AttendanceCalendarView() {
   return (
     <section data-card className="card" style={{ padding: 22 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <span className="display num" style={{ fontSize: 40 }}><span ref={hours}>0</span><span className="dim" style={{ fontSize: 16 }}> hrs</span></span>
-        <span className="dim" style={{ fontSize: 13 }}>{sum ? `${sum.present} present · ${(sum.totalOvertimeHours || 0).toFixed(1)} h overtime` : ''}</span>
+        <span className="display num" style={{ fontSize: 40 }}><span ref={hours}>00:00:00</span></span>
+        <span className="dim" style={{ fontSize: 13 }}>{sum ? `${sum.present} present · ${fmtHours(sum.totalOvertimeHours)} overtime` : ''}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <button className="btn btn-ghost btn-icon btn-sm" style={{ width: 30 }} onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevronLeft" size={14} /></button>
           <span className="btn btn-ghost btn-sm" style={{ pointerEvents: 'none', minWidth: 130 }}>{monthLabel}</span>
@@ -70,7 +71,7 @@ export default function AttendanceCalendarView() {
           return (
             <div key={d.date} data-day style={{ minHeight: 64, borderRadius: 14, padding: '7px 9px', border: isToday ? '1.5px solid var(--night)' : '1px solid var(--line)', background: d.isWeekend ? 'transparent' : 'var(--card-2)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <span className="dim num" style={{ fontSize: 12 }}>{Number(d.date.slice(8))}</span>
-              {chip && (h ? <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{h.toFixed(1)}h</span> : <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{chip.label ?? d.status}</span>)}
+              {chip && (h ? <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{fmtHours(h)}</span> : <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{chip.label ?? d.status}</span>)}
             </div>
           )
         })}

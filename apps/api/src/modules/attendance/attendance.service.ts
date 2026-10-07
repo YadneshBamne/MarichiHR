@@ -12,9 +12,19 @@ import { PAYROLL_CONFIG } from '../payroll/payroll.config'
 
 const ymdOf = (d: Date) => d.toISOString().slice(0, 10)
 
+// Kept to the second (6 decimals of an hour), so the UI can show exact HH:MM:SS totals
 function computeWorkedHours(checkIn: Date, checkOut: Date): number {
   const ms = checkOut.getTime() - checkIn.getTime()
-  return Math.round((ms / (1000 * 60 * 60)) * 100) / 100
+  return Math.round((ms / 3_600_000) * 1e6) / 1e6
+}
+
+// The session running now: a record clocked in and not out, from today or the two days before (a shift that runs past
+// midnight stays on the day it started). Older open records are forgotten clock-outs, left for regularisation.
+async function findOpenRecord(employeeId: string, today: Date) {
+  return prisma.attendanceRecord.findFirst({
+    where: { employeeId, checkInTime: { not: null }, checkOutTime: null, date: { gte: new Date(today.getTime() - 2 * 86_400_000), lte: today } },
+    orderBy: { date: 'desc' },
+  })
 }
 
 function computeStatus(workedHours: number, fullDayHours: number, halfDayHours: number): string {
@@ -50,12 +60,13 @@ function validateGeoFence(
 }
 
 export const attendanceService = {
+  // Several check-in/out pairs a day are fine: clocking in again after clocking out reopens today's record, keeping
+  // the first check-in time and the hours already worked (workedHours = closed sessions, openSince = running one)
   async clockIn(employeeId: string, tenantId: string, data: ClockInDto) {
     const today = await businessToday(tenantId)
-    const existing = await attendanceRepository.findTodayRecord(employeeId, today)
-    if (existing?.checkInTime) {
-      throw new AppError('Already clocked in today', 400)
-    }
+    const [open, existing] = await Promise.all([findOpenRecord(employeeId, today), attendanceRepository.findTodayRecord(employeeId, today)])
+    if (open) throw new AppError('You are already clocked in', 400)
+    if (existing?.isLocked) throw new AppError('Attendance record is locked and cannot be modified', 400)
 
     if (data.locationId && data.latitude && data.longitude) {
       const location = await prisma.workLocation.findUnique({ where: { id: data.locationId } })
@@ -76,8 +87,12 @@ export const attendanceService = {
       }
     }
 
+    const now = new Date()
+    if (existing?.checkInTime) {
+      return prisma.attendanceRecord.update({ where: { id: existing.id }, data: { openSince: now, checkOutTime: null } })
+    }
     return attendanceRepository.createOrUpdateClockIn(employeeId, today, {
-      checkInTime: new Date(),
+      checkInTime: now,
       checkInMethod: data.method || 'web',
       checkInLat: data.latitude,
       checkInLng: data.longitude,
@@ -87,22 +102,19 @@ export const attendanceService = {
 
   async clockOut(employeeId: string, tenantId: string, data: ClockOutDto) {
     const today = await businessToday(tenantId)
-    const record = await attendanceRepository.findTodayRecord(employeeId, today)
+    const record = await findOpenRecord(employeeId, today)
 
     if (!record?.checkInTime) {
-      throw new AppError('No clock-in found for today. Please clock in first.', 400)
-    }
-
-    if (record.checkOutTime) {
-      throw new AppError('Already clocked out today', 400)
+      throw new AppError('You are not clocked in. Please clock in first.', 400)
     }
 
     if (record.isLocked) {
       throw new AppError('Attendance record is locked and cannot be modified', 400)
     }
 
+    // The day's total: sessions already closed plus the one ending now
     const checkOut = new Date()
-    const workedHours = computeWorkedHours(record.checkInTime, checkOut)
+    const workedHours = Math.round(((record.workedHours ?? 0) + computeWorkedHours(record.openSince ?? record.checkInTime, checkOut)) * 1e6) / 1e6
 
     const employee = await prisma.employee.findUnique({
       where: { id: employeeId },
@@ -127,20 +139,24 @@ export const attendanceService = {
     const status = computeStatus(workedHours, fullDayHours, halfDayHours)
     const overtimeHours = computeOvertimeHours(workedHours, overtimeThreshold)
 
-    const updated = await attendanceRepository.updateClockOut(employeeId, today, {
-      checkOutTime: checkOut,
-      checkOutMethod: data.method || 'web',
-      checkOutLat: data.latitude,
-      checkOutLng: data.longitude,
-      workedHours,
-      overtimeHours,
-      status,
+    const updated = await prisma.attendanceRecord.update({
+      where: { id: record.id },
+      data: {
+        checkOutTime: checkOut,
+        openSince: null,
+        checkOutMethod: data.method || 'web',
+        checkOutLat: data.latitude,
+        checkOutLng: data.longitude,
+        workedHours,
+        overtimeHours,
+        status,
+      },
     })
 
     if (overtimeHours > 0) {
       await eventBus.publish(tenantId, 'attendance.exception.flagged', {
         employeeId,
-        date: ymdOf(today),
+        date: ymdOf(record.date),
         exceptionType: 'overtime',
         overtimeHours,
       })
@@ -188,17 +204,23 @@ export const attendanceService = {
     return { calendar, summary, year, month }
   },
 
+  // The tracker runs from openSince on the server (not browser memory), so a refresh, new tab or new sign-in resumes
+  // it exactly; serverTime lets the browser correct for its own clock being off
   async getTodayStatus(employeeId: string, tenantId: string) {
     const today = await businessToday(tenantId)
-    const record = await attendanceRepository.findTodayRecord(employeeId, today)
+    const [open, todays] = await Promise.all([findOpenRecord(employeeId, today), attendanceRepository.findTodayRecord(employeeId, today)])
+    const record = open ?? todays
     return {
-      date: ymdOf(today),
+      date: ymdOf(record?.date ?? today),
       clockedIn: !!record?.checkInTime,
-      clockedOut: !!record?.checkOutTime,
+      clockedOut: !!record?.checkInTime && !open,
+      running: !!open,
       checkInTime: record?.checkInTime || null,
       checkOutTime: record?.checkOutTime || null,
+      openSince: open ? open.openSince ?? open.checkInTime : null,
       workedHours: record?.workedHours || 0,
       status: record?.status || 'not_started',
+      serverTime: new Date(),
     }
   },
 
@@ -265,6 +287,7 @@ export const attendanceService = {
       update: {
         checkInTime: checkIn,
         checkOutTime: checkOut,
+        openSince: null,
         workedHours,
         overtimeHours: Math.max(0, workedHours - 8),
         status,

@@ -6,6 +6,7 @@ import { useTodayAttendance, useClockIn, useClockOut } from '../../lib/hooks/use
 import { useCountUp, gsap, reduced, pop } from '../../lib/motion'
 import { useToast } from '../ui/Toast'
 import Icon, { type IconName } from '../ui/Icon'
+import { fmtDuration } from '../../lib/format'
 
 // Dashboard widgets shared by the dashboard and the attendance page
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
@@ -24,16 +25,16 @@ export function TimeTracker({ className = '' }: { className?: string }) {
   const toast = useToast()
   const [now, setNow] = useState(Date.now())
   const ring = useRef<SVGCircleElement>(null)
-  const running = !!t?.clockedIn && !t?.clockedOut
+  // Running time comes from the server: closed sessions (workedHours) plus now − openSince, corrected for clock offset
+  const running = !!t?.running
   useEffect(() => {
     if (!running) return
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [running])
-  const secs = running && t?.checkInTime ? Math.max(0, (now - new Date(t.checkInTime).getTime()) / 1000) : (t?.workedHours ?? 0) * 3600
-  const hh = String(Math.floor(secs / 3600)).padStart(2, '0')
-  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, '0')
-  const ss = String(Math.floor(secs % 60)).padStart(2, '0')
+  const live = running && t?.openSince ? Math.max(0, (now + (t.offsetMs ?? 0) - Date.parse(t.openSince)) / 1000) : 0
+  const secs = (t?.workedHours ?? 0) * 3600 + live
+  const [hh, mm, ss] = fmtDuration(secs).split(':')
   const pct = Math.min(100, (secs / (DAY_HOURS * 3600)) * 100)
   useLayoutEffect(() => {
     if (!ring.current) return
@@ -51,7 +52,7 @@ export function TimeTracker({ className = '' }: { className?: string }) {
   const stop = async () => {
     try { await clockOut.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked out. Hours saved to attendance.') } catch (e) { toast(errMsg(e), 'error') }
   }
-  const status = t?.clockedOut ? `Done · ${(t.workedHours ?? 0).toFixed(1)} h` : running ? `Since ${new Date(t!.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not clocked in'
+  const status = running ? `Since ${new Date(t!.openSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : t?.clockedOut ? `Done · ${fmtDuration(secs)}` : 'Not clocked in'
   const ticks = Array.from({ length: 60 }, (_, i) => { const a = (i / 60) * Math.PI * 2 - Math.PI / 2; const r1 = i % 5 ? 86 : 82; return { x1: 100 + Math.cos(a) * r1, y1: 100 + Math.sin(a) * r1, x2: 100 + Math.cos(a) * 91, y2: 100 + Math.sin(a) * 91 } })
   return (
     <section data-card data-tour="clock" className={`card ${className}`} style={{ padding: 22, display: 'flex', flexDirection: 'column' }}>
@@ -63,12 +64,12 @@ export function TimeTracker({ className = '' }: { className?: string }) {
           <circle ref={ring} cx="100" cy="100" r="70" fill="none" stroke="var(--honey)" strokeWidth="14" strokeLinecap="round" pathLength={100} strokeDasharray="100" strokeDashoffset="100" transform="rotate(-90 100 100)" />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} aria-live="off">
-          <span className="display num" style={{ fontSize: 40 }}>{hh}:{mm}</span>
-          <span className="dim num" style={{ fontSize: 11 }}>{running ? `${ss}s · running` : status}</span>
+          <span className="display num" style={{ fontSize: 34 }}>{hh}:{mm}<span className="dim" style={{ fontSize: 22 }}>:{ss}</span></span>
+          <span className="dim num" style={{ fontSize: 11 }}>{running ? 'Running' : t?.clockedOut ? 'Done for now' : 'Ready'}</span>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
-        <button className="btn btn-primary btn-icon" aria-label="Clock in" title="Clock in" disabled={!!t?.clockedIn || clockIn.isPending} onClick={start}><Icon name="play" size={15} /></button>
+        <button className="btn btn-primary btn-icon" aria-label="Clock in" title={t?.clockedOut ? 'Clock in again' : 'Clock in'} disabled={!t || running || clockIn.isPending} onClick={start}><Icon name="play" size={15} /></button>
         <button className="btn btn-ghost btn-icon" aria-label="Clock out" title="Clock out" disabled={!running || clockOut.isPending} onClick={stop}><Icon name="stop" size={14} /></button>
         <span className="dim" style={{ fontSize: 12, marginLeft: 'auto', textAlign: 'right' }}>{status}</span>
       </div>

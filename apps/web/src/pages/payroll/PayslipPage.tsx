@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { usePayslip, downloadPayslipPdf } from '../../lib/hooks/usePayroll'
 import Badge from '../../components/ui/Badge'
-import { money, fmtPeriod } from '../../lib/format'
+import { money, fmtPeriod, fmtHours } from '../../lib/format'
 
 const GROUPS: { title: string; cats: string[]; sign: string; muted?: boolean }[] = [
   { title: 'Earnings', cats: ['BASIC', 'ALW'], sign: '' },
@@ -110,7 +110,7 @@ export default function PayslipPage() {
             {p.workedDays.map((w: any) => (
               <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--dim)', padding: '3px 0' }}>
                 <span style={{ textTransform: 'capitalize' }}>{w.dayType.replace(/_/g, ' ')}</span>
-                <span>{w.numberOfDays} days · {w.numberOfHours} h</span>
+                <span>{w.numberOfDays} days · {fmtHours(Number(w.numberOfHours))}</span>
               </div>
             ))}
           </div>

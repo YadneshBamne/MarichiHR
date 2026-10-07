@@ -1,5 +1,6 @@
 import { usePendingRegularisations, useApproveRegularisation, useRejectRegularisation, usePendingOvertime, useApproveOvertime, useRejectOvertime } from '../../lib/hooks/useAttendance'
 import Badge from '../../components/ui/Badge'
+import { fmtHours } from '../../lib/format'
 
 export default function ApprovalsPanel() {
   const { data: regularisations = [] } = usePendingRegularisations()
@@ -67,7 +68,7 @@ export default function ApprovalsPanel() {
                     <div style={s.name}>{ot.employee?.user?.fullName}</div>
                     <div style={s.sub}>{formatDate(ot.date)}</div>
                   </div>
-                  <span style={{ fontSize: '16px', fontWeight: '500', color: 'var(--info)' }}>{ot.overtimeHours}h OT</span>
+                  <span style={{ fontSize: '16px', fontWeight: '500', color: 'var(--info)' }}>{fmtHours(ot.overtimeHours)} OT</span>
                 </div>
                 <div style={s.reason}>"{ot.reason}"</div>
                 <div style={s.actions}>

@@ -1,5 +1,6 @@
 import { useTeamAttendanceToday } from '../../lib/hooks/useAttendance'
 import Badge from '../../components/ui/Badge'
+import { fmtHours } from '../../lib/format'
 
 export default function TeamTodayPanel() {
   const { data: records = [], isLoading } = useTeamAttendanceToday()
@@ -48,7 +49,7 @@ export default function TeamTodayPanel() {
             </div>
             <div style={s.col}>{formatTime(rec.checkInTime)}</div>
             <div style={s.col}>{formatTime(rec.checkOutTime)}</div>
-            <div style={s.col}>{rec.workedHours ? `${rec.workedHours.toFixed(1)}h` : '—'}</div>
+            <div style={s.col}>{rec.openSince ? 'Working now' : rec.workedHours ? fmtHours(rec.workedHours) : '—'}</div>
             <div style={s.col}><Badge label={rec.status} /></div>
           </div>
         ))}

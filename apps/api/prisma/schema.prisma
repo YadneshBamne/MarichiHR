@@ -669,6 +669,8 @@ model AttendanceRecord {
   date              DateTime  @db.Date
   checkInTime       DateTime?
   checkOutTime      DateTime?
+  // Start of the session running now (null when clocked out); workedHours holds the closed sessions' total
+  openSince         DateTime?
   checkInMethod     String?
   checkInLat        Float?
   checkInLng        Float?

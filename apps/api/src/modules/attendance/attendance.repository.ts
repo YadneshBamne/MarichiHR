@@ -27,6 +27,7 @@ export const attendanceRepository = {
       where: { employeeId_date: { employeeId, date: today } },
       update: {
         checkInTime: data.checkInTime,
+        openSince: data.checkInTime,
         checkInMethod: data.checkInMethod,
         checkInLat: data.checkInLat,
         checkInLng: data.checkInLng,
@@ -38,36 +39,13 @@ export const attendanceRepository = {
         employeeId,
         date: today,
         checkInTime: data.checkInTime,
+        openSince: data.checkInTime,
         checkInMethod: data.checkInMethod,
         checkInLat: data.checkInLat,
         checkInLng: data.checkInLng,
         checkInLocationId: data.checkInLocationId,
         status: 'present',
         source: 'auto',
-      },
-    })
-  },
-
-  async updateClockOut(employeeId: string, today: Date, data: {
-    checkOutTime: Date
-    checkOutMethod: string
-    checkOutLat?: number
-    checkOutLng?: number
-    workedHours: number
-    overtimeHours: number
-    status: string
-  }) {
-    return prisma.attendanceRecord.update({
-      where: { employeeId_date: { employeeId, date: today } },
-      data: {
-        checkOutTime: data.checkOutTime,
-        checkOutMethod: data.checkOutMethod,
-        checkOutLat: data.checkOutLat,
-        checkOutLng: data.checkOutLng,
-        workedHours: data.workedHours,
-        overtimeHours: data.overtimeHours,
-        status: data.status,
-        updatedAt: new Date(),
       },
     })
   },
