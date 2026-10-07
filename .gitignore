@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+apps/*/.env
+*.log
+.DS_Store
+# local tooling
+.agents/
+.claude/
+.codex/
+.playwright/
+.playwright-cli/
+.impeccable/
+skills-lock.json
+apps/api/tmp/

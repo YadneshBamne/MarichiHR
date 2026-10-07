@@ -1,0 +1,1117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── TENANT ───────────────────────────────────────────────────
+
+model Tenant {
+  id                String    @id @default(uuid())
+  name              String
+  slug              String    @unique
+  countryCodes      String[]
+  baseCurrency      String    @default("USD")
+  fiscalYearStart   DateTime
+  timezone          String    @default("UTC")
+  logoUrl           String?
+  ssoProvider       String?
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  users             User[]
+  orgUnits          OrgUnit[]
+  roles             Role[]
+  employees         Employee[]
+  leaveTypes        LeaveType[]
+  shiftTemplates    ShiftTemplate[]
+  resourceCalendars ResourceCalendar[]
+  domainEvents      DomainEvent[]
+  activityTypes     ActivityType[]
+  workLocations     WorkLocation[]
+  holidayCalendars  HolidayCalendar[]
+  skillTypes        SkillType[]
+  salaryStructureTypes  SalaryStructureType[]
+  salaryStructures      SalaryStructure[]
+  gradeBands            GradeBand[]
+  payrollCycles         PayrollCycle[]
+  payrollInputTypes     PayrollInputType[]
+  expenseCategories     ExpenseCategory[]
+  perDiemRates          PerDiemRate[]
+  fxRates               FxRate[]
+  reimbursementClaims   ReimbursementClaim[]
+
+  @@map("tenants")
+}
+
+// ─── USER ─────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  tenantId      String
+  email         String
+  passwordHash  String?
+  fullName      String
+  phone         String?
+  avatarUrl     String?
+  active        Boolean   @default(true)
+  archivedAt    DateTime?
+  archivedBy    String?
+  archiveReason String?
+  lastLoginAt   DateTime?
+  mfaEnabled    Boolean   @default(false)
+  mfaSecret     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant     @relation(fields: [tenantId], references: [id])
+  userRoles     UserRole[]
+  employee      Employee?
+  refreshTokens RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+// ─── REFRESH TOKENS ───────────────────────────────────────────
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+// ─── ROLES + PERMISSIONS ──────────────────────────────────────
+
+model Role {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  description   String?
+  isSystemRole  Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  userRoles     UserRole[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model UserRole {
+  id          String    @id @default(uuid())
+  userId      String
+  roleId      String
+  scopeType   String?
+  scopeId     String?
+  validFrom   DateTime  @default(now())
+  validUntil  DateTime?
+  delegatedBy String?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+  role        Role      @relation(fields: [roleId], references: [id])
+
+  @@map("user_roles")
+}
+
+// ─── ORG HIERARCHY ────────────────────────────────────────────
+
+model OrgUnit {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  type          String
+  parentId      String?
+  countryCode   String?
+  currencyCode  String?
+  managerId     String?
+  costCenter    String?
+  active        Boolean   @default(true)
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  parent        OrgUnit?    @relation("OrgUnitTree", fields: [parentId], references: [id])
+  children      OrgUnit[]   @relation("OrgUnitTree")
+  employees     Employee[]
+  jobPositions  JobPosition[]
+
+  @@map("org_units")
+}
+
+model JobPosition {
+  id          String    @id @default(uuid())
+  tenantId    String
+  orgUnitId   String
+  title       String
+  code        String?
+  gradeBand   String?
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  orgUnit     OrgUnit    @relation(fields: [orgUnitId], references: [id])
+  employees   Employee[]
+
+  @@map("job_positions")
+}
+
+model WorkLocation {
+  id                    String    @id @default(uuid())
+  tenantId              String
+  name                  String
+  address               String?
+  city                  String?
+  countryCode           String?
+  latitude              Float?
+  longitude             Float?
+  geoFenceRadiusMeters  Int?
+  active                Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id])
+  employees             Employee[]
+  attendanceRecords     AttendanceRecord[]
+
+  @@map("work_locations")
+}
+
+model HolidayCalendar {
+  id          String    @id @default(uuid())
+  tenantId    String
+  name        String
+  countryCode String?
+  year        Int
+  createdAt   DateTime  @default(now())
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  holidays    Holiday[]
+
+  @@map("holiday_calendars")
+}
+
+model Holiday {
+  id          String          @id @default(uuid())
+  calendarId  String
+  name        String
+  date        DateTime        @db.Date
+  type        String          @default("national")
+  isOptional  Boolean         @default(false)
+
+  calendar    HolidayCalendar @relation(fields: [calendarId], references: [id])
+
+  @@map("holidays")
+}
+
+// ─── RESOURCE CALENDAR ────────────────────────────────────────
+
+model ResourceCalendar {
+  id               String    @id @default(uuid())
+  tenantId         String
+  name             String
+  timezone         String    @default("UTC")
+  hoursPerWeek     Float     @default(40)
+  isFlexi          Boolean   @default(false)
+  twoWeeksCalendar Boolean   @default(false)
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  tenant           Tenant                @relation(fields: [tenantId], references: [id])
+  days             ResourceCalendarDay[]
+  employees        Employee[]
+
+  @@map("resource_calendars")
+}
+
+model ResourceCalendarDay {
+  id          String           @id @default(uuid())
+  calendarId  String
+  dayOfWeek   Int
+  weekType    String?
+  hourFrom    Float
+  hourTo      Float
+
+  calendar    ResourceCalendar @relation(fields: [calendarId], references: [id])
+
+  @@map("resource_calendar_days")
+}
+
+// ─── EMPLOYEE ─────────────────────────────────────────────────
+
+model Employee {
+  id                      String    @id @default(uuid())
+  tenantId                String
+  userId                  String    @unique
+  employeeCode            String
+  orgUnitId               String
+  jobPositionId           String?
+  managerId               String?
+  resourceCalendarId      String?
+  workLocationId          String?
+  taxJurisdiction         String?
+
+  firstName               String
+  lastName                String
+  dateOfBirth             DateTime?
+  gender                  String?
+  nationality             String?
+
+  personalEmail           String?
+  workEmail               String?
+  mobilePersonal          String?
+  mobileWork              String?
+  emergencyContactName    String?
+  emergencyContactPhone   String?
+  emergencyContactRelation String?
+
+  employmentType          String    @default("full_time")
+  employmentStatus        String    @default("active")
+  hireDate                DateTime
+  probationEndDate        DateTime?
+  confirmationDate        DateTime?
+  exitDate                DateTime?
+  exitReason              String?
+
+  bankName                String?
+  bankAccountNo           String?
+  bankIfscSwift           String?
+  bankVerified            Boolean   @default(false)
+  bankVerifiedBy          String?
+  bankVerifiedAt          DateTime?
+
+  active                  Boolean   @default(true)
+  archivedAt              DateTime?
+  archivedBy              String?
+  archiveReason           String?
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  tenant                  Tenant            @relation(fields: [tenantId], references: [id])
+  user                    User              @relation(fields: [userId], references: [id])
+  orgUnit                 OrgUnit           @relation(fields: [orgUnitId], references: [id])
+  jobPosition             JobPosition?      @relation(fields: [jobPositionId], references: [id])
+  resourceCalendar        ResourceCalendar? @relation(fields: [resourceCalendarId], references: [id])
+  workLocation            WorkLocation?     @relation(fields: [workLocationId], references: [id])
+  manager                 Employee?         @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports           Employee[]        @relation("EmployeeManager")
+  contracts               EmployeeContract[]
+  leaveBalances           LeaveBalance[]
+  leaveRequests           LeaveRequest[]
+  leaveAllocations        LeaveAllocation[]
+  leaveAllocationRequests LeaveAllocationRequest[]
+  attendanceRecords       AttendanceRecord[]
+  attendanceRegularisations AttendanceRegularisation[]
+  overtimeRequests        OvertimeRequest[]
+  employeeShifts          EmployeeShift[]
+  skills                  EmployeeSkill[]
+  resumeLines             ResumeLine[]
+  activitiesAssigned      Activity[]        @relation("ActivityAssignee")
+  chatterMessages         ChatterMessage[]
+  payslips                Payslip[]
+  reimbursementClaims     ReimbursementClaim[]
+
+  @@unique([tenantId, employeeCode])
+  @@map("employees")
+}
+
+// ─── SKILLS + RESUME ──────────────────────────────────────────
+
+model SkillType {
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  createdAt DateTime  @default(now())
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  skills    Skill[]
+
+  @@map("skill_types")
+}
+
+model Skill {
+  id            String    @id @default(uuid())
+  skillTypeId   String
+  name          String
+  createdAt     DateTime  @default(now())
+
+  skillType     SkillType      @relation(fields: [skillTypeId], references: [id])
+  levels        SkillLevel[]
+  employeeSkills EmployeeSkill[]
+
+  @@map("skills")
+}
+
+model SkillLevel {
+  id           String    @id @default(uuid())
+  skillId      String
+  levelName    String
+  progressPct  Int
+  sequence     Int
+
+  skill        Skill          @relation(fields: [skillId], references: [id])
+  employeeSkills EmployeeSkill[]
+
+  @@map("skill_levels")
+}
+
+model EmployeeSkill {
+  id            String      @id @default(uuid())
+  employeeId    String
+  skillId       String
+  skillLevelId  String?
+  justification String?
+  createdAt     DateTime    @default(now())
+
+  employee      Employee    @relation(fields: [employeeId], references: [id])
+  skill         Skill       @relation(fields: [skillId], references: [id])
+  skillLevel    SkillLevel? @relation(fields: [skillLevelId], references: [id])
+
+  @@map("employee_skills")
+}
+
+model ResumeLine {
+  id            String    @id @default(uuid())
+  employeeId    String
+  lineType      String
+  name          String
+  description   String?
+  dateStart     DateTime?
+  dateEnd       DateTime?
+  organisation  String?
+  createdAt     DateTime  @default(now())
+
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+
+  @@map("resume_lines")
+}
+
+// ─── CONTRACT STATE MACHINE ───────────────────────────────────
+
+model EmployeeContract {
+  id                  String    @id @default(uuid())
+  employeeId          String
+  salaryStructureId   String?
+  gradeBandId         String?
+  ctcAnnual           Float
+  wageMonthly         Float
+  currency            String    @default("USD")
+  variablePayPercent  Float     @default(0)
+  effectiveFrom       DateTime
+  effectiveUntil      DateTime?
+
+  status              String    @default("new")
+  stateChangedAt      DateTime?
+  stateChangedBy      String?
+  expiryAlertSent     Boolean   @default(false)
+
+  version             Int       @default(1)
+  previousContractId  String?
+  revisionReason      String?
+  approvedBy          String?
+
+  active              Boolean   @default(true)
+  archivedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  employee            Employee          @relation(fields: [employeeId], references: [id])
+  previousContract    EmployeeContract? @relation("ContractRevision", fields: [previousContractId], references: [id])
+  revisions           EmployeeContract[] @relation("ContractRevision")
+  stateTransitions    ContractStateTransition[]
+  salaryStructure     SalaryStructure?  @relation(fields: [salaryStructureId], references: [id])
+  gradeBand           GradeBand?        @relation(fields: [gradeBandId], references: [id])
+
+  @@map("employee_contracts")
+}
+
+model ContractStateTransition {
+  id              String           @id @default(uuid())
+  contractId      String
+  fromState       String
+  toState         String
+  transitionedBy  String
+  reason          String?
+  createdAt       DateTime         @default(now())
+
+  contract        EmployeeContract @relation(fields: [contractId], references: [id])
+
+  @@map("contract_state_transitions")
+}
+
+// ─── LEAVE ────────────────────────────────────────────────────
+
+model LeaveType {
+  id                          String    @id @default(uuid())
+  tenantId                    String
+  name                        String
+  code                        String
+  category                    String
+  isPaid                      Boolean   @default(true)
+  isStatutory                 Boolean   @default(false)
+  statutoryCountry            String?
+  accrualType                 String?
+  accrualAmount               Float?
+  accrualDayOfMonth           Int?
+  carryForward                Boolean   @default(false)
+  carryForwardMax             Float?
+  carryForwardExpiryMonths    Int?
+  allowNegative               Boolean   @default(false)
+  encashable                  Boolean   @default(false)
+  halfDayAllowed              Boolean   @default(true)
+  hourlyAllowed               Boolean   @default(false)
+  leaveUnit                   String    @default("day")
+  approvalLevels              Int       @default(1)
+  requiresHrForStatutory      Boolean   @default(false)
+  attachmentRequiredAfterDays Int?
+  sandwichRule                Boolean   @default(false)
+  active                      Boolean   @default(true)
+  archivedAt                  DateTime?
+  createdAt                   DateTime  @default(now())
+
+  tenant                      Tenant           @relation(fields: [tenantId], references: [id])
+  allocations                 LeaveAllocation[]
+  balances                    LeaveBalance[]
+  requests                    LeaveRequest[]
+  allocationRequests          LeaveAllocationRequest[]
+  blackoutPeriods             LeaveBlackoutPeriod[]
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
+model LeaveAllocation {
+  id              String    @id @default(uuid())
+  employeeId      String
+  leaveTypeId     String
+  allocationType  String
+  daysAllocated   Float
+  validFrom       DateTime
+  validUntil      DateTime?
+  reason          String?
+  approvedBy      String?
+  status          String    @default("approved")
+  createdAt       DateTime  @default(now())
+
+  employee        Employee  @relation(fields: [employeeId], references: [id])
+  leaveType       LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_allocations")
+}
+
+model LeaveAllocationRequest {
+  id                    String    @id @default(uuid())
+  employeeId            String
+  leaveTypeId           String
+  requestedDays         Float
+  reason                String?
+  supportingRefType     String?
+  supportingRefId       String?
+  status                String    @default("pending")
+  approverId            String?
+  approvedDays          Float?
+  approvalNote          String?
+  actionedAt            DateTime?
+  resultingAllocationId String?
+  createdAt             DateTime  @default(now())
+
+  employee              Employee  @relation(fields: [employeeId], references: [id])
+  leaveType             LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_allocation_requests")
+}
+
+model LeaveBalance {
+  employeeId    String
+  leaveTypeId   String
+  balanceDays   Float     @default(0)
+  usedDays      Float     @default(0)
+  pendingDays   Float     @default(0)
+  encashedDays  Float     @default(0)
+  lapsedDays    Float     @default(0)
+  asOfDate      DateTime
+
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@id([employeeId, leaveTypeId])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id            String    @id @default(uuid())
+  employeeId    String
+  leaveTypeId   String
+  startDate     DateTime  @db.Date
+  endDate       DateTime  @db.Date
+  startHalf     String?
+  endHalf       String?
+  totalDays     Float
+  reason        String?
+  attachmentUrl String?
+  status        String    @default("pending")
+  appliedAt     DateTime  @default(now())
+  cancelledAt   DateTime?
+  lwpDays       Float     @default(0)
+
+  employee      Employee       @relation(fields: [employeeId], references: [id])
+  leaveType     LeaveType      @relation(fields: [leaveTypeId], references: [id])
+  approvals     LeaveApproval[]
+
+  @@map("leave_requests")
+}
+
+model LeaveApproval {
+  id              String       @id @default(uuid())
+  leaveRequestId  String
+  approverId      String
+  approvalLevel   Int
+  action          String?
+  comments        String?
+  actionedAt      DateTime?
+  deadlineAt      DateTime?
+  createdAt       DateTime     @default(now())
+
+  leaveRequest    LeaveRequest @relation(fields: [leaveRequestId], references: [id])
+
+  @@map("leave_approvals")
+}
+
+model LeaveBlackoutPeriod {
+  id          String    @id @default(uuid())
+  tenantId    String
+  orgUnitId   String?
+  leaveTypeId String?
+  startDate   DateTime  @db.Date
+  endDate     DateTime  @db.Date
+  reason      String?
+  createdAt   DateTime  @default(now())
+
+  leaveType   LeaveType? @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_blackout_periods")
+}
+
+// ─── ATTENDANCE ───────────────────────────────────────────────
+
+model ShiftTemplate {
+  id                      String    @id @default(uuid())
+  tenantId                String
+  name                    String
+  shiftType               String    @default("fixed")
+  startTime               String?
+  endTime                 String?
+  graceLateMinutes        Int       @default(0)
+  graceEarlyOutMinutes    Int       @default(0)
+  halfDayHours            Float     @default(4)
+  fullDayHours            Float     @default(8)
+  overtimeThresholdHours  Float     @default(8)
+  overnight               Boolean   @default(false)
+  active                  Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+
+  tenant                  Tenant          @relation(fields: [tenantId], references: [id])
+  employeeShifts          EmployeeShift[]
+
+  @@map("shift_templates")
+}
+
+model EmployeeShift {
+  id                String        @id @default(uuid())
+  employeeId        String
+  shiftTemplateId   String
+  effectiveFrom     DateTime
+  effectiveUntil    DateTime?
+
+  employee          Employee      @relation(fields: [employeeId], references: [id])
+  shiftTemplate     ShiftTemplate @relation(fields: [shiftTemplateId], references: [id])
+
+  @@map("employee_shifts")
+}
+
+model AttendanceRecord {
+  id                  String        @id @default(uuid())
+  employeeId          String
+  date                DateTime      @db.Date
+  checkInTime         DateTime?
+  checkOutTime        DateTime?
+  checkInMethod       String?
+  checkInLat          Float?
+  checkInLng          Float?
+  checkInLocationId   String?
+  checkOutMethod      String?
+  checkOutLat         Float?
+  checkOutLng         Float?
+  workedHours         Float?
+  overtimeHours       Float?
+  status              String        @default("present")
+  isLocked            Boolean       @default(false)
+  source              String        @default("auto")
+  overrideReason      String?
+  overrideBy          String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  employee            Employee      @relation(fields: [employeeId], references: [id])
+  checkInLocation     WorkLocation? @relation(fields: [checkInLocationId], references: [id])
+
+  @@unique([employeeId, date])
+  @@map("attendance_records")
+}
+
+model AttendanceRegularisation {
+  id          String    @id @default(uuid())
+  employeeId  String
+  date        DateTime  @db.Date
+  reason      String?
+  expectedIn  String?
+  expectedOut String?
+  actualIn    String?
+  actualOut   String?
+  status      String    @default("pending")
+  approverId  String?
+  actionedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+
+  @@map("attendance_regularisations")
+}
+
+model OvertimeRequest {
+  id            String    @id @default(uuid())
+  employeeId    String
+  date          DateTime  @db.Date
+  overtimeHours Float
+  reason        String?
+  status        String    @default("pending")
+  approverId    String?
+  approvedRate  Float?
+  actionedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+
+  @@map("overtime_requests")
+}
+
+// ─── ACTIVITIES + CHATTER ─────────────────────────────────────
+
+model ActivityType {
+  id          String     @id @default(uuid())
+  tenantId    String
+  name        String
+  icon        String?
+  defaultDays Int        @default(3)
+  createdAt   DateTime   @default(now())
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  activities  Activity[]
+
+  @@map("activity_types")
+}
+
+model Activity {
+  id              String       @id @default(uuid())
+  tenantId        String
+  activityTypeId  String
+  entityType      String
+  entityId        String
+  title           String
+  note            String?
+  assignedToId    String
+  createdBy       String
+  dueDate         DateTime
+  status          String       @default("planned")
+  doneAt          DateTime?
+  doneNote        String?
+  createdAt       DateTime     @default(now())
+
+  activityType    ActivityType @relation(fields: [activityTypeId], references: [id])
+  assignee        Employee     @relation("ActivityAssignee", fields: [assignedToId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("activities")
+}
+
+model ChatterMessage {
+  id          String    @id @default(uuid())
+  entityType  String
+  entityId    String
+  messageType String    @default("comment")
+  authorId    String?
+  authorName  String?
+  body        String
+  isInternal  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  author      Employee? @relation(fields: [authorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("chatter_messages")
+}
+
+// ─── EVENT BUS ────────────────────────────────────────────────
+
+model DomainEvent {
+  id          String    @id @default(uuid())
+  tenantId    String
+  eventType   String
+  payload     Json
+  status      String    @default("pending")
+  retryCount  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("domain_events")
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────────
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  tenantId    String
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ─── SALARY STRUCTURING ───────────────────────────────────────
+
+model SalaryStructureType {
+  id                String    @id @default(uuid())
+  tenantId          String
+  name              String
+  wageType          String    @default("monthly")
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  structures        SalaryStructure[]
+
+  @@unique([tenantId, name])
+  @@map("salary_structure_types")
+}
+
+model SalaryStructure {
+  id                String    @id @default(uuid())
+  tenantId          String
+  structureTypeId   String
+  name              String
+  code              String
+  countryCode       String?
+  description       String?
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  structureType     SalaryStructureType @relation(fields: [structureTypeId], references: [id])
+  rules             SalaryRule[]
+  contracts         EmployeeContract[]
+
+  @@unique([tenantId, code])
+  @@map("salary_structures")
+}
+
+model SalaryRuleCategory {
+  id        String    @id @default(uuid())
+  name      String
+  code      String    @unique
+  sequence  Int
+
+  rules     SalaryRule[]
+
+  @@map("salary_rule_categories")
+}
+
+model SalaryRule {
+  id                  String    @id @default(uuid())
+  salaryStructureId   String
+  categoryId          String
+  name                String
+  code                String
+  sequence            Int
+  conditionSelect     String    @default("always")
+  conditionExpr       String?
+  amountType          String    @default("fixed")
+  amountFixed         Float?
+  amountPercentage    Float?
+  amountPercentageBase String?
+  pythonCode          String?
+  appearsOnPayslip    Boolean   @default(true)
+  active              Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+
+  structure           SalaryStructure     @relation(fields: [salaryStructureId], references: [id])
+  category            SalaryRuleCategory  @relation(fields: [categoryId], references: [id])
+  payslipLines        PayslipLine[]
+
+  @@unique([salaryStructureId, code])
+  @@map("salary_rules")
+}
+
+model GradeBand {
+  id          String    @id @default(uuid())
+  tenantId    String
+  code        String
+  name        String
+  salaryMin   Float
+  salaryMid   Float
+  salaryMax   Float
+  currency    String    @default("USD")
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  contracts   EmployeeContract[]
+
+  @@unique([tenantId, code])
+  @@map("grade_bands")
+}
+
+// ─── PAYROLL ──────────────────────────────────────────────────
+
+model PayrollCycle {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  orgUnitId           String?
+  payPeriodStart      DateTime  @db.Date
+  payPeriodEnd        DateTime  @db.Date
+  cycleType           String    @default("monthly")
+  status              String    @default("draft")
+  attendanceLockedAt  DateTime?
+  approvedBy          String?
+  approvedAt          DateTime?
+  financeApprovedBy   String?
+  financeApprovedAt   DateTime?
+  disbursedAt         DateTime?
+  bankFileUrl         String?
+  glExportUrl         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  payslips    Payslip[]
+
+  @@map("payroll_cycles")
+}
+
+model Payslip {
+  id                  String    @id @default(uuid())
+  payrollCycleId      String
+  employeeId          String
+  salaryStructureId   String?
+  contractId          String?
+  grossEarnings       Float     @default(0)
+  totalDeductions     Float     @default(0)
+  netPay              Float     @default(0)
+  currency            String    @default("USD")
+  workingDays         Int       @default(0)
+  paidDays            Float     @default(0)
+  lwpDays             Float     @default(0)
+  status              String    @default("draft")
+  pdfUrl              String?
+  disbursedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  payrollCycle  PayrollCycle  @relation(fields: [payrollCycleId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  lines         PayslipLine[]
+  workedDays    PayslipWorkedDay[]
+
+  @@unique([payrollCycleId, employeeId])
+  @@map("payslips")
+}
+
+model PayslipLine {
+  id              String    @id @default(uuid())
+  payslipId       String
+  salaryRuleId    String?
+  category        String
+  name            String
+  code            String
+  sequence        Int
+  amount          Float
+  quantity        Float     @default(1)
+  rate            Float     @default(1)
+  computationMethod String  @default("fixed")
+  formulaUsed     String?
+  sourceRefType   String?
+  sourceRefId     String?
+
+  payslip         Payslip       @relation(fields: [payslipId], references: [id])
+  salaryRule      SalaryRule?   @relation(fields: [salaryRuleId], references: [id])
+
+  @@map("payslip_lines")
+}
+
+model PayslipWorkedDay {
+  id            String    @id @default(uuid())
+  payslipId     String
+  dayType       String
+  numberOfDays  Float
+  numberOfHours Float     @default(0)
+
+  payslip       Payslip   @relation(fields: [payslipId], references: [id])
+
+  @@map("payslip_worked_days")
+}
+
+model PayrollInput {
+  id              String    @id @default(uuid())
+  payrollCycleId  String
+  employeeId      String
+  inputTypeId     String
+  amount          Float
+  description     String?
+  addedBy         String
+  approvedBy      String?
+  approvedAt      DateTime?
+  payslipLineId   String?
+  createdAt       DateTime  @default(now())
+
+  inputType       PayrollInputType @relation(fields: [inputTypeId], references: [id])
+
+  @@map("payroll_inputs")
+}
+
+model PayrollInputType {
+  id          String    @id @default(uuid())
+  tenantId    String
+  name        String
+  code        String
+  category    String    @default("earnings")
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  inputs      PayrollInput[]
+
+  @@unique([tenantId, code])
+  @@map("payroll_input_types")
+}
+
+// ─── EXPENSES & REIMBURSEMENTS ────────────────────────────────
+
+model ExpenseCategory {
+  id                    String    @id @default(uuid())
+  tenantId              String
+  name                  String
+  code                  String
+  maxAmount             Float?
+  enforceLimit          Boolean   @default(false)
+  receiptRequiredAbove  Float?
+  active                Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+
+  tenant                Tenant    @relation(fields: [tenantId], references: [id])
+  claims                ReimbursementClaim[]
+
+  @@unique([tenantId, code])
+  @@map("expense_categories")
+}
+
+model PerDiemRate {
+  id              String    @id @default(uuid())
+  tenantId        String
+  countryCode     String
+  city            String?
+  ratePerDay      Float
+  currency        String
+  effectiveFrom   DateTime  @db.Date
+  effectiveUntil  DateTime? @db.Date
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  claims          ReimbursementClaim[]
+
+  @@index([tenantId, countryCode])
+  @@map("per_diem_rates")
+}
+
+model FxRate {
+  id              String    @id @default(uuid())
+  tenantId        String
+  fromCurrency    String
+  toCurrency      String
+  rate            Float
+  effectiveFrom   DateTime  @db.Date
+  createdAt       DateTime  @default(now())
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, fromCurrency, toCurrency, effectiveFrom])
+  @@map("fx_rates")
+}
+
+model ReimbursementClaim {
+  id                        String    @id @default(uuid())
+  tenantId                  String
+  employeeId                String
+  categoryId                String
+  claimType                 String
+  expenseDate               DateTime  @db.Date
+  description               String
+  receiptNumber             String?
+  expenseCurrency           String
+  expenseAmount             Float
+  fxRate                    Float
+  fxRateDate                DateTime? @db.Date
+  homeCurrency              String
+  homeAmount                Float
+  perDiemRateId             String?
+  perDiemDays               Float?
+  perDiemCountry            String?
+  perDiemCity               String?
+  overLimit                 Boolean   @default(false)
+  status                    String    @default("submitted")
+  managerApprovedByUserId   String?
+  managerApprovedAt         DateTime?
+  financeApprovedByUserId   String?
+  financeApprovedAt         DateTime?
+  rejectionReason           String?
+  rejectedByUserId          String?
+  paidInCycleId             String?
+  paidAt                    DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  tenant                    Tenant           @relation(fields: [tenantId], references: [id])
+  employee                  Employee         @relation(fields: [employeeId], references: [id])
+  category                  ExpenseCategory  @relation(fields: [categoryId], references: [id])
+  perDiemRate               PerDiemRate?     @relation(fields: [perDiemRateId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([employeeId])
+  @@map("reimbursement_claims")
+}

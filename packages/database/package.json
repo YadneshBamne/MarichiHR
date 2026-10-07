@@ -1,0 +1,26 @@
+{
+  "name": "@marichihr/database",
+  "version": "1.0.0",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "dotenv -e ../../apps/api/.env -- prisma migrate dev",
+    "studio": "dotenv -e ../../apps/api/.env -- prisma studio",
+    "seed": "dotenv -e ../../apps/api/.env -- ts-node prisma/seed.ts",
+    "seed:salary": "dotenv -e ../../apps/api/.env -- ts-node prisma/seed-salary.ts"
+  },
+  "prisma": {
+    "seed": "dotenv -e ../../apps/api/.env -- ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/node": "^26.6.3",
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
