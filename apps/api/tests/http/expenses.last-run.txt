@@ -1,0 +1,74 @@
+PASS  receipt required: USD 10 travel (=250 ZMW > 100) without receipt is 400
+PASS  actual USD claim: 201
+PASS  FX snapshot: fxRate 25, fxRateDate 2026-01-01, home 250 ZMW
+PASS  enforced limit: MEALS 200 > 150 rejected 400
+PASS  soft limit: 80 > 50 accepted and flagged overLimit
+PASS  per-diem KE 2 days: 240 USD -> 6000 ZMW, rate snapshot
+PASS  per-diem 1.3 days rejected (whole/half only)
+PASS  strict body: extra "status" key rejected 400
+PASS  strict body: client-supplied homeAmount rejected 400
+PASS  unknown FX pair (EUR) rejected 400
+PASS  future expense date rejected 400
+PASS  FX snapshot: changing the rate to 26 leaves the claim at 25 / 250
+PASS  withdraw: someone else's claim is 404
+PASS  withdraw: owner withdraws submitted claim
+PASS  withdraw: second withdraw is 400
+PASS  approve a withdrawn claim is 400
+PASS  per-diem ZM 1.5 days = 450 ZMW, fxRate 1
+PASS  employee without expenses:approve cannot approve (403)
+PASS  manager cannot approve own claim (403)
+PASS  manager cannot approve their own manager's claim (403)
+PASS  John's pending queue has only his direct reports' claims
+PASS  direct manager approves Jane claim 250
+PASS  direct manager approves Jane claim 80
+PASS  direct manager approves Jane claim 6000
+PASS  admin (John's manager) approves John claim 300
+PASS  admin (John's manager) approves John claim 450
+PASS  hr_admin with no manager self-approves (logged)
+PASS  SELF_APPROVAL audit row written for admin claim
+PASS  finance approve blocked when finance user = claimant (403)
+PASS  finance approve blocked when finance user = manager approver (403)
+PASS  manager without expenses:finance cannot finance-approve (403)
+PASS  finance user approves claim 250
+PASS  finance user approves claim 80
+PASS  finance user approves claim 6000
+PASS  finance user approves claim 300
+PASS  finance user approves claim 450
+PASS  finance user approves claim 40
+PASS  finance approve twice is 400
+PASS  create 2026-12 cycle
+PASS  run cycle
+PASS  Jane (no contract) is skipped
+PASS  EMP0001: one REIMB line per finance-approved claim (1)
+PASS  EMP0001: reimbursements not in gross (GROSS line 20000 = earnings 20000 = payslip gross)
+PASS  EMP0001: net = NET rule + reimbursements (added after NET)
+PASS  EMP0001: totalDeductions (5782) excludes reimbursements
+PASS  EMP0002: one REIMB line per finance-approved claim (2)
+PASS  EMP0002: reimbursements not in gross (GROSS line 10000 = earnings 10000 = payslip gross)
+PASS  EMP0002: net = NET rule + reimbursements (added after NET)
+PASS  EMP0002: totalDeductions (1704) excludes reimbursements
+PASS  payslip PDF downloads (application/pdf, %PDF header)
+PASS  HR approves cycle
+PASS  HR approver cannot finance-approve (403)
+PASS  finance approves cycle
+PASS  GL: account 5020 debit = reimbursements paid (790)
+PASS  GL balances (debit 33790 = credit 33790)
+PASS  claims are still finance_approved before disbursement
+PASS  disburse cycle
+PASS  paid claims: status paid + paidInCycleId + paidAt
+PASS  Jane's claims (skipped employee) stay finance_approved and unpaid
+PASS  disbursed cycle cannot be re-run (immutable)
+PASS  salary reads as manager: 403
+PASS  salary reads as employee: 403
+PASS  salary reads as payroll_admin: 200
+PASS  salary reads as hr_admin: 200
+PASS  Jane applies for 2027-01-05
+PASS  John applies for 2027-01-06
+PASS  pending leave: John sees Jane's request, not his own
+PASS  pending leave: hr_admin sees all (both)
+PASS  pending leave: payroll_admin (no leave:approve) is 403
+PASS  John approves Jane leave
+PASS  leave approval chatter uses YYYY-MM-DD: "from 2027-01-05 to 2027-01-05"
+PASS  John cancels his test leave
+
+72/72 passed
