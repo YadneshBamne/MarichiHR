@@ -59,10 +59,10 @@ export const orgUnitRepository = {
   },
 
   async archive(id: string, tenantId: string, archivedBy: string, reason: string) {
-    return prisma.orgUnit.update({
-      where: { id },
-      data: { active: false, archivedAt: new Date(), archivedBy, archiveReason: reason },
-    })
+    // org_units has no archivedBy/archiveReason columns: who and why go to the audit log
+    const unit = await prisma.orgUnit.update({ where: { id }, data: { active: false, archivedAt: new Date() } })
+    await prisma.auditLog.create({ data: { tenantId, userId: archivedBy, action: 'ORG_UNIT_ARCHIVED', entityType: 'org_unit', entityId: id, newValue: { reason } } })
+    return unit
   },
 }
 

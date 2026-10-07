@@ -1,0 +1,43 @@
+-- AlterTable
+ALTER TABLE "employee_contracts" ALTER COLUMN "ctcAnnual" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "wageMonthly" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "employee_exits" ALTER COLUMN "totalEarnings" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "totalDeductions" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "netPayable" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "expense_categories" ALTER COLUMN "maxAmount" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "receiptRequiredAbove" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "fx_rates" ALTER COLUMN "rate" SET DATA TYPE DECIMAL(18,6);
+
+-- AlterTable
+ALTER TABLE "grade_bands" ALTER COLUMN "salaryMin" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "salaryMid" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "salaryMax" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "payroll_inputs" ALTER COLUMN "amount" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "payslip_lines" ALTER COLUMN "amount" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "payslips" ALTER COLUMN "grossEarnings" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "totalDeductions" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "netPay" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "per_diem_rates" ALTER COLUMN "ratePerDay" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "reimbursement_claims" ALTER COLUMN "expenseAmount" SET DATA TYPE DECIMAL(18,2),
+ALTER COLUMN "fxRate" SET DATA TYPE DECIMAL(18,6),
+ALTER COLUMN "homeAmount" SET DATA TYPE DECIMAL(18,2);
+
+-- AlterTable
+ALTER TABLE "salary_rules" ALTER COLUMN "amountFixed" SET DATA TYPE DECIMAL(18,2);
+

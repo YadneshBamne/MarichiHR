@@ -186,6 +186,8 @@ const TAG = `p19-${Date.now()}`
   }
 
   const annual = (await api(jane, 'GET', '/leave/types')).body.find((t) => t.code === 'ANNUAL')
+  // Each run consumes a day of Jane's ANNUAL leave: top it up so the suite can repeat
+  await api(admin, 'POST', '/leave/allocations/manual', { employeeId: jane.employeeId, leaveTypeId: annual.id, daysAllocated: 1, validFrom: '2026-01-01', reason: TAG })
   r = await api(jane, 'POST', '/leave/requests', { leaveTypeId: annual.id, startDate: '2027-01-05', endDate: '2027-01-05', reason: TAG })
   check('Jane applies for 2027-01-05', r.status === 201, r.data)
   const janeLeave = r.body

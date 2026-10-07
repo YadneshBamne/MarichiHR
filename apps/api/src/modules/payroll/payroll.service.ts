@@ -302,9 +302,9 @@ export const payrollService = {
       ...cycle,
       totals: {
         payslips: totals._count,
-        gross: round2(totals._sum.grossEarnings ?? 0),
-        deductions: round2(totals._sum.totalDeductions ?? 0),
-        net: round2(totals._sum.netPay ?? 0),
+        gross: round2(Number(totals._sum.grossEarnings ?? 0)),
+        deductions: round2(Number(totals._sum.totalDeductions ?? 0)),
+        net: round2(Number(totals._sum.netPay ?? 0)),
       },
     }
   },
@@ -415,9 +415,9 @@ export const payrollService = {
       skipped,
       warnings: warningsByEmployee,
       totals: {
-        gross: round2(totals._sum.grossEarnings ?? 0),
-        deductions: round2(totals._sum.totalDeductions ?? 0),
-        net: round2(totals._sum.netPay ?? 0),
+        gross: round2(Number(totals._sum.grossEarnings ?? 0)),
+        deductions: round2(Number(totals._sum.totalDeductions ?? 0)),
+        net: round2(Number(totals._sum.netPay ?? 0)),
       },
     }
   },

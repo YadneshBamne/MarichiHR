@@ -1,12 +1,15 @@
 // HTTP test helpers. Runs against a live API (default http://localhost:4000) and the dev DB.
 // Usage: load apps/api/.env into the environment, start the API, then `node tests/http/<file>.test.js`.
 const jwt = require('jsonwebtoken')
-const { PrismaClient } = require('@prisma/client')
+const { PrismaClient, Prisma } = require('@prisma/client')
 
 const BASE = (process.env.API_URL || 'http://localhost:4000') + '/api/v1'
 // Neon's pooler can be slow to accept the first connection after idle
 const dbUrl = process.env.DATABASE_URL || ''
+// Money columns are NUMERIC: hand tests plain numbers, like the API's own client does
+const dec2num = (v) => (v instanceof Prisma.Decimal ? Number(v) : Array.isArray(v) ? v.map(dec2num) : v && typeof v === 'object' && !(v instanceof Date) && !Buffer.isBuffer(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, dec2num(x)])) : v)
 const prisma = new PrismaClient({ datasources: { db: { url: dbUrl.includes('connect_timeout') ? dbUrl : dbUrl + (dbUrl.includes('?') ? '&' : '?') + 'connect_timeout=30' } } })
+  .$extends({ query: { $allModels: { async $allOperations({ args, query }) { return dec2num(await query(args)) } } } })
 const results = []
 
 // Access token for a user, built the same way auth.service does (passwords for John/Jane aren't in the seeds)
