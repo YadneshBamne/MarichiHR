@@ -19,6 +19,9 @@ import ActivitiesPage from './pages/activities/ActivitiesPage'
 import ExitsPage from './pages/exits/ExitsPage'
 import ExitDetailPage from './pages/exits/ExitDetailPage'
 import SalarySetupPage from './pages/salary/SalarySetupPage'
+import LeaveTypesPage from './pages/leave/LeaveTypesPage'
+import SecurityPage from './pages/SecurityPage'
+import SsoCallbackPage from './pages/SsoCallbackPage'
 
 export default function App() {
   return (
@@ -27,6 +30,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/auth/sso" element={<SsoCallbackPage />} />
             <Route
               path="/"
               element={
@@ -50,6 +54,8 @@ export default function App() {
               <Route path="exits" element={<ExitsPage />} />
               <Route path="exits/:id" element={<ExitDetailPage />} />
               <Route path="compensation" element={<SalarySetupPage />} />
+              <Route path="leave-types" element={<LeaveTypesPage />} />
+              <Route path="security" element={<SecurityPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

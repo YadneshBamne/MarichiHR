@@ -1,21 +1,62 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import api from '../lib/api'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1'
+const SSO_ERRORS: Record<string, string> = {
+  no_account: 'That Google account is not linked to an active user in this organisation.',
+  email_unverified: 'Your Google email address is not verified.',
+  expired: 'The Google sign-in took too long. Please try again.',
+  state_mismatch: 'The Google sign-in could not be verified. Please try again.',
+  cancelled: 'Google sign-in was cancelled.',
+  not_configured: 'Google sign-in is not configured.',
+}
 import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, verifyMfa } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const [mfaToken, setMfaToken] = useState<string | null>((useLocation().state as any)?.mfaToken ?? null)
+  const [code, setCode] = useState('')
+  const [google, setGoogle] = useState(false)
+
+  useEffect(() => {
+    api.get('/auth/providers').then((r) => setGoogle(!!r.data.data.google)).catch(() => {})
+    const e = params.get('sso_error')
+    if (e) setError(SSO_ERRORS[e] || 'Google sign-in failed. Please try again.')
+  }, [params])
   const [form, setForm] = useState({ email: '', password: '', tenantSlug: 'marichi-labs' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const handleMfa = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await verifyMfa(mfaToken!, code)
+      navigate('/dashboard')
+    } catch (err: any) {
+      const status = err?.response?.status
+      setError(err?.response?.data?.message || 'Verification failed.')
+      setCode('')
+      if (status === 401 && /expired/i.test(err?.response?.data?.message || '')) setMfaToken(null)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await login(form.email, form.password, form.tenantSlug)
-      navigate('/dashboard')
+      const pending = await login(form.email, form.password, form.tenantSlug)
+      if (pending) {
+        setMfaToken(pending)
+        setCode('')
+      } else navigate('/dashboard')
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Login failed. Please check your credentials.')
     } finally {
@@ -30,8 +71,21 @@ export default function LoginPage() {
           <div style={styles.logoIcon}>MH</div>
           <h1 style={styles.logoText}>MarichiHR</h1>
         </div>
-        <p style={styles.subtitle}>Sign in to your account</p>
+        <p style={styles.subtitle}>{mfaToken ? 'Enter the 6-digit code from your authenticator app' : 'Sign in to your account'}</p>
 
+        {mfaToken ? (
+          <form onSubmit={handleMfa} style={styles.form}>
+            <div style={styles.field}>
+              <label style={styles.label} htmlFor="mfa-code">Authentication code</label>
+              <input id="mfa-code" style={{ ...styles.input, letterSpacing: '0.4em', fontSize: '18px', textAlign: 'center' }} inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/D/g, ''))} />
+            </div>
+            {error && <div style={styles.error}>{error}</div>}
+            <button style={{ ...styles.button, opacity: loading || code.length !== 6 ? 0.7 : 1 }} type="submit" disabled={loading || code.length !== 6}>
+              {loading ? 'Verifying...' : 'Verify'}
+            </button>
+            <button type="button" style={styles.textBtn} onClick={() => { setMfaToken(null); setError('') }}>Back to sign in</button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
             <label style={styles.label}>Organisation</label>
@@ -72,7 +126,16 @@ export default function LoginPage() {
           <button style={{ ...styles.button, opacity: loading ? 0.7 : 1 }} type="submit" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
+          {google && (
+            <>
+              <div style={styles.divider}><span>or</span></div>
+              <button type="button" style={styles.googleBtn} disabled={!form.tenantSlug} onClick={() => { window.location.href = `${API_URL}/auth/google?tenant=${encodeURIComponent(form.tenantSlug)}` }}>
+                Continue with Google
+              </button>
+            </>
+          )}
         </form>
+        )}
       </div>
     </div>
   )
@@ -119,6 +182,9 @@ const styles: Record<string, React.CSSProperties> = {
     border: '0.5px solid #f5c6b8', borderRadius: '6px',
     padding: '10px 12px', fontSize: '13px',
   },
+  textBtn: { background: 'none', border: 'none', color: '#534AB7', fontSize: '13px', cursor: 'pointer' },
+  divider: { textAlign: 'center', fontSize: '12px', color: '#8c8c88' },
+  googleBtn: { padding: '10px', borderRadius: '6px', backgroundColor: '#fff', color: '#1a1a18', border: '0.5px solid #ccc9c1', fontSize: '14px', cursor: 'pointer' },
   button: {
     padding: '11px', borderRadius: '6px',
     backgroundColor: '#534AB7', color: '#fff',

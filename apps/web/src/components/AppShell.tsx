@@ -3,6 +3,7 @@ import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
+import NotificationBell from './NotificationBell'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: '⊞', roles: [] },
@@ -15,6 +16,8 @@ const NAV_ITEMS = [
   { label: 'Activities', path: '/activities', icon: '📋', roles: [] },
   { label: 'Exits', path: '/exits', icon: '🚪', roles: [] },
   { label: 'Compensation', path: '/compensation', icon: '⚙', roles: ['hr_admin', 'payroll_admin', 'compliance_officer'] },
+  { label: 'Leave types', path: '/leave-types', icon: '🗂', roles: ['hr_admin'] },
+  { label: 'Security', path: '/security', icon: '🔒', roles: [] },
 ]
 
 export default function AppShell() {
@@ -45,8 +48,11 @@ export default function AppShell() {
     navigate('/login')
   }
 
+  // '/leave' must not light up on '/leave-types'
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/')
+
   const getPageTitle = () => {
-    const match = NAV_ITEMS.find((n) => location.pathname.startsWith(n.path))
+    const match = NAV_ITEMS.find((n) => isActive(n.path))
     return match?.label || 'MarichiHR'
   }
 
@@ -63,7 +69,7 @@ export default function AppShell() {
         {/* Nav */}
         <nav style={s.nav}>
           {visibleNavItems.map((item) => {
-            const active = location.pathname.startsWith(item.path)
+            const active = isActive(item.path)
             return (
               <Link
                 key={item.path}
@@ -103,6 +109,7 @@ export default function AppShell() {
           <button style={s.menuBtn} onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
           <span style={s.pageTitle}>{getPageTitle()}</span>
           <div style={s.topRight}>
+            <NotificationBell />
             <span style={s.tenantBadge}>{user?.tenant?.name}</span>
             <button style={s.logoutBtn} onClick={handleLogout}>Sign out</button>
           </div>

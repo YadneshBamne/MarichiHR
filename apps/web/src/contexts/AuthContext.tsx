@@ -6,7 +6,10 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
-  login: (email: string, password: string, tenantSlug: string) => Promise<void>
+  // Resolves to an MFA step token when the account needs a TOTP code, otherwise signs in
+  login: (email: string, password: string, tenantSlug: string) => Promise<string | null>
+  verifyMfa: (mfaToken: string, code: string) => Promise<void>
+  exchangeSso: (code: string) => Promise<string | null>
   logout: () => Promise<void>
   hasRole: (role: string) => boolean
   isHR: boolean
@@ -46,13 +49,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUser()
   }, [loadUser])
 
-  const login = async (email: string, password: string, tenantSlug: string) => {
-    const res = await api.post('/auth/login', { email, password, tenantSlug })
-    const { accessToken, refreshToken, user: userData } = res.data.data
-    setAccessToken(accessToken)
-    localStorage.setItem('refreshToken', refreshToken)
-    setUser(userData)
+  const startSession = (data: any): string | null => {
+    if (data.mfaRequired) return data.mfaToken
+    setAccessToken(data.accessToken)
+    localStorage.setItem('refreshToken', data.refreshToken)
+    setUser(data.user)
+    return null
   }
+
+  const login = async (email: string, password: string, tenantSlug: string) =>
+    startSession((await api.post('/auth/login', { email, password, tenantSlug })).data.data)
+
+  const verifyMfa = async (mfaToken: string, code: string) => {
+    startSession((await api.post('/auth/mfa/verify', { mfaToken, code })).data.data)
+  }
+
+  const exchangeSso = async (code: string) => startSession((await api.post('/auth/google/exchange', { code })).data.data)
 
   const logout = async () => {
     const refreshToken = localStorage.getItem('refreshToken')
@@ -70,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isManager = hasRole('manager') || isHR
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout, hasRole, isHR, isManager }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, verifyMfa, exchangeSso, logout, hasRole, isHR, isManager }}>
       {children}
     </AuthContext.Provider>
   )
