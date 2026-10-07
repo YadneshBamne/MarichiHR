@@ -22,7 +22,8 @@ const LEAVE_TYPE_DEFAULTS = {
   hourlyAllowed: false, leaveUnit: 'day', approvalLevels: 1, requiresHrForStatutory: false, sandwichRule: false, active: true,
 }
 
-export interface BootstrapInput { companyName: string; slug: string; email: string; fullName: string; passwordHash: string }
+// Google sign-ups have no password: passwordHash is null and googleSub links the Google account
+export interface BootstrapInput { companyName: string; slug: string; email: string; fullName: string; passwordHash: string | null; googleSub?: string; avatarUrl?: string | null }
 
 export async function bootstrapCompany(input: BootstrapInput) {
   const id = () => crypto.randomUUID()
@@ -44,7 +45,7 @@ export async function bootstrapCompany(input: BootstrapInput) {
     resource_calendars: [{ id: calendarId, tenantId, name: 'Standard 40h Mon-Fri', timezone: 'UTC', hoursPerWeek: 40, isFlexi: false, twoWeeksCalendar: false, active: true, createdAt: now }],
     resource_calendar_days: [0, 1, 2, 3, 4].map((d) => ({ id: id(), calendarId, dayOfWeek: d, hourFrom: 9, hourTo: 18 })),
     org_units: [{ id: rootId, tenantId, name: input.companyName, type: 'entity', active: true, createdAt: now, updatedAt: now }],
-    users: [{ id: userId, tenantId, email: input.email, passwordHash: input.passwordHash, fullName: input.fullName.trim(), active: true, mfaEnabled: false, mustChangePassword: false, createdAt: now, updatedAt: now }],
+    users: [{ id: userId, tenantId, email: input.email, passwordHash: input.passwordHash, googleSub: input.googleSub ?? null, avatarUrl: input.avatarUrl ?? null, fullName: input.fullName.trim(), active: true, mfaEnabled: false, mustChangePassword: false, createdAt: now, updatedAt: now }],
     user_roles: ['employee', 'hr_admin', 'system_admin'].map((n) => ({ id: id(), userId, roleId: roleIds[n], scopeType: 'org', validFrom: now, createdAt: now })),
     employees: [{ id: employeeId, tenantId, userId, employeeCode: 'EMP0001', orgUnitId: rootId, resourceCalendarId: calendarId, firstName, lastName: rest.join(' ') || '-', workEmail: input.email, employmentType: 'full_time', employmentStatus: 'active', hireDate: today, bankVerified: false, active: true, createdAt: now, updatedAt: now }],
     leave_balances: leaveTypes.map((lt) => ({ employeeId, leaveTypeId: lt.id, balanceDays: 0, usedDays: 0, pendingDays: 0, encashedDays: 0, lapsedDays: 0, asOfDate: now })),

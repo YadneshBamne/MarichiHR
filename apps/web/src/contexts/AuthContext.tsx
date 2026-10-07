@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import api, { setAccessToken } from '../lib/api'
+import api, { setAccessToken, refreshSession } from '../lib/api'
 import { queryClient } from '../lib/queryClient'
 import type { User } from '../types'
 
-export interface SignupInput { companyName: string; fullName: string; email: string; password: string }
+// Either email + password, or googleCode from Continue with Google (email and photo then come from Google)
+export type SignupInput = { companyName: string; fullName: string } & ({ email: string; password: string } | { googleCode: string })
 
 interface AuthContextType {
   user: User | null
@@ -31,22 +32,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Signed-in state survives browser restarts: the refresh token lives in localStorage (no third-party cookies
+  // needed between the web and API domains) and every refresh extends it, so only logout or 30 idle days end it
   const loadUser = useCallback(async () => {
-    const refreshToken = localStorage.getItem('refreshToken')
-    if (!refreshToken) {
-      setIsLoading(false)
-      return
-    }
     try {
-      const refreshRes = await api.post('/auth/refresh', { refreshToken })
-      const { accessToken, refreshToken: newRefresh } = refreshRes.data.data
-      setAccessToken(accessToken)
-      localStorage.setItem('refreshToken', newRefresh)
-      const meRes = await api.get('/auth/me')
-      setUser(meRes.data.data)
+      if (await refreshSession()) {
+        const meRes = await api.get('/auth/me')
+        setUser(meRes.data.data)
+      }
     } catch {
-      setAccessToken(null)
-      localStorage.removeItem('refreshToken')
+      // The API is unreachable or waking up: keep the stored session, the next load signs straight in
     } finally {
       setIsLoading(false)
     }

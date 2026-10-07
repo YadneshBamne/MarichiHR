@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { gsap, reduced } from '../../lib/motion'
-import { BrandPanel } from '../LoginPage'
+import { BrandPanel, GoogleG, API_URL, SSO_ERRORS } from '../LoginPage'
+import api from '../../lib/api'
 import Logo from '../../components/brand/Logo'
 import Icon from '../../components/ui/Icon'
 
@@ -22,6 +23,28 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLFormElement>(null)
   const pwOk = rules(f.password).every((r) => r.ok)
+  const [params, setParams] = useSearchParams()
+  const [googleOn, setGoogleOn] = useState(false)
+  // After Continue with Google: the verified profile fills in name and email; only the company name is left to type
+  const [google, setGoogle] = useState<{ code: string; email: string; avatarUrl: string | null } | null>(null)
+
+  useEffect(() => {
+    api.get('/auth/providers').then((r) => setGoogleOn(!!r.data.data.google)).catch(() => {})
+    const e = params.get('sso_error')
+    if (e) setError(SSO_ERRORS[e] || 'Google sign-up failed. Please try again.')
+    const code = params.get('google')
+    if (code) {
+      api.get(`/auth/google/signup/${encodeURIComponent(code)}`)
+        .then((r) => {
+          const p = r.data.data
+          setGoogle({ code, email: p.email, avatarUrl: p.avatarUrl })
+          setF((cur) => ({ ...cur, fullName: cur.fullName || p.fullName || '', email: p.email }))
+        })
+        .catch(() => setError('Your Google sign-up expired. Choose Continue with Google again.'))
+    }
+  }, [params])
+
+  const dropGoogle = () => { setGoogle(null); setF((cur) => ({ ...cur, email: '' })); setParams({}, { replace: true }) }
   useLayoutEffect(() => {
     if (ref.current && !reduced()) gsap.fromTo(ref.current.querySelectorAll('[data-rise]'), { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.05, ease: 'power3.out', clearProps: 'opacity,transform' })
   }, [])
@@ -31,7 +54,8 @@ export default function SignupPage() {
     setError('')
     setLoading(true)
     try {
-      await signup({ companyName: f.companyName.trim(), fullName: f.fullName.trim(), email: f.email.trim(), password: f.password })
+      const base = { companyName: f.companyName.trim(), fullName: f.fullName.trim() }
+      await signup(google ? { ...base, googleCode: google.code } : { ...base, email: f.email.trim(), password: f.password })
       navigate('/onboarding', { replace: true })
     } catch (err: any) {
       setError(err?.response?.data?.message || (err?.response ? 'Could not create your workspace.' : 'Cannot reach the server. Check your connection.'))
@@ -59,24 +83,45 @@ export default function SignupPage() {
             <label htmlFor="nm">Your full name</label>
             <input id="nm" className="input" value={f.fullName} onChange={set('fullName')} autoComplete="name" required maxLength={80} />
           </div>
-          <div data-rise className="field" style={{ marginBottom: 14 }}>
-            <label htmlFor="em">Work email</label>
-            <input id="em" className="input" type="email" value={f.email} onChange={set('email')} autoComplete="email" required placeholder="you@company.com" />
-          </div>
-          <div data-rise className="field" style={{ marginBottom: 8 }}>
-            <label htmlFor="pw">Password</label>
-            <div style={{ position: 'relative' }}>
-              <input id="pw" className="input" type={show ? 'text' : 'password'} value={f.password} onChange={set('password')} autoComplete="new-password" required style={{ paddingRight: 64 }} aria-describedby="pw-rules" />
-              <button type="button" className="link" onClick={() => setShow(!show)} style={{ position: 'absolute', right: 8, top: 10 }} aria-pressed={show}>{show ? 'Hide' : 'Show'}</button>
+          {google ? (
+            <div data-rise className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 20 }}>
+              {google.avatarUrl ? <img src={google.avatarUrl} alt="" width={34} height={34} referrerPolicy="no-referrer" style={{ borderRadius: '50%' }} /> : <GoogleG />}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>{google.email}</div>
+                <div className="muted" style={{ fontSize: 12 }}>Verified by Google · you'll sign in with Google</div>
+              </div>
+              <button type="button" className="link" style={{ fontSize: 12 }} onClick={dropGoogle}>Use email instead</button>
             </div>
-          </div>
-          <div data-rise id="pw-rules" style={{ display: 'flex', gap: 12, fontSize: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-            {rules(f.password).map((r) => <span key={r.text} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: r.ok ? 'var(--ok)' : 'var(--faint)', transition: 'color .3s' }}><Icon name={r.ok ? 'checkCircle' : 'info'} size={13} /> {r.text}</span>)}
-          </div>
+          ) : (
+            <>
+            <div data-rise className="field" style={{ marginBottom: 14 }}>
+              <label htmlFor="em">Work email</label>
+              <input id="em" className="input" type="email" value={f.email} onChange={set('email')} autoComplete="email" required placeholder="you@company.com" />
+            </div>
+            <div data-rise className="field" style={{ marginBottom: 8 }}>
+              <label htmlFor="pw">Password</label>
+              <div style={{ position: 'relative' }}>
+                <input id="pw" className="input" type={show ? 'text' : 'password'} value={f.password} onChange={set('password')} autoComplete="new-password" required style={{ paddingRight: 64 }} aria-describedby="pw-rules" />
+                <button type="button" className="link" onClick={() => setShow(!show)} style={{ position: 'absolute', right: 8, top: 10 }} aria-pressed={show}>{show ? 'Hide' : 'Show'}</button>
+              </div>
+            </div>
+            <div data-rise id="pw-rules" style={{ display: 'flex', gap: 12, fontSize: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+              {rules(f.password).map((r) => <span key={r.text} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: r.ok ? 'var(--ok)' : 'var(--faint)', transition: 'color .3s' }}><Icon name={r.ok ? 'checkCircle' : 'info'} size={13} /> {r.text}</span>)}
+            </div>
+            </>
+          )}
           {error && <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: 14, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}><Icon name="alert" size={16} /> {error}</div>}
-          <button data-rise className="btn btn-primary" type="submit" disabled={loading || !f.companyName.trim() || !f.fullName.trim() || !f.email || !pwOk} style={{ width: '100%', height: 46 }}>
+          <button data-rise className="btn btn-primary" type="submit" disabled={loading || !f.companyName.trim() || !f.fullName.trim() || (!google && (!f.email || !pwOk))} style={{ width: '100%', height: 46 }}>
             {loading ? <><span className="spinner" style={{ borderTopColor: 'var(--night-ink)' }} /> Creating your workspace…</> : <>Create workspace <Icon name="arrowRight" size={16} /></>}
           </button>
+          {googleOn && !google && (
+            <>
+              <div data-rise className="muted" style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0', fontSize: 12 }}><span style={line} />or<span style={line} /></div>
+              <button data-rise type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} onClick={() => { window.location.href = `${API_URL}/auth/google?intent=signup` }}>
+                <GoogleG /> Continue with Google
+              </button>
+            </>
+          )}
           <p data-rise className="muted" style={{ fontSize: 12, marginTop: 14, textAlign: 'center' }}>You'll be the owner and administrator of this workspace.</p>
         </form>
         <footer className="muted" style={{ fontSize: 12 }}>© {new Date().getFullYear()} MarichiHR</footer>
@@ -85,3 +130,5 @@ export default function SignupPage() {
     </div>
   )
 }
+
+const line: React.CSSProperties = { flex: 1, height: 1, background: 'var(--line-2)' }

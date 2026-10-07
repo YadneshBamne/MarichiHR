@@ -19,11 +19,12 @@ function generateRefreshToken(): string {
   return crypto.randomBytes(64).toString('hex')
 }
 
+// Sessions slide: every refresh (page load, or each 15-minute access-token renewal) issues a new refresh token valid
+// for another 30 days, so people stay signed in until they log out or stay away for 30 days
+const REFRESH_TOKEN_DAYS = 30
+const ROTATION_GRACE_MS = 60_000
 function getRefreshTokenExpiry(): Date {
-  const days = 7
-  const expiry = new Date()
-  expiry.setDate(expiry.getDate() + days)
-  return expiry
+  return new Date(Date.now() + REFRESH_TOKEN_DAYS * 86_400_000)
 }
 
 // Short-lived token that proves the password (or Google) step passed and only a TOTP code is missing.
@@ -235,7 +236,13 @@ export const authService = {
 
     const user = storedToken.user
 
-    await authRepository.revokeRefreshToken(refreshTokenValue)
+    // Rotation with a short grace: the old token keeps working for 60 s instead of dying at once. A page that reloads
+    // or closes while a refresh is in flight never stores the new token, and without the grace its next load would
+    // present a dead one and sign the person out (common while a sleeping server wakes up)
+    const graceEnd = new Date(Date.now() + ROTATION_GRACE_MS)
+    if (storedToken.expiresAt > graceEnd) {
+      await prisma.refreshToken.update({ where: { id: storedToken.id }, data: { expiresAt: graceEnd } })
+    }
 
     // A deactivated or offboarded user cannot keep a session alive by refreshing
     if (!user.active || user.employee?.employmentStatus === 'terminated') {

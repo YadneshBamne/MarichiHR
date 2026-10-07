@@ -26,4 +26,5 @@ authRouter.post('/mfa/disable', authenticate, validate(MfaCodeSchema), authContr
 authRouter.get('/providers', googleSso.providers)
 authRouter.get('/google', googleSso.start)
 authRouter.get('/google/callback', googleSso.callback)
+authRouter.get('/google/signup/:code', googleSso.signupProfile)
 authRouter.post('/google/exchange', validate(SsoExchangeSchema), googleSso.exchange)

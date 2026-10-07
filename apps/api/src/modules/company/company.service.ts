@@ -7,6 +7,7 @@ import { forgetTenantModules } from '../../middleware/module.middleware'
 import { authRepository } from '../auth/auth.repository'
 import { bootstrapCompany } from './company.bootstrap'
 import { completeLogin } from '../auth/auth.service'
+import { takeGoogleSignup } from '../auth/google.sso'
 import {
   APP_KEYS,
 } from './company.catalog'
@@ -25,10 +26,13 @@ async function freeSlug(name: string) {
 export const companyService = {
   // Self-serve signup: a new company with everything a fresh workspace needs, its owner as the first employee,
   // and a signed-in session. The owner then picks apps and fills in the company profile (onboarding).
-  async signup(body: { companyName: string; fullName: string; email: string; password: string }) {
-    const email = body.email.trim().toLowerCase()
-    const [slug, passwordHash] = await Promise.all([freeSlug(body.companyName), bcrypt.hash(body.password, 12)])
-    const { tenantId } = await bootstrapCompany({ companyName: body.companyName.trim(), slug, email, fullName: body.fullName, passwordHash })
+  async signup(body: { companyName: string; fullName: string; email?: string; password?: string; googleCode?: string }) {
+    // With Google: email, account link and photo come from the verified Google profile, and there is no password
+    const google = body.googleCode ? await takeGoogleSignup(body.googleCode) : null
+    if (body.googleCode && !google) throw new AppError('Your Google sign-up expired. Choose Continue with Google again.', 400)
+    const email = (google?.email ?? body.email!).trim().toLowerCase()
+    const [slug, passwordHash] = await Promise.all([freeSlug(body.companyName), google ? null : bcrypt.hash(body.password!, 12)])
+    const { tenantId } = await bootstrapCompany({ companyName: body.companyName.trim(), slug, email, fullName: body.fullName, passwordHash, googleSub: google?.sub, avatarUrl: google?.picture })
     const [tenant, owner] = await Promise.all([prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } }), authRepository.findUserByEmail(email, tenantId)])
     return { workspace: tenant.slug, ...(await completeLogin(owner!, tenant)) }
   },

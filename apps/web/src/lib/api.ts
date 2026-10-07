@@ -28,6 +28,39 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
+// One refresh at a time, across tabs too: refresh tokens rotate, so two tabs (or React StrictMode's double effect)
+// refreshing with the same token would revoke each other. Inside the lock the latest stored token is read, so a
+// waiting tab uses the token the first one just received. Resolves to null when the session is really over (the
+// server refused the token); throws on network/server errors so a sleeping or unreachable API never signs anyone out.
+async function doRefresh(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) return null
+  try {
+    const res = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken })
+    setAccessToken(res.data.data.accessToken)
+    localStorage.setItem('refreshToken', res.data.data.refreshToken)
+    return res.data.data.accessToken
+  } catch (err: any) {
+    const status = err?.response?.status
+    if (status !== 401 && status !== 400) throw err
+    // Another tab may have rotated it a moment ago: then the stored token has changed and is still good
+    if (localStorage.getItem('refreshToken') !== refreshToken) return doRefresh()
+    setAccessToken(null)
+    localStorage.removeItem('refreshToken')
+    return null
+  }
+}
+
+export function refreshSession(): Promise<string | null> {
+  if (!refreshPromise) {
+    const locks = (navigator as any).locks
+    refreshPromise = (locks ? locks.request('marichihr-refresh', doRefresh) : doRefresh()).finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise!
+}
+
 // Response interceptor — auto-refresh on 401
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
@@ -47,46 +80,19 @@ api.interceptors.response.use(
       !['/auth/login', '/auth/signup', '/auth/change-password', '/auth/mfa/verify', '/auth/google/exchange'].some((u) => originalRequest.url?.includes(u))
     ) {
       originalRequest._retry = true
-
+      let newToken: string | null
       try {
-        if (!refreshPromise) {
-          const refreshToken = localStorage.getItem('refreshToken')
-          if (!refreshToken) {
-            setAccessToken(null)
-            window.location.href = '/login'
-            return Promise.reject(error)
-          }
-
-          refreshPromise = api
-            .post('/auth/refresh', { refreshToken })
-            .then((res) => {
-              const newToken = res.data.data.accessToken
-              const newRefresh = res.data.data.refreshToken
-              setAccessToken(newToken)
-              localStorage.setItem('refreshToken', newRefresh)
-              return newToken
-            })
-            .catch(() => {
-              setAccessToken(null)
-              localStorage.removeItem('refreshToken')
-              window.location.href = '/login'
-              return null
-            })
-            .finally(() => {
-              refreshPromise = null
-            })
-        }
-
-        const newToken = await refreshPromise
-        if (newToken) {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-          return api(originalRequest)
-        }
+        newToken = await refreshSession()
       } catch {
-        setAccessToken(null)
-        localStorage.removeItem('refreshToken')
-        window.location.href = '/login'
+        // Network or server trouble: keep the session and let the caller show the error
+        return Promise.reject(error)
       }
+      if (!newToken) {
+        window.location.href = '/login'
+        return Promise.reject(error)
+      }
+      originalRequest.headers.Authorization = `Bearer ${newToken}`
+      return api(originalRequest)
     }
 
     return Promise.reject(error)
