@@ -138,7 +138,7 @@ export default function ExitDetailPage() {
             if (!rows.length) return null
             return (
               <div key={key} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '8px 0 4px' }}>{title}</div>
+                <div style={{ fontSize: 11, color: 'var(--faint)', margin: '8px 0 4px' }}>{title}</div>
                 {rows.map((l, i) => (
                   <div key={i} style={row}>
                     <span>{l.name}{l.formula && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{l.formula}</div>}</span>
@@ -180,5 +180,5 @@ export default function ExitDetailPage() {
 }
 
 const card: React.CSSProperties = { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '16px 18px' }
-const cardTitle: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }
+const cardTitle: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: 'var(--brand)', marginBottom: 10 }
 const row: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--well)', fontSize: 13 }

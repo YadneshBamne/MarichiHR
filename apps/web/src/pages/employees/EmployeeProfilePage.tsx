@@ -5,6 +5,12 @@ import { useAuth } from '../../contexts/AuthContext'
 import Badge from '../../components/ui/Badge'
 import ChatterPanel from '../../components/ChatterPanel'
 import BankDetailsCard from './BankDetailsCard'
+import Avatar from '../../components/ui/Avatar'
+import Icon from '../../components/ui/Icon'
+import { useReveal } from '../../lib/motion'
+
+// Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
+const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
 
 type Tab = 'work' | 'personal' | 'skills' | 'resume' | 'chatter'
 
@@ -17,6 +23,7 @@ export default function EmployeeProfilePage() {
   const [activeTab, setActiveTab] = useState<Tab>('work')
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [archiveReason, setArchiveReason] = useState('')
+  const ref = useReveal<HTMLDivElement>(employee?.id)
 
   if (isLoading) return <div style={{ padding: '40px', color: 'var(--faint)', fontSize: '13px' }}>Loading employee...</div>
   if (!employee) return <div style={{ padding: '40px', color: 'var(--danger)', fontSize: '13px' }}>Employee not found.</div>
@@ -40,19 +47,24 @@ export default function EmployeeProfilePage() {
   ]
 
   return (
-    <div style={s.page}>
-      {/* Back */}
-      <button style={s.back} onClick={() => navigate('/employees')}>← Employees</button>
+    <div ref={ref}>
+      <button data-rise className="btn btn-ghost btn-sm" style={{ marginBottom: 14 }} onClick={() => navigate(isHR ? '/employees' : '/dashboard')}><Icon name="chevronLeft" size={14} /> {isHR ? 'People' : 'Dashboard'}</button>
 
       {/* Profile header */}
-      <div style={s.profileHeader}>
-        <div style={s.headerAvatar}>{employee.firstName?.charAt(0)}</div>
+      <div data-card className="card" style={s.profileHeader}>
+        <Avatar name={fullName} src={employee.user?.avatarUrl} size={84} ring />
         <div style={s.headerInfo}>
-          <div style={s.headerName}>{fullName}</div>
-          <div style={s.headerSub}>
-            {employee.jobPosition?.title || 'No position'} · {employee.orgUnit?.name} · {employee.employeeCode}
+          <h1 style={{ fontSize: 'clamp(30px, 3.6vw, 42px)', lineHeight: 1.05 }}>{fullName}</h1>
+          <div className="dim" style={{ marginTop: 4, fontSize: 14 }}>
+            {employee.jobPosition?.title || 'No position'} · {employee.orgUnit?.name}
           </div>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+          <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap', fontSize: 12.5 }} className="dim">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="briefcase" size={14} /> {employee.employeeCode}</span>
+            {employee.workEmail && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="mail" size={14} /> {employee.workEmail}</span>}
+            {employee.workLocation && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="pin" size={14} /> {employee.workLocation.city || employee.workLocation.name}</span>}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="calendar" size={14} /> Since {dateOnly(employee.hireDate)}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
             <Badge label={employee.employmentStatus} />
             <Badge label={employee.employmentType} />
           </div>
@@ -101,10 +113,10 @@ export default function EmployeeProfilePage() {
             <InfoRow label="Job Position" value={employee.jobPosition?.title} />
             <InfoRow label="Work Location" value={employee.workLocation ? `${employee.workLocation.name}, ${employee.workLocation.city}` : undefined} />
             <InfoRow label="Manager" value={employee.manager?.user?.fullName} />
-            <InfoRow label="Hire Date" value={employee.hireDate ? new Date(employee.hireDate).toLocaleDateString() : undefined} />
+            <InfoRow label="Hire Date" value={employee.hireDate ? dateOnly(employee.hireDate)! : undefined} />
             <InfoRow label="Employment Type" value={employee.employmentType?.replace(/_/g, ' ')} />
             <InfoRow label="Tax Jurisdiction" value={employee.taxJurisdiction} />
-            <InfoRow label="Probation End" value={employee.probationEndDate ? new Date(employee.probationEndDate).toLocaleDateString() : undefined} />
+            <InfoRow label="Probation End" value={employee.probationEndDate ? dateOnly(employee.probationEndDate)! : undefined} />
             <InfoRow label="Resource Calendar" value={employee.resourceCalendar?.name} />
 
             {hasRole('hr_admin') && <BankDetailsCard employee={employee} />}
@@ -126,8 +138,8 @@ export default function EmployeeProfilePage() {
                     <Badge label={employee.contracts[0].status} />
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--faint)', marginTop: '6px' }}>
-                    Effective from {new Date(employee.contracts[0].effectiveFrom).toLocaleDateString()}
-                    {employee.contracts[0].effectiveUntil && ` · Until ${new Date(employee.contracts[0].effectiveUntil).toLocaleDateString()}`}
+                    Effective from {dateOnly(employee.contracts[0].effectiveFrom)}
+                    {employee.contracts[0].effectiveUntil && ` · Until ${dateOnly(employee.contracts[0].effectiveUntil)}`}
                   </div>
                 </div>
               </div>
@@ -139,7 +151,7 @@ export default function EmployeeProfilePage() {
           <div style={s.infoGrid}>
             <InfoRow label="Personal Email" value={employee.personalEmail} />
             <InfoRow label="Personal Mobile" value={employee.mobilePersonal} />
-            <InfoRow label="Date of Birth" value={employee.dateOfBirth ? new Date(employee.dateOfBirth).toLocaleDateString() : undefined} />
+            <InfoRow label="Date of Birth" value={employee.dateOfBirth ? dateOnly(employee.dateOfBirth)! : undefined} />
             <InfoRow label="Gender" value={employee.gender} />
             <InfoRow label="Nationality" value={employee.nationality} />
             <InfoRow label="Emergency Contact" value={employee.emergencyContactName} />
@@ -235,7 +247,7 @@ export default function EmployeeProfilePage() {
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-      <span style={{ fontSize: '11px', color: 'var(--faint)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</span>
+      <span style={{ fontSize: '11px', color: 'var(--faint)', fontWeight: '500' }}>{label}</span>
       <span style={{ fontSize: '13px', color: value ? 'var(--ink)' : 'var(--line-2)' }}>{value || '—'}</span>
     </div>
   )
@@ -244,33 +256,33 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 const s: Record<string, React.CSSProperties> = {
   page: {},
   back: { background: 'none', border: 'none', color: 'var(--dim)', fontSize: '13px', cursor: 'pointer', padding: '0 0 16px', display: 'block' },
-  profileHeader: { display: 'flex', alignItems: 'flex-start', gap: '16px', backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '24px', marginBottom: '16px' },
+  profileHeader: { display: 'flex', alignItems: 'center', gap: 22, padding: 26, marginBottom: 16, flexWrap: 'wrap' },
   headerAvatar: { width: '52px', height: '52px', borderRadius: '50%', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '600', flexShrink: 0 },
   headerInfo: { flex: 1 },
   headerName: { fontSize: '20px', fontWeight: '500', color: 'var(--ink)' },
   headerSub: { fontSize: '13px', color: 'var(--dim)', marginTop: '2px' },
-  statButtons: { display: 'flex', gap: '1px', borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--line)', flexShrink: 0 },
-  statBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 20px', backgroundColor: 'var(--solid)', gap: '2px', cursor: 'default' },
-  statNum: { fontSize: '20px', fontWeight: '500', color: 'var(--ink)', lineHeight: 1 },
+  statButtons: { display: 'flex', gap: 28, flexShrink: 0 },
+  statBtn: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
+  statNum: { fontFamily: 'var(--font-display)', fontSize: 40, lineHeight: 1, color: 'var(--ink)' },
   statLabel: { fontSize: '10px', color: 'var(--faint)', whiteSpace: 'nowrap' },
   tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
   tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
   tabContent: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '24px' },
   infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
-  sectionLabel: { fontSize: '11px', color: 'var(--faint)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '8px' },
+  sectionLabel: { fontSize: '11px', color: 'var(--faint)', fontWeight: '500', marginBottom: '8px' },
   contractCard: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '14px' },
   empty: { color: 'var(--faint)', fontSize: '13px', padding: '20px 0' },
   skillGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' },
   skillCard: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '12px' },
-  skillType: { fontSize: '10px', color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '4px' },
+  skillType: { fontSize: '10px', color: 'var(--faint)', marginBottom: '4px' },
   skillName: { fontSize: '13px', fontWeight: '500', color: 'var(--ink)', marginBottom: '8px' },
   skillLevel: { display: 'flex', alignItems: 'center', gap: '8px' },
   progressBar: { flex: 1, height: '4px', backgroundColor: 'var(--line)', borderRadius: '2px', overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: 'var(--brand)', borderRadius: '2px' },
   skillLevelLabel: { fontSize: '11px', color: 'var(--dim)', whiteSpace: 'nowrap' },
   resumeLine: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '14px' },
-  resumeType: { fontSize: '10px', color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '4px' },
+  resumeType: { fontSize: '10px', color: 'var(--faint)', marginBottom: '4px' },
   resumeName: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)' },
   resumeOrg: { fontSize: '13px', color: 'var(--dim)', marginTop: '2px' },
   resumeDates: { fontSize: '12px', color: 'var(--faint)', marginTop: '4px' },

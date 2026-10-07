@@ -71,9 +71,15 @@ PASS  disable needs a fresh code and clears the secret
 PASS  login returns tokens directly again
 PASS  MFA enable/disable audit-logged
 PASS  5 wrong codes lock MFA attempts (6th, even correct, is 429)
-PASS  providers endpoint reports Google as not configured (no client id/secret)
-PASS  Google start is 501 until GOOGLE_CLIENT_ID/SECRET are set
+PASS  providers endpoint reports Google as configured, matching the env
+PASS  Google start redirects to Google with our client id, callback and a signed state, and sets the nonce cookie
+PASS  Google start for an unknown organisation is 404
 PASS  Google callback redirects to the login page with an error, never 500
 PASS  SSO exchange with an unknown one-time code is 401
+PASS  new user has not seen the tour (tourDoneAt null)
+PASS  finishing the tour stamps tourDoneAt
+PASS  reset clears it so the tour shows again
+PASS  tour body is strict (no other user ids)
+PASS  login payload carries tourDoneAt and mfaEnabled for the client
 PASS  throwaway employees archived
-78/78 passed
+84/84 passed

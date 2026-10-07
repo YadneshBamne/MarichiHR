@@ -48,7 +48,7 @@ export default function BankDetailsCard({ employee }: { employee: any }) {
 
   return (
     <div style={{ gridColumn: '1 / -1', marginTop: '16px' }}>
-      <div style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Bank details</div>
+      <div style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 500, marginBottom: 8 }}>Bank details</div>
       <div style={{ backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: 14, padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           {hasDetails ? (

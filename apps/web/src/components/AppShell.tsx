@@ -192,7 +192,7 @@ function MobileNav({ sections, onClose }: { sections: ReturnType<typeof visibleS
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}><Logo size={20} /><button className="btn btn-ghost btn-icon" aria-label="Close navigation" onClick={onClose}><Icon name="x" size={16} /></button></div>
         {sections.map((sec) => (
           <div key={sec.key} style={{ marginBottom: 14 }}>
-            <div className="muted" style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.06em', margin: '8px 6px' }}>{sec.label}</div>
+            <div className="muted" style={{ fontSize: 11, fontWeight: 500, margin: '8px 6px' }}>{sec.label}</div>
             {sec.items.map((it) => <MenuLink key={it.path} to={it.path} icon={it.icon} label={it.label} soon={!!it.soon} />)}
           </div>
         ))}

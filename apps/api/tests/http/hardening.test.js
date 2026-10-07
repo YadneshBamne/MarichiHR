@@ -283,13 +283,37 @@ const stepNow = () => Math.floor(Date.now() / 30000)
   check('5 wrong codes lock MFA attempts (6th, even correct, is 429)', codes.every((c) => c === 401) && r.status === 429, { codes, last: r.status })
 
   r = await api(null, 'GET', '/auth/providers')
-  check('providers endpoint reports Google as not configured (no client id/secret)', r.status === 200 && r.body.google === false, r.data)
-  r = await api(null, 'GET', '/auth/google?tenant=marichi-labs')
-  check('Google start is 501 until GOOGLE_CLIENT_ID/SECRET are set', r.status === 501, r.data)
+  const googleOn = !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET
+  check(`providers endpoint reports Google as ${googleOn ? '' : 'not '}configured, matching the env`, r.status === 200 && r.body.google === googleOn, r.data)
+  if (googleOn) {
+    const st = await fetch((process.env.API_URL || 'http://localhost:4000') + '/api/v1/auth/google?tenant=marichi-labs', { redirect: 'manual' })
+    const loc = new URL(st.headers.get('location') || 'http://x')
+    check('Google start redirects to Google with our client id, callback and a signed state, and sets the nonce cookie',
+      st.status === 302 && loc.host === 'accounts.google.com' && loc.searchParams.get('client_id') === process.env.GOOGLE_CLIENT_ID &&
+      loc.searchParams.get('redirect_uri') === process.env.GOOGLE_CALLBACK_URL && (loc.searchParams.get('state') || '').split('.').length === 3 &&
+      /g_oauth_nonce=[0-9a-f]{32}/.test(st.headers.get('set-cookie') || ''), { status: st.status, location: loc.href.slice(0, 120) })
+    r = await api(null, 'GET', '/auth/google?tenant=no-such-org')
+    check('Google start for an unknown organisation is 404', r.status === 404, r.data)
+  } else {
+    r = await api(null, 'GET', '/auth/google?tenant=marichi-labs')
+    check('Google start is 501 until GOOGLE_CLIENT_ID/SECRET are set', r.status === 501, r.data)
+  }
   const cb = await fetch((process.env.API_URL || 'http://localhost:4000') + '/api/v1/auth/google/callback?code=x&state=y', { redirect: 'manual' })
   check('Google callback redirects to the login page with an error, never 500', cb.status === 302 && /\/login\?sso_error=/.test(cb.headers.get('location')), cb.status)
   r = await api(null, 'POST', '/auth/google/exchange', { code: 'a'.repeat(48) })
   check('SSO exchange with an unknown one-time code is 401', r.status === 401, r.data)
+
+  // ─── PRODUCT TOUR ─────────────────────────────────────────
+  r = await api(mfa.who, 'GET', '/auth/me')
+  check('new user has not seen the tour (tourDoneAt null)', r.status === 200 && r.body.tourDoneAt === null, r.data)
+  r = await api(mfa.who, 'POST', '/auth/me/tour', { status: 'done' })
+  check('finishing the tour stamps tourDoneAt', r.status === 200 && !!r.body.tourDoneAt && !!(await prisma.user.findUnique({ where: { id: mfa.who.userId } })).tourDoneAt, r.data)
+  r = await api(mfa.who, 'POST', '/auth/me/tour', { status: 'reset' })
+  check('reset clears it so the tour shows again', r.status === 200 && r.body.tourDoneAt === null, r.data)
+  r = await api(mfa.who, 'POST', '/auth/me/tour', { status: 'done', userId: admin.userId })
+  check('tour body is strict (no other user ids)', r.status === 400, r.data)
+  r = await api(null, 'POST', '/auth/login', { email, password, tenantSlug: 'marichi-labs' })
+  check('login payload carries tourDoneAt and mfaEnabled for the client', r.status === 200 && 'tourDoneAt' in r.body.user && r.body.user.mfaEnabled === false, r.data)
 
   // ─── CLEANUP: archive throwaway employees (no more nightly marks for them) ──
   for (const id of temps) await api(admin, 'POST', `/employees/${id}/archive`, { reason: `Test cleanup ${TAG}` })

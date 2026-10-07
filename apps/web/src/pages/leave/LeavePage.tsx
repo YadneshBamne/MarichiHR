@@ -174,7 +174,7 @@ const s: Record<string, React.CSSProperties> = {
   tableWrap: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' },
   empty: { padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '13px' },
   table: { width: '100%', borderCollapse: 'collapse' },
-  th: { padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' },
+  th: { padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: 'var(--faint)', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' },
   tr: { borderBottom: '1px solid var(--well)' },
   td: { padding: '12px 16px', fontSize: '13px', color: 'var(--ink)' },
   cancelBtn: { padding: '5px 12px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' },

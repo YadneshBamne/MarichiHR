@@ -148,7 +148,7 @@ export default function CycleDetailPage() {
           { label: 'Net pay', value: money(cycle.totals?.net, currency) },
         ].map((c) => (
           <div key={c.label} style={{ backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: 16 }}>
-            <div style={{ fontSize: 11, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{c.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 6 }}>{c.label}</div>
             <div style={{ fontSize: 20, fontWeight: 500 }}>{c.value}</div>
           </div>
         ))}
@@ -217,5 +217,5 @@ export default function CycleDetailPage() {
     </div>
   )
 }
-const th: React.CSSProperties = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
+const th: React.CSSProperties = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
 const td: React.CSSProperties = { padding: '12px 16px', fontSize: 13, color: 'var(--ink)' }

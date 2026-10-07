@@ -52,7 +52,7 @@ export default function PayslipPage() {
       <div style={{ backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Payslip</div>
+            <div style={{ fontSize: 11, color: 'var(--faint)' }}>Payslip</div>
             <div style={{ fontSize: 20, fontWeight: 500, marginTop: 2 }}>{p.employee.firstName} {p.employee.lastName}</div>
             <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 2 }}>{p.employee.employeeCode}{p.employee.bankName ? ` · ${p.employee.bankName}` : ''}</div>
           </div>
@@ -74,7 +74,7 @@ export default function PayslipPage() {
           const total = rows.reduce((s: number, l: any) => s + l.amount, 0)
           return (
             <div key={g.title} style={{ marginBottom: 18, opacity: g.muted ? 0.65 : 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{g.title}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--brand)', marginBottom: 6 }}>{g.title}</div>
               {rows.map((l: any) => (
                 <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '1px solid var(--well)' }}>
                   <span>{l.name} {l.sourceRefType === 'payroll_input' && <span style={{ fontSize: 10, color: 'var(--warn)' }}>(manual)</span>}{l.sourceRefType === 'overtime_request' && <span style={{ fontSize: 10, color: 'var(--info)' }}>(overtime)</span>}</span>
@@ -106,7 +106,7 @@ export default function PayslipPage() {
 
         {p.workedDays?.length > 0 && (
           <div style={{ marginTop: 22 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>Worked days breakdown</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--faint)', marginBottom: 6 }}>Worked days breakdown</div>
             {p.workedDays.map((w: any) => (
               <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--dim)', padding: '3px 0' }}>
                 <span style={{ textTransform: 'capitalize' }}>{w.dayType.replace(/_/g, ' ')}</span>

@@ -67,6 +67,7 @@ export function ComingSoonPage() {
     return () => ctx.revert()
   }, [slug])
   if (!item?.soon) return <NotFoundPage />
+  const live = item.section.items.find((i) => !i.soon)
   return (
     <div ref={ref} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--gap)' }}>
       <section className="card" style={{ padding: 'clamp(24px, 3vw, 40px)' }}>
@@ -79,7 +80,7 @@ export function ComingSoonPage() {
         </div>
         <div data-rise style={{ display: 'flex', gap: 10, marginTop: 30, flexWrap: 'wrap' }}>
           <Link to="/dashboard" className="btn btn-primary"><Icon name="home" size={16} /> Back to dashboard</Link>
-          <Link to={`/${item.section.items.find((i) => !i.soon)?.path.slice(1) ?? 'dashboard'}`} className="btn btn-ghost">Open {item.section.label}</Link>
+          {live && <Link to={live.path} className="btn btn-ghost">Open {live.label}</Link>}
         </div>
       </section>
       <section className="card card-night" style={{ padding: 'clamp(24px, 3vw, 40px)' }}>

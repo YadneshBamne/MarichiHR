@@ -79,7 +79,7 @@ export default function InitiateExitModal({ open, onClose, onCreated }: Props) {
         </FormField>
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '20px 0 10px' }}>Clearance sign-offs</div>
+      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--brand)', margin: '20px 0 10px' }}>Clearance sign-offs</div>
       <p style={{ fontSize: 12, color: 'var(--faint)', margin: '0 0 10px' }}>Each item is signed off by a different user. The settlement cannot be computed until all four are cleared.</p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {DEPTS.map((d) => (

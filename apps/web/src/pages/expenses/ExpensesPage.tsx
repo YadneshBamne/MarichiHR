@@ -159,5 +159,5 @@ const card: React.CSSProperties = { backgroundColor: 'var(--card)', backdropFilt
 const empty: React.CSSProperties = { padding: 40, textAlign: 'center', color: 'var(--faint)', fontSize: 13 }
 const errBox: React.CSSProperties = { backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13, marginBottom: 12 }
 const ghostBtn: React.CSSProperties = { padding: '5px 12px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 12, cursor: 'pointer' }
-const th: React.CSSProperties = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
+const th: React.CSSProperties = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
 const td: React.CSSProperties = { padding: '12px 16px', fontSize: 13, color: 'var(--ink)' }

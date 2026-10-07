@@ -37,7 +37,7 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }}>
-          <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Structures</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--faint)' }}>Structures</span>
           {canEdit && <button style={linkBtn} onClick={() => setStructureForm({ structureTypeId: '', name: '', code: '', countryCode: '', description: '' })}>+ New</button>}
         </div>
         {structures.length === 0 ? <div style={empty}>None yet.</div> : structures.map((s: any) => (

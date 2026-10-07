@@ -83,5 +83,5 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
     </Modal>
   )
 }
-const th: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
+const th: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
 const td: React.CSSProperties = { padding: '10px 12px', fontSize: 13, color: 'var(--ink)' }
