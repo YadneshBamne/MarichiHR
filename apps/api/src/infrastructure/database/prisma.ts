@@ -15,7 +15,7 @@ const optNum = <K extends string>(key: K) => ({
 
 function createClient() {
   return new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: process.env.PRISMA_LOG_QUERIES === 'true' ? ['query', 'error', 'warn'] : ['error', 'warn'],
   }).$extends({
     result: {
       employeeContract: { ctcAnnual: num('ctcAnnual'), wageMonthly: num('wageMonthly') },

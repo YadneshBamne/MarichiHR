@@ -97,9 +97,10 @@ export function useMyRegularisations() {
   })
 }
 
-export function usePendingRegularisations() {
+export function usePendingRegularisations(enabled = true) {
   return useQuery({
     queryKey: ['pending-regularisations'],
+    enabled,
     queryFn: async () => {
       const res = await api.get('/attendance/regularisations/pending')
       return res.data.data
@@ -151,9 +152,10 @@ export function useMyOvertime() {
   })
 }
 
-export function usePendingOvertime() {
+export function usePendingOvertime(enabled = true) {
   return useQuery({
     queryKey: ['pending-overtime'],
+    enabled,
     queryFn: async () => {
       const res = await api.get('/attendance/overtime/pending')
       return res.data.data

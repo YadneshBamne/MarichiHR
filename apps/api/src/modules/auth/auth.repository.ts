@@ -113,6 +113,9 @@ export const authRepository = {
             baseCurrency: true,
             timezone: true,
             logoUrl: true,
+            modules: true,
+            onboardedAt: true,
+            ownerUserId: true,
           },
         },
         employee: {

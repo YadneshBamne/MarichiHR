@@ -58,6 +58,15 @@ export const CreateEmployeeSchema = z.object({
   }),
 })
 
+export const AccessSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    roles: z.array(z.enum(['employee', 'manager', 'hr_admin', 'payroll_admin', 'compliance_officer', 'system_admin'])).max(6).optional(),
+    loginEnabled: z.boolean().optional(),
+    password: z.union([z.literal('generate'), z.string().min(10).max(200)]).optional(),
+  }).strict(),
+})
+
 export const UpdateEmployeeSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({

@@ -71,3 +71,6 @@ export function monthRange(year: number, month: number): { start: Date; end: Dat
     daysInMonth,
   }
 }
+
+// Call after a tenant's timezone changes
+export const forgetTenantTimezone = (tenantId: string) => tzCache.delete(tenantId)

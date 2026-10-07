@@ -34,11 +34,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
+    // A temporary password must be replaced before anything else works
+    if (error.response?.status === 403 && error.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED' && window.location.pathname !== '/change-password') {
+      window.location.href = '/change-password'
+      return Promise.reject(error)
+    }
+
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
       !originalRequest.url?.includes('/auth/refresh') &&
-      !['/auth/login', '/auth/mfa/verify', '/auth/google/exchange'].some((u) => originalRequest.url?.includes(u))
+      !['/auth/login', '/auth/signup', '/auth/change-password', '/auth/mfa/verify', '/auth/google/exchange'].some((u) => originalRequest.url?.includes(u))
     ) {
       originalRequest._retry = true
 

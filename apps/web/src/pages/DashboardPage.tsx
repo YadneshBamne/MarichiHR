@@ -25,7 +25,8 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const { user, hasRole } = useAuth()
+  const { user, hasRole, hasApp } = useAuth()
+  const att = hasApp('attendance'), lv = hasApp('leave'), pay = hasApp('payroll')
   const isManager = hasRole('manager') || hasRole('hr_admin') || hasRole('system_admin')
   const hasEmployee = !!user?.employee
   const today = localToday()
@@ -33,9 +34,9 @@ export default function DashboardPage() {
   const prevMonth = thisMonth.m === 1 ? { y: thisMonth.y - 1, m: 12 } : { y: thisMonth.y, m: thisMonth.m - 1 }
 
   const dash = useQuery({ queryKey: ['dashboard'], enabled: hasEmployee, queryFn: async () => (await api.get('/activities/dashboard')).data.data })
-  const calNow = useQuery({ queryKey: ['attendance-calendar-me', thisMonth.y, thisMonth.m], enabled: hasEmployee, queryFn: async () => (await api.get('/attendance/calendar/me', { params: { year: thisMonth.y, month: thisMonth.m } })).data.data })
-  const calPrev = useQuery({ queryKey: ['attendance-calendar-me', prevMonth.y, prevMonth.m], enabled: hasEmployee && utc(today).getUTCDate() < 8, queryFn: async () => (await api.get('/attendance/calendar/me', { params: { year: prevMonth.y, month: prevMonth.m } })).data.data })
-  const payslips = useQuery({ queryKey: ['my-payslips'], enabled: hasEmployee, queryFn: async () => (await api.get('/payroll/payslips/me')).data.data as any[] })
+  const calNow = useQuery({ queryKey: ['attendance-calendar-me', thisMonth.y, thisMonth.m], enabled: hasEmployee && att, queryFn: async () => (await api.get('/attendance/calendar/me', { params: { year: thisMonth.y, month: thisMonth.m } })).data.data })
+  const calPrev = useQuery({ queryKey: ['attendance-calendar-me', prevMonth.y, prevMonth.m], enabled: hasEmployee && att && utc(today).getUTCDate() < 8, queryFn: async () => (await api.get('/attendance/calendar/me', { params: { year: prevMonth.y, month: prevMonth.m } })).data.data })
+  const payslips = useQuery({ queryKey: ['my-payslips'], enabled: hasEmployee && pay, queryFn: async () => (await api.get('/payroll/payslips/me')).data.data as any[] })
   const unread = useQuery({ queryKey: ['notifications'], queryFn: async () => (await api.get('/notifications')).data.data })
 
   const days = useMemo(() => [...(calPrev.data?.calendar ?? []), ...(calNow.data?.calendar ?? [])] as any[], [calNow.data, calPrev.data])
@@ -66,9 +67,9 @@ export default function DashboardPage() {
         <div className="kpi-rail" data-rise>
           {hasEmployee ? (
             <>
-              <Seg label="Leave used" pct={leaveTotal ? Math.round((leaveUsed / leaveTotal) * 100) : 0} kind="night" grow={1.1} />
-              <Seg label="Attendance" pct={attendancePct} kind="honey" grow={1} />
-              <Seg label="Hours vs plan" pct={hoursPct} kind="stripes" grow={2.2} />
+              {lv && <Seg label="Leave used" pct={leaveTotal ? Math.round((leaveUsed / leaveTotal) * 100) : 0} kind="night" grow={1.1} />}
+              {att && <Seg label="Attendance" pct={attendancePct} kind="honey" grow={1} />}
+              {att && <Seg label="Hours vs plan" pct={hoursPct} kind="stripes" grow={2.2} />}
               <Seg label="Open tasks" pct={emp?.pendingActivities ?? 0} raw kind="outline" grow={0.9} />
             </>
           ) : (
@@ -79,12 +80,12 @@ export default function DashboardPage() {
           {isManager && dash.data?.manager ? (
             <>
               <BigNum value={dash.data.manager.teamSize} label="Team" icon="users" />
-              <BigNum value={dash.data.manager.pendingLeaveApprovals + dash.data.manager.pendingRegularisations} label="To approve" icon="checkCircle" to="/approvals" />
-              <BigNum value={Math.round(leaveLeft * 10) / 10} label="Leave days" icon="leaf" />
+              <BigNum value={(lv ? dash.data.manager.pendingLeaveApprovals : 0) + (att ? dash.data.manager.pendingRegularisations : 0)} label="To approve" icon="checkCircle" to="/approvals" />
+              {lv ? <BigNum value={Math.round(leaveLeft * 10) / 10} label="Leave days" icon="leaf" /> : <BigNum value={unread.data?.unread ?? 0} label="Unread" icon="bell" />}
             </>
           ) : (
             <>
-              <BigNum value={Math.round(leaveLeft * 10) / 10} label="Leave days" icon="leaf" to="/leave" />
+              {lv && <BigNum value={Math.round(leaveLeft * 10) / 10} label="Leave days" icon="leaf" to="/leave" />}
               <BigNum value={emp?.pendingActivities ?? 0} label="Tasks" icon="list" to="/activities" />
               <BigNum value={unread.data?.unread ?? 0} label="Unread" icon="bell" />
             </>
@@ -94,13 +95,13 @@ export default function DashboardPage() {
 
       {/* ─── Card grid ─── */}
       {hasEmployee ? (
-        <div className="dash-grid">
-          <ProfileCard lastPay={lastPay} />
-          <ProgressCard days={days} today={today} />
-          <TimeTracker />
+        <div className={att && lv ? 'dash-grid' : 'dash-grid-auto'}>
+          <ProfileCard lastPay={pay ? lastPay : null} />
+          {att && <ProgressCard days={days} today={today} />}
+          {att && <TimeTracker />}
           <TasksCard />
-          <AccordionCard balances={balances} payslips={payslips.data ?? []} />
-          <WeekCard isManager={isManager} />
+          <AccordionCard balances={lv ? balances : []} payslips={pay ? payslips.data ?? [] : []} apps={{ lv, pay, att }} />
+          {lv && <WeekCard isManager={isManager} />}
         </div>
       ) : (
         <StaffHome />
@@ -340,8 +341,9 @@ function TasksCard() {
 }
 
 // ─── Accordion: balances, payslips, quick actions ────────────────────────────
-function AccordionCard({ balances, payslips }: { balances: any[]; payslips: any[] }) {
-  const [open, setOpen] = useState<string | null>('balances')
+function AccordionCard({ balances, payslips, apps }: { balances: any[]; payslips: any[]; apps: { lv: boolean; pay: boolean; att: boolean } }) {
+  const { user } = useAuth()
+  const [open, setOpen] = useState<string | null>(apps.lv ? 'balances' : apps.pay ? 'payslips' : 'actions')
   const sections: { key: string; title: string; body: React.ReactNode }[] = [
     {
       key: 'balances', title: 'Leave balances', body: balances.length ? (
@@ -373,16 +375,17 @@ function AccordionCard({ balances, payslips }: { balances: any[]; payslips: any[
     {
       key: 'actions', title: 'Quick actions', body: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {([['/leave', 'leaf', 'Apply for leave'], ['/expenses', 'receipt', 'New expense claim'], ['/attendance', 'clock', 'Fix a missed punch'], ['/security', 'lock', 'Turn on two-factor']] as [string, IconName, string][]).map(([to, ic, label]) => (
+          {([...(apps.lv ? [['/leave', 'leaf', 'Apply for leave']] : []), ['/expenses', 'receipt', 'New expense claim'], ...(apps.att ? [['/attendance', 'clock', 'Fix a missed punch']] : []), ['/security', 'lock', 'Turn on two-factor']] as [string, IconName, string][]).filter(([to]) => to !== '/expenses' || user?.tenant?.modules?.includes('expenses')).map(([to, ic, label]) => (
             <Link key={to} to={to} className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }}><Icon name={ic} size={14} /> {label}</Link>
           ))}
         </div>
       ),
     },
   ]
+  const shown = sections.filter((x) => (x.key !== 'balances' || apps.lv) && (x.key !== 'payslips' || apps.pay))
   return (
     <section data-card data-tour="balances" className="card area-acc" style={{ padding: '8px 20px' }}>
-      {sections.map((s, i) => <AccItem key={s.key} title={s.title} open={open === s.key} last={i === sections.length - 1} onToggle={() => setOpen(open === s.key ? null : s.key)}>{s.body}</AccItem>)}
+      {shown.map((s, i) => <AccItem key={s.key} title={s.title} open={open === s.key} last={i === shown.length - 1} onToggle={() => setOpen(open === s.key ? null : s.key)}>{s.body}</AccItem>)}
     </section>
   )
 }

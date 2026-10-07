@@ -1,7 +1,7 @@
 export interface LoginDto {
   email: string
   password: string
-  tenantSlug: string
+  tenantSlug?: string
 }
 
 export interface RefreshDto {
@@ -20,4 +20,5 @@ export interface JwtPayload {
   employeeId: string
   roleIds: string[]
   email: string
+  pwc?: boolean
 }

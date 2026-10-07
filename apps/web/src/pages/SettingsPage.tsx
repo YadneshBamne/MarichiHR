@@ -23,13 +23,14 @@ export default function SettingsPage() {
   })
 
   const tiles: Tile[] = [
+    { icon: 'briefcase', title: 'Company profile', body: 'Name, logo, country, currency, time zone and financial year.', to: '/settings/company', roles: ['system_admin', 'hr_admin'] },
+    { icon: 'grid', title: 'Apps', body: 'Choose which apps your company uses.', to: '/settings/apps', status: { text: `${user?.tenant?.modules?.length ?? 0} installed`, kind: 'honey' }, roles: ['system_admin', 'hr_admin'] },
     { icon: 'lock', title: 'Security', body: 'Two-factor sign-in with an authenticator app.', to: '/security', status: user?.mfaEnabled ? { text: '2FA on', kind: 'ok' } : { text: '2FA off', kind: 'warn' } },
-    { icon: 'sliders', title: 'Leave types', body: 'Accrual, carry-forward and approval rules.', to: '/leave-types', roles: ['hr_admin'] },
-    { icon: 'wallet', title: 'Compensation', body: 'Salary structures, formula rules and grade bands.', to: '/compensation', roles: ['hr_admin', 'payroll_admin', 'compliance_officer'] },
+    ...(user?.tenant?.modules?.includes('leave') ? [{ icon: 'sliders' as IconName, title: 'Leave types', body: 'Accrual, carry-forward and approval rules.', to: '/leave-types', roles: ['hr_admin'] }] : []),
+    ...(user?.tenant?.modules?.includes('payroll') ? [{ icon: 'wallet' as IconName, title: 'Compensation', body: 'Salary structures, formula rules and grade bands.', to: '/compensation', roles: ['hr_admin', 'payroll_admin', 'compliance_officer'] }] : []),
     { icon: 'globe', title: 'Google sign-in', body: 'Let people sign in with their Google Workspace account.', status: providers?.google ? { text: 'Connected', kind: 'ok' } : { text: 'Not configured', kind: 'mute' }, roles: ['system_admin', 'hr_admin'] },
     { icon: 'mail', title: 'Email delivery', body: 'Send notifications by email through Resend.', status: { text: 'Log only', kind: 'mute' }, roles: ['system_admin', 'hr_admin'] },
     { icon: 'bell', title: 'Notification preferences', body: 'Choose which updates reach you and how.', status: { text: 'Soon', kind: 'honey' } },
-    { icon: 'briefcase', title: 'Company profile', body: 'Legal entities, logo, fiscal year and locations.', status: { text: 'Soon', kind: 'honey' }, roles: ['system_admin', 'hr_admin'] },
     { icon: 'shield', title: 'Roles & permissions', body: 'Who can see and approve what.', status: { text: 'Soon', kind: 'honey' }, roles: ['system_admin'] },
   ].filter((t) => !t.roles || t.roles.some((r) => roles.includes(r)))
 

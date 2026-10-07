@@ -7,12 +7,13 @@ import { leaveService } from '../../modules/leave/leave.service'
 import { contractService } from '../../modules/employees/contracts.service'
 import { attendanceService } from '../../modules/attendance/attendance.service'
 
-const activeTenants = () => prisma.tenant.findMany({ where: { active: true }, select: { id: true } })
+// Optionally only companies that installed a given app
+const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
 
 // Scheduled runs cover every active tenant; a manual run (POST /system/jobs/:name/run) only the caller's tenant
-async function perTenant(only: string | undefined, fn: (tenantId: string) => Promise<unknown>) {
+async function perTenant(only: string | undefined, fn: (tenantId: string) => Promise<unknown>, app?: string) {
   const out: Record<string, unknown> = {}
-  for (const t of only ? [{ id: only }] : await activeTenants()) out[t.id] = await fn(t.id)
+  for (const t of only ? [{ id: only }] : await activeTenants(app)) out[t.id] = await fn(t.id)
   return out
 }
 
@@ -40,12 +41,12 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
   'leave-sla-escalation': {
     pattern: '15 * * * *',
     description: 'Escalate leave approvals that are past their SLA deadline',
-    run: (t) => perTenant(t, (id) => leaveService.runSlaEscalation(id)),
+    run: (t) => perTenant(t, (id) => leaveService.runSlaEscalation(id), 'leave'),
   },
   'absent-marking': {
     pattern: '30 0 * * *',
     description: 'Mark working days with no attendance or approved leave as absent (last 3 business days)',
-    run: (t) => perTenant(t, async (id) => (await attendanceService.markAbsences(id)).marked),
+    run: (t) => perTenant(t, async (id) => (await attendanceService.markAbsences(id)).marked, 'attendance'),
   },
   'contracts': {
     pattern: '0 1 * * *',
@@ -59,7 +60,7 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
   'leave-accrual': {
     pattern: '0 2 1 * *',
     description: 'Monthly leave accrual (once per employee, leave type and month)',
-    run: (t) => perTenant(t, (id) => leaveService.runMonthlyAccrual(id)),
+    run: (t) => perTenant(t, (id) => leaveService.runMonthlyAccrual(id), 'leave'),
   },
 }
 

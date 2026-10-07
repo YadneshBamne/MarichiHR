@@ -5,6 +5,7 @@ export interface User {
   avatarUrl?: string
   mfaEnabled?: boolean
   tourDoneAt?: string | null
+  mustChangePassword?: boolean
   roles: { id: string; name: string }[]
   employee: {
     id: string
@@ -21,7 +22,10 @@ export interface User {
     slug: string
     baseCurrency?: string
     timezone?: string
-    logoUrl?: string
+    logoUrl?: string | null
+    modules?: string[]
+    onboardedAt?: string | null
+    ownerUserId?: string | null
   }
 }
 

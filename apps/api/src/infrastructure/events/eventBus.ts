@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { prisma } from '../database/prisma'
 import { Queue } from 'bullmq'
 import { redis } from '../cache/redis'
@@ -71,30 +72,48 @@ const CHATTER_EVENTS: Record<string, (payload: any) => { entityType: string; ent
   'attendance.locked': (_p) => null,
 }
 
+// Rows for a domain event (and its chatter line) to insert together with other rows via insertRows(), plus the
+// queue push to call after the write commits. Same effect as publish(), minus two round trips.
+export function prepareEvent(tenantId: string, eventType: string, payload: Record<string, any>) {
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  const rows: Record<string, Record<string, unknown>[]> = {
+    domain_events: [{ id, tenantId, eventType, payload, status: 'pending', retryCount: 0, createdAt: now }],
+  }
+  try {
+    const c = CHATTER_EVENTS[eventType]?.(payload)
+    if (c) rows.chatter_messages = [{ id: crypto.randomUUID(), tenantId, entityType: c.entityType, entityId: c.entityId, messageType: 'system_log', authorName: 'System', body: c.message, isInternal: false, createdAt: now }]
+  } catch (err) {
+    console.error(`Failed to build chatter for event ${eventType}:`, err)
+  }
+  return { rows, after: () => enqueueEvent(id).catch((err) => console.error('Failed to enqueue event:', err)) }
+}
+
 export const eventBus = {
   async publish(tenantId: string, eventType: string, payload: Record<string, any>) {
     const event = await prisma.domainEvent.create({
       data: { tenantId, eventType, payload, status: 'pending' },
     })
 
-    const chatterFn = CHATTER_EVENTS[eventType]
-    if (chatterFn) {
+    const chatter = async () => {
+      const chatterFn = CHATTER_EVENTS[eventType]
+      if (!chatterFn) return
       try {
         const chatterData = chatterFn(payload)
-        if (chatterData) {
-          await logSystemChatter(tenantId, chatterData.entityType, chatterData.entityId, chatterData.message)
-        }
+        if (chatterData) await logSystemChatter(tenantId, chatterData.entityType, chatterData.entityId, chatterData.message)
       } catch (err) {
         console.error(`Failed to log chatter for event ${eventType}:`, err)
       }
     }
-
-    try {
-      await enqueueEvent(event.id)
-    } catch (err) {
-      // The events-sweep job re-enqueues pending events, so a Redis hiccup only delays delivery
-      console.error('Failed to enqueue event:', err)
+    const enqueue = async () => {
+      try {
+        await enqueueEvent(event.id)
+      } catch (err) {
+        // The events-sweep job re-enqueues pending events, so a Redis hiccup only delays delivery
+        console.error('Failed to enqueue event:', err)
+      }
     }
+    await Promise.all([chatter(), enqueue()])
 
     return event
   },

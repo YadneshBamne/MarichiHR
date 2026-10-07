@@ -1,10 +1,12 @@
 import { employeeRepository, orgUnitRepository, jobPositionRepository, workLocationRepository } from './employees.repository'
 import { CreateEmployeeDto, UpdateEmployeeDto, CreateOrgUnitDto, CreateJobPositionDto, CreateWorkLocationDto, AddSkillDto, AddResumeLineDto } from './employees.types'
 import { AppError } from '../../shared/utils/AppError'
-import { eventBus } from '../../infrastructure/events/eventBus'
+import { eventBus, prepareEvent } from '../../infrastructure/events/eventBus'
+import { insertRows } from '../../infrastructure/database/insertRows'
 import { buildMeta } from '../../shared/utils/pagination'
 import { prisma } from '../../infrastructure/database/prisma'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 import { UpdateEmployeeSchema } from './employees.schema'
 import { encryptField, decryptField, last4 } from '../../shared/utils/crypto'
 import { AccessUser, assertProfileAccess, getReportingSubtreeIds } from '../../shared/utils/access'
@@ -26,9 +28,10 @@ async function assertRefsInTenant(tenantId: string, refs: {
     [refs.workLocationId, 'Work location', () => prisma.workLocation.findFirst({ where: { id: refs.workLocationId, tenantId }, select: { id: true } })],
     [refs.resourceCalendarId, 'Resource calendar', () => prisma.resourceCalendar.findFirst({ where: { id: refs.resourceCalendarId, tenantId }, select: { id: true } })],
   ]
-  for (const [value, label, lookup] of checks) {
-    if (value && !(await lookup())) throw new AppError(`${label} not found`, 404)
-  }
+  const present = checks.filter(([value]) => value)
+  const found = await Promise.all(present.map(([, , lookup]) => lookup()))
+  const missing = present.find((_, i) => !found[i])
+  if (missing) throw new AppError(`${missing[1]} not found`, 404)
 }
 
 export const orgUnitService = {
@@ -170,82 +173,68 @@ export const employeeService = {
   },
 
   async create(tenantId: string, data: CreateEmployeeDto, createdBy: string) {
-    const existingUser = await prisma.user.findFirst({
-      where: { tenantId, email: data.workEmail },
-    })
+    // Independent lookups go out together (each database round trip is expensive)
+    const [existingUser, , employeeCode, employeeRole, leaveTypes, defaultCalendar] = await Promise.all([
+      prisma.user.findFirst({ where: { tenantId, email: { equals: data.workEmail, mode: 'insensitive' } }, select: { id: true } }),
+      assertRefsInTenant(tenantId, {
+        orgUnitId: data.orgUnitId,
+        jobPositionId: data.jobPositionId,
+        managerId: data.managerId,
+        workLocationId: data.workLocationId,
+        resourceCalendarId: data.resourceCalendarId,
+      }),
+      employeeRepository.generateEmployeeCode(tenantId),
+      prisma.role.findFirst({ where: { tenantId, name: 'employee' } }),
+      prisma.leaveType.findMany({ where: { tenantId, active: true }, select: { id: true } }),
+      data.resourceCalendarId ? null : prisma.resourceCalendar.findFirst({ where: { tenantId, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
+    ])
     if (existingUser) {
       throw new AppError('An employee with this email already exists', 409)
     }
+    // New people follow the company's working week unless told otherwise (attendance and payroll rely on it)
+    if (!data.resourceCalendarId && defaultCalendar) data = { ...data, resourceCalendarId: defaultCalendar.id }
 
-    await assertRefsInTenant(tenantId, {
-      orgUnitId: data.orgUnitId,
-      jobPositionId: data.jobPositionId,
-      managerId: data.managerId,
-      workLocationId: data.workLocationId,
-      resourceCalendarId: data.resourceCalendarId,
-    })
-
-    const employeeCode = await employeeRepository.generateEmployeeCode(tenantId)
-
-    const tempPassword = `MarichiHR@${Math.floor(1000 + Math.random() * 9000)}`
-    const passwordHash = await bcrypt.hash(tempPassword, 12)
-
-    const employeeRole = await prisma.role.findFirst({
-      where: { tenantId, name: 'employee' },
-    })
-
-    const user = await prisma.user.create({
-      data: {
-        tenantId,
-        email: data.workEmail,
-        fullName: `${data.firstName} ${data.lastName}`,
-        passwordHash,
-        active: true,
-        userRoles: employeeRole
-          ? {
-              create: [{
-                roleId: employeeRole.id,
-                scopeType: 'org',
-                validFrom: new Date(),
-              }],
-            }
-          : undefined,
-      },
-    })
-
-    const employee = await employeeRepository.create(tenantId, user.id, data, employeeCode)
-
-    await eventBus.publish(tenantId, 'employee.created', {
-      employeeId: employee.id,
-      employeeCode,
-      name: `${data.firstName} ${data.lastName}`,
-      email: data.workEmail,
-      createdBy,
-      tempPassword,
-    })
-
-    const leaveTypes = await prisma.leaveType.findMany({
-      where: { tenantId, active: true },
-    })
-
-    await prisma.leaveBalance.createMany({
-      data: leaveTypes.map((lt) => ({
-        employeeId: employee.id,
-        leaveTypeId: lt.id,
-        balanceDays: 0,
-        usedDays: 0,
-        pendingDays: 0,
-        encashedDays: 0,
-        lapsedDays: 0,
-        asOfDate: new Date(),
-      })),
-      skipDuplicates: true,
-    })
+    // User, role, employee, leave balances, the domain event and its chatter line go in as ONE statement
+    const now = new Date().toISOString()
+    const userId = crypto.randomUUID()
+    const employeeId = crypto.randomUUID()
+    const dateOnly = (v?: string) => (v ? new Date(v.slice(0, 10) + 'T00:00:00.000Z').toISOString() : null)
+    const employeeRow: Record<string, unknown> = {
+      id: employeeId, tenantId, userId, orgUnitId: data.orgUnitId, jobPositionId: data.jobPositionId ?? null, managerId: data.managerId ?? null,
+      resourceCalendarId: data.resourceCalendarId ?? null, workLocationId: data.workLocationId ?? null, taxJurisdiction: data.taxJurisdiction ?? null,
+      firstName: data.firstName, lastName: data.lastName, workEmail: data.workEmail, personalEmail: data.personalEmail ?? null,
+      dateOfBirth: dateOnly(data.dateOfBirth), gender: data.gender ?? null, nationality: data.nationality ?? null,
+      mobilePersonal: data.mobilePersonal ?? null, mobileWork: data.mobileWork ?? null, emergencyContactName: data.emergencyContactName ?? null,
+      emergencyContactPhone: data.emergencyContactPhone ?? null, emergencyContactRelation: data.emergencyContactRelation ?? null,
+      employmentType: data.employmentType ?? 'full_time', employmentStatus: 'active', hireDate: dateOnly(data.hireDate), bankVerified: false, active: true,
+      createdAt: now, updatedAt: now,
+    }
+    // Codes come from the highest existing one, so two people added at the same moment can collide: take the next and retry
+    let code = employeeCode
+    for (let attempt = 0; ; attempt++) {
+      const event = prepareEvent(tenantId, 'employee.created', { employeeId, employeeCode: code, name: `${data.firstName} ${data.lastName}`, email: data.workEmail, createdBy })
+      try {
+        await insertRows({
+          users: [{ id: userId, tenantId, email: data.workEmail, fullName: `${data.firstName} ${data.lastName}`, passwordHash: null, active: true, mfaEnabled: false, mustChangePassword: false, createdAt: now, updatedAt: now }],
+          user_roles: employeeRole ? [{ id: crypto.randomUUID(), userId, roleId: employeeRole.id, scopeType: 'org', validFrom: now, createdAt: now }] : [],
+          employees: [{ ...employeeRow, employeeCode: code }],
+          leave_balances: leaveTypes.map((lt) => ({ employeeId, leaveTypeId: lt.id, balanceDays: 0, usedDays: 0, pendingDays: 0, encashedDays: 0, lapsedDays: 0, asOfDate: now })),
+          ...event.rows,
+        })
+        event.after()
+        break
+      } catch (err: any) {
+        const dupCode = /employeeCode|employees_tenantId_employeeCode/.test(String(err?.message))
+        if (/users_tenantId_email_key/.test(String(err?.message))) throw new AppError('An employee with this email already exists', 409)
+        if (!dupCode || attempt >= 4) throw err
+        code = `EMP${String(Number(code.slice(3)) + 1 + attempt).padStart(4, '0')}`
+      }
+    }
+    const employee = { ...employeeRow, employeeCode: code, hireDate: new Date(employeeRow.hireDate as string), createdAt: new Date(now), updatedAt: new Date(now), bankAccountNo: null } as any
 
     return {
       employee: toSafeEmployee(employee),
-      tempPassword,
-      message: 'Employee created. Share the temporary password securely.',
+      message: 'Employee created. Grant login access to let them sign in.',
     }
   },
 
@@ -338,6 +327,8 @@ export const employeeService = {
     if (!employee.active) throw new AppError('Employee is already archived', 400)
 
     const archived = await employeeRepository.archive(id, archivedBy, reason)
+    // Archived people are signed out everywhere
+    await prisma.refreshToken.updateMany({ where: { userId: employee.userId, revokedAt: null }, data: { revokedAt: new Date() } })
 
     await eventBus.publish(tenantId, 'employee.archived', {
       employeeId: id,
@@ -387,5 +378,82 @@ export const employeeService = {
 
   async getSkillTypes(tenantId: string) {
     return employeeRepository.listSkillTypes(tenantId)
+  },
+}
+
+// ─── Login access (who can sign in, with which roles) ─────────────────────────
+const randomPassword = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+  const bytes = crypto.randomBytes(14)
+  const body = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+  return body.slice(0, 4) + '-' + body.slice(4, 9) + '-' + body.slice(9) + '7'
+}
+
+export const accessService = {
+  async get(employeeId: string, tenantId: string) {
+    const emp = await prisma.employee.findFirst({
+      where: { id: employeeId, tenantId },
+      select: { user: { select: { id: true, email: true, active: true, passwordHash: true, mustChangePassword: true, lastLoginAt: true, googleSub: true, mfaEnabled: true, userRoles: { select: { role: { select: { name: true } } } } } } },
+    })
+    if (!emp) throw new AppError('Employee not found', 404)
+    const u = emp.user
+    return {
+      email: u.email, loginEnabled: u.active && (!!u.passwordHash || !!u.googleSub), active: u.active, hasPassword: !!u.passwordHash,
+      googleLinked: !!u.googleSub, mfaEnabled: u.mfaEnabled, mustChangePassword: u.mustChangePassword, lastLoginAt: u.lastLoginAt,
+      roles: u.userRoles.map((r) => r.role.name),
+    }
+  },
+
+  // HR (and system admins) decide who can sign in and with which roles; a temporary password must be changed at first sign-in
+  async set(employeeId: string, actor: { tenantId: string; userId: string; roleIds: string[] }, body: { roles?: string[]; loginEnabled?: boolean; password?: 'generate' | string }) {
+    const [emp, current, catalogue] = await Promise.all([
+      prisma.employee.findFirst({ where: { id: employeeId, tenantId: actor.tenantId }, select: { userId: true, employmentStatus: true } }),
+      prisma.userRole.findMany({ where: { user: { employee: { id: employeeId } }, role: { tenantId: actor.tenantId } }, select: { id: true, role: { select: { name: true } } } }),
+      prisma.role.findMany({ where: { tenantId: actor.tenantId }, select: { id: true, name: true } }),
+    ])
+    if (!emp) throw new AppError('Employee not found', 404)
+    const isSys = actor.roleIds.includes('system_admin')
+    const self = emp.userId === actor.userId
+    const currentNames = current.map((c) => c.role.name)
+
+    let roles = body.roles
+    if (roles) {
+      roles = [...new Set(['employee', ...roles])]
+      // Only system admins hand out or take away system or compliance roles
+      const sensitive = ['system_admin', 'compliance_officer']
+      const touched = sensitive.filter((r) => roles!.includes(r) !== currentNames.includes(r))
+      if (touched.length && !isSys) throw new AppError('Only a system administrator can change system or compliance roles', 403)
+      if (self && currentNames.some((r) => ['hr_admin', 'system_admin'].includes(r) && !roles!.includes(r))) throw new AppError('You cannot remove your own admin access', 400)
+    }
+    if (body.loginEnabled === false && self) throw new AppError('You cannot disable your own login', 400)
+    if (emp.employmentStatus === 'terminated' && body.loginEnabled) throw new AppError('This person has left; their login cannot be enabled', 400)
+
+    let issuedPassword: string | undefined
+    if (body.password) {
+      if (self) throw new AppError('Change your own password from Security', 400)
+      issuedPassword = body.password === 'generate' ? randomPassword() : body.password
+      if (!(issuedPassword.length >= 10 && /[A-Za-z]/.test(issuedPassword) && /\d/.test(issuedPassword))) throw new AppError('Use at least 10 characters with a letter and a number', 400)
+    }
+
+    // Role changes, the user update, ending their sessions and the audit row: one statement, one round trip
+    const now = new Date().toISOString()
+    const remove = roles ? current.filter((c) => !roles!.includes(c.role.name)).map((c) => c.id) : []
+    const add = roles ? catalogue.filter((r) => roles!.includes(r.name) && !currentNames.includes(r.name)) : []
+    const passwordHash = issuedPassword ? await bcrypt.hash(issuedPassword, 12) : null
+    const endSessions = !!(roles || issuedPassword || body.loginEnabled === false)
+    await insertRows({
+      user_roles: add.map((r) => ({ id: crypto.randomUUID(), userId: emp.userId, roleId: r.id, scopeType: 'org', validFrom: now, delegatedBy: actor.userId, createdAt: now })),
+      audit_logs: [{ id: crypto.randomUUID(), tenantId: actor.tenantId, userId: actor.userId, action: 'ACCESS_CHANGED', entityType: 'employee', entityId: employeeId,
+        oldValue: { roles: currentNames }, newValue: { roles: roles ?? currentNames, loginEnabled: body.loginEnabled, passwordIssued: !!issuedPassword }, createdAt: now }],
+    }, [
+      ...(remove.length ? [{ sql: 'DELETE FROM user_roles WHERE id = ANY($1::text[]) RETURNING 1', params: [remove] }] : []),
+      ...(body.loginEnabled !== undefined || passwordHash ? [{
+        sql: 'UPDATE users SET active = COALESCE($1::boolean, active), "passwordHash" = COALESCE($2::text, "passwordHash"), "mustChangePassword" = CASE WHEN $2::text IS NULL THEN "mustChangePassword" ELSE true END, "updatedAt" = now() WHERE id = $3 RETURNING 1',
+        params: [body.loginEnabled ?? null, passwordHash, emp.userId],
+      }] : []),
+      ...(endSessions ? [{ sql: 'UPDATE refresh_tokens SET "revokedAt" = now() WHERE "userId" = $1 AND "revokedAt" IS NULL RETURNING 1', params: [emp.userId] }] : []),
+    ])
+    const view = await this.get(employeeId, actor.tenantId)
+    return { ...view, ...(issuedPassword && { temporaryPassword: issuedPassword }) }
   },
 }

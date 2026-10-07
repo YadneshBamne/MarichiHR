@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import Badge from '../../components/ui/Badge'
 import ChatterPanel from '../../components/ChatterPanel'
 import BankDetailsCard from './BankDetailsCard'
+import AccessCard from '../../components/company/AccessCard'
 import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
@@ -12,12 +13,13 @@ import { useReveal } from '../../lib/motion'
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
 
-type Tab = 'work' | 'personal' | 'skills' | 'resume' | 'chatter'
+type Tab = 'work' | 'personal' | 'skills' | 'resume' | 'chatter' | 'access'
 
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isHR, hasRole } = useAuth()
+  const { isHR, hasRole, user } = useAuth()
+  const canManageAccess = hasRole('hr_admin') || hasRole('system_admin')
   const { data: employee, isLoading } = useEmployee(id!)
   const archiveEmployee = useArchiveEmployee()
   const [activeTab, setActiveTab] = useState<Tab>('work')
@@ -44,6 +46,7 @@ export default function EmployeeProfilePage() {
     { key: 'skills', label: `Skills (${employee.skills?.length || 0})` },
     { key: 'resume', label: `Resume (${employee.resumeLines?.length || 0})` },
     { key: 'chatter', label: 'Chatter' },
+    ...(canManageAccess ? [{ key: 'access' as Tab, label: 'Login & access' }] : []),
   ]
 
   return (
@@ -104,6 +107,7 @@ export default function EmployeeProfilePage() {
 
       {/* Tab content */}
       <div style={s.tabContent}>
+        {activeTab === 'access' && canManageAccess && <AccessCard employeeId={employee.id} isSelf={employee.userId === user?.id} />}
         {activeTab === 'work' && (
           <div style={s.infoGrid}>
             <InfoRow label="Employee Code" value={employee.employeeCode} />

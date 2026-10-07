@@ -218,3 +218,14 @@ th { text-transform: none !important; letter-spacing: 0 !important; background-c
 .pay-top { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: var(--gap); }
 .pay-nums { display: flex; justify-content: space-around; align-items: center; gap: 16px; flex-wrap: wrap; }
 @media (max-width: 899px) { .pay-top { grid-template-columns: 1fr; } }
+.person-row { display: grid; grid-template-columns: 1fr 1fr 1.4fr 0.9fr 38px; gap: 8px; margin-bottom: 8px; }
+@media (max-width: 799px) { .person-row { grid-template-columns: 1fr 1fr; } }
+.landing-hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 40px; align-items: center; }
+@media (max-width: 949px) { .landing-hero { grid-template-columns: 1fr; } }
+
+@media (max-width: 1299px) { .brand-name { display: none; } }
+
+.dash-grid-auto { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); align-items: start; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 599px) { .grid-2 { grid-template-columns: 1fr; } }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import { CompanyLogo } from '../components/company/CompanyParts'
 import api from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import { gsap, reduced } from '../lib/motion'
@@ -16,7 +17,7 @@ const SSO_ERRORS: Record<string, string> = {
   not_configured: 'Google sign-in is not configured.',
 }
 const LAST_ORG = 'marichihr.org'
-const readOrg = () => { try { return localStorage.getItem(LAST_ORG) || 'marichi-labs' } catch { return 'marichi-labs' } }
+const readOrg = () => { try { return localStorage.getItem(LAST_ORG) || '' } catch { return '' } }
 
 type Mode = 'signin' | 'mfa' | 'forgot'
 
@@ -34,6 +35,9 @@ export default function LoginPage() {
   const [google, setGoogle] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // The organisation is only needed when an email belongs to several companies (or for Google sign-in)
+  const [showOrg, setShowOrg] = useState(!!form.tenantSlug)
+  const [brand, setBrand] = useState<{ name: string; logoUrl: string | null } | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
   const from = (location.state as any)?.from || '/dashboard'
 
@@ -42,6 +46,14 @@ export default function LoginPage() {
     const e = params.get('sso_error')
     if (e) setError(SSO_ERRORS[e] || 'Google sign-in failed. Please try again.')
   }, [params])
+
+  // A known workspace shows its own name and logo
+  useEffect(() => {
+    const slug = form.tenantSlug.trim().toLowerCase()
+    if (!showOrg || slug.length < 2) { setBrand(null); return }
+    const t = setTimeout(() => api.get(`/auth/workspace/${encodeURIComponent(slug)}`).then((r) => setBrand(r.data.data)).catch(() => setBrand(null)), 350)
+    return () => clearTimeout(t)
+  }, [form.tenantSlug, showOrg])
 
   // Each panel change slides the form content in
   useLayoutEffect(() => {
@@ -55,11 +67,13 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      try { localStorage.setItem(LAST_ORG, form.tenantSlug) } catch { /* private mode */ }
-      const pending = await login(form.email.trim(), form.password, form.tenantSlug.trim())
+      const org = showOrg ? form.tenantSlug.trim().toLowerCase() : ''
+      const pending = await login(form.email.trim(), form.password, org || undefined)
+      try { if (org) localStorage.setItem(LAST_ORG, org) } catch { /* private mode */ }
       if (pending) { setMfaToken(pending); setCode(''); setMode('mfa') }
       else navigate(from, { replace: true })
     } catch (err: any) {
+      if (err?.response?.data?.code === 'ORG_REQUIRED') setShowOrg(true)
       setError(err?.response?.data?.message || (err?.response ? 'Sign-in failed. Check your details.' : 'Cannot reach the server. Check your connection.'))
       shake()
     } finally { setLoading(false) }
@@ -84,16 +98,22 @@ export default function LoginPage() {
   return (
     <div className="canvas login-grid" style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.1fr)', gap: 18, padding: 18 }}>
       <section style={{ display: 'flex', flexDirection: 'column', padding: 'clamp(20px, 4vw, 48px)' }}>
-        <Logo size={24} />
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <Link to="/" aria-label="MarichiHR home"><Logo size={24} /></Link>
+          <span className="dim" style={{ marginLeft: 'auto', fontSize: 13 }}>New here? <Link to="/signup" className="link">Create a workspace</Link></span>
+        </div>
         <div ref={formRef} style={{ margin: 'auto 0', width: '100%', maxWidth: 400, alignSelf: 'center', paddingBlock: 32 }}>
           {mode === 'signin' && (
             <form onSubmit={submit} noValidate>
-              <h1 data-rise style={{ fontSize: 'clamp(34px, 4vw, 46px)', lineHeight: 1.05 }}>Welcome back</h1>
-              <p data-rise className="dim" style={{ marginTop: 10, marginBottom: 28 }}>Sign in to your MarichiHR workspace.</p>
-              <div data-rise className="field" style={{ marginBottom: 14 }}>
-                <label htmlFor="org">Organisation</label>
-                <input id="org" className="input" value={form.tenantSlug} onChange={(e) => setForm({ ...form, tenantSlug: e.target.value })} placeholder="your-company" autoComplete="organization" required />
-              </div>
+              {brand && <div data-rise style={{ marginBottom: 16 }}><CompanyLogo name={brand.name} src={brand.logoUrl} size={56} /></div>}
+              <h1 data-rise style={{ fontSize: 'clamp(34px, 4vw, 46px)', lineHeight: 1.05 }}>{brand ? `Sign in to ${brand.name}` : 'Welcome back'}</h1>
+              <p data-rise className="dim" style={{ marginTop: 10, marginBottom: 28 }}>Use the work email your company registered for you.</p>
+              {showOrg && (
+                <div data-rise className="field" style={{ marginBottom: 14 }}>
+                  <label htmlFor="org">Organisation</label>
+                  <input id="org" className="input" value={form.tenantSlug} onChange={(e) => setForm({ ...form, tenantSlug: e.target.value })} placeholder="your-company" autoComplete="organization" />
+                </div>
+              )}
               <div data-rise className="field" style={{ marginBottom: 14 }}>
                 <label htmlFor="email">Work email</label>
                 <input id="email" className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" autoComplete="username" autoFocus required />
@@ -106,17 +126,23 @@ export default function LoginPage() {
                 </div>
               </div>
               <div data-rise style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+                {!showOrg && <button type="button" className="link" style={{ marginRight: 'auto' }} onClick={() => setShowOrg(true)}>Sign in to a specific organisation</button>}
                 <button type="button" className="link" onClick={() => { setError(''); setMode('forgot') }}>Forgot password?</button>
               </div>
               {error && <div role="alert" style={errBox}><Icon name="alert" size={16} /> {error}</div>}
-              <button data-rise className="btn btn-primary" type="submit" disabled={loading || !form.email || !form.password || !form.tenantSlug} style={{ width: '100%', height: 46 }}>
+              <button data-rise className="btn btn-primary" type="submit" disabled={loading || !form.email || !form.password || (showOrg && !form.tenantSlug.trim())} style={{ width: '100%', height: 46 }}>
                 {loading ? <span className="spinner" style={{ borderTopColor: 'var(--night-ink)' }} /> : <>Sign in <Icon name="arrowRight" size={16} /></>}
               </button>
               {google && (
                 <>
                   <div data-rise style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', fontSize: 12 }} className="muted"><span style={rule} />or<span style={rule} /></div>
-                  <button data-rise type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} disabled={!form.tenantSlug}
-                    onClick={() => { try { localStorage.setItem(LAST_ORG, form.tenantSlug) } catch { /* ignore */ } window.location.href = `${API_URL}/auth/google?tenant=${encodeURIComponent(form.tenantSlug.trim())}` }}>
+                  <button data-rise type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} 
+                    onClick={() => {
+                      const org = form.tenantSlug.trim().toLowerCase()
+                      if (!showOrg || !org) { setShowOrg(true); setError('Enter your organisation to continue with Google.'); return }
+                      try { localStorage.setItem(LAST_ORG, org) } catch { /* ignore */ }
+                      window.location.href = `${API_URL}/auth/google?tenant=${encodeURIComponent(org)}`
+                    }}>
                     <GoogleG /> Continue with Google
                   </button>
                 </>
@@ -188,7 +214,7 @@ function CodeInput({ value, onChange }: { value: string; onChange: (v: string) =
 }
 
 // Right-hand showcase: a dark panel with live-looking product widgets that drift and animate
-function BrandPanel() {
+export function BrandPanel() {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (!ref.current || reduced()) return

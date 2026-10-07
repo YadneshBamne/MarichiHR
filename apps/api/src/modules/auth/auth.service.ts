@@ -32,26 +32,41 @@ const mfaSecretKey = () => `${process.env.JWT_ACCESS_SECRET}.mfa`
 const MFA_MAX_FAILURES = 5
 
 type LoginUser = NonNullable<Awaited<ReturnType<typeof authRepository.findUserByEmail>>>
-type LoginTenant = { id: string; name: string; slug: string }
+type LoginTenant = { id: string; name: string; slug: string; logoUrl?: string | null; modules?: string[]; onboardedAt?: Date | null; ownerUserId?: string | null }
+
+// pwc = "password change required": authenticate() only lets such tokens reach the change-password endpoints
+const claimsFor = (user: { id: string; email: string; mustChangePassword?: boolean; userRoles: { role: { name: string } }[]; employee?: { id: string } | null }, tenantId: string): JwtPayload => ({
+  userId: user.id,
+  tenantId,
+  employeeId: user.employee?.id || '',
+  roleIds: user.userRoles.map((ur) => ur.role.name),
+  email: user.email,
+  ...(user.mustChangePassword && { pwc: true }),
+})
+
+export const tenantPayload = (t: LoginTenant) => ({ id: t.id, name: t.name, slug: t.slug, logoUrl: t.logoUrl ?? null, modules: t.modules ?? [], onboardedAt: t.onboardedAt ?? null, ownerUserId: t.ownerUserId ?? null })
+
+export const PASSWORD_RULE = 'Use at least 10 characters with a letter and a number'
+export const strongPassword = (pw: string) => pw.length >= 10 && /[A-Za-z]/.test(pw) && /\d/.test(pw)
+
+// Failed password attempts per email+IP; after 10 in 15 minutes sign-in is refused for that pair
+const LOGIN_MAX_FAILURES = 10
+async function guardLogin(key: string) {
+  if ((Number(await redis.get(key)) || 0) >= LOGIN_MAX_FAILURES) throw new AppError('Too many failed sign-in attempts. Try again in 15 minutes.', 429)
+}
+async function failLogin(key: string): Promise<never> {
+  await redis.multi().incr(key).expire(key, 900).exec()
+  throw new AppError('Invalid credentials', 401)
+}
 
 export type LoginResult = (AuthTokens & { user: any }) | { mfaRequired: true; mfaToken: string }
 
 async function issueSession(user: LoginUser, tenant: LoginTenant): Promise<AuthTokens & { user: any }> {
-  const roleIds = user.userRoles.map((ur) => ur.role.name)
-  const payload: JwtPayload = {
-    userId: user.id,
-    tenantId: tenant.id,
-    employeeId: user.employee?.id || '',
-    roleIds,
-    email: user.email,
-  }
-
-  const accessToken = generateAccessToken(payload)
+  const accessToken = generateAccessToken(claimsFor(user, tenant.id))
   const refreshTokenValue = generateRefreshToken()
   const refreshTokenExpiry = getRefreshTokenExpiry()
 
-  await authRepository.createRefreshToken(user.id, refreshTokenValue, refreshTokenExpiry)
-  await authRepository.updateLastLogin(user.id)
+  await Promise.all([authRepository.createRefreshToken(user.id, refreshTokenValue, refreshTokenExpiry), authRepository.updateLastLogin(user.id)])
 
   return {
     accessToken,
@@ -64,6 +79,7 @@ async function issueSession(user: LoginUser, tenant: LoginTenant): Promise<AuthT
       avatarUrl: user.avatarUrl,
       mfaEnabled: user.mfaEnabled,
       tourDoneAt: user.tourDoneAt,
+      mustChangePassword: user.mustChangePassword,
       roles: user.userRoles.map((ur) => ({ id: ur.role.id, name: ur.role.name })),
       employee: user.employee
         ? {
@@ -73,11 +89,7 @@ async function issueSession(user: LoginUser, tenant: LoginTenant): Promise<AuthT
             lastName: user.employee.lastName,
           }
         : null,
-      tenant: {
-        id: tenant.id,
-        name: tenant.name,
-        slug: tenant.slug,
-      },
+      tenant: tenantPayload(tenant),
     },
   }
 }
@@ -109,23 +121,47 @@ async function checkTotp(userId: string, secretEnc: string | null, lastStep: num
 }
 
 export const authService = {
-  async login(dto: LoginDto): Promise<LoginResult> {
-    const tenant = await authRepository.findTenantBySlug(dto.tenantSlug)
+  // The organisation is optional: an email that belongs to exactly one active company signs straight in
+  async login(dto: LoginDto, ip = ''): Promise<LoginResult> {
+    const email = dto.email.trim().toLowerCase()
+    const guardKey = `login:fail:${email}:${ip}`
+    await guardLogin(guardKey)
+    let tenant = dto.tenantSlug ? await authRepository.findTenantBySlug(dto.tenantSlug.trim().toLowerCase()) : null
+    if (dto.tenantSlug && !tenant) return failLogin(guardKey)
     if (!tenant) {
-      throw new AppError('Invalid credentials', 401)
+      const matches = await prisma.user.findMany({
+        where: { email: { equals: email, mode: 'insensitive' }, active: true, passwordHash: { not: null }, tenant: { active: true } },
+        select: { tenant: true }, take: 2,
+      })
+      if (matches.length > 1) throw new AppError('This email is used in more than one organisation. Enter your organisation to continue.', 400, 'ORG_REQUIRED')
+      if (!matches.length) return failLogin(guardKey)
+      tenant = matches[0].tenant
     }
 
-    const user = await authRepository.findUserByEmail(dto.email, tenant.id)
-    if (!user || !user.passwordHash) {
-      throw new AppError('Invalid credentials', 401)
-    }
-
-    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash)
-    if (!passwordValid) {
-      throw new AppError('Invalid credentials', 401)
-    }
-
+    const user = await authRepository.findUserByEmail(email, tenant.id)
+    if (!user || !user.passwordHash || !(await bcrypt.compare(dto.password, user.passwordHash))) return failLogin(guardKey)
+    await redis.del(guardKey)
     return completeLogin(user, tenant)
+  },
+
+  // Required after an HR-issued temporary password; also available to anyone signed in
+  async changePassword(userId: string, current: string, next: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { tenant: true } })
+    if (!user || !user.active) throw new AppError('User not found', 404)
+    if (!user.passwordHash || !(await bcrypt.compare(current, user.passwordHash))) throw new AppError('Your current password is not correct', 400)
+    if (!strongPassword(next)) throw new AppError(PASSWORD_RULE, 400)
+    if (current === next) throw new AppError('Choose a password different from the current one', 400)
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(next, 12), mustChangePassword: false } })
+    await authRepository.revokeAllUserRefreshTokens(userId)
+    await prisma.auditLog.create({ data: { tenantId: user.tenantId, userId, action: 'PASSWORD_CHANGED', entityType: 'user', entityId: userId } })
+    const fresh = await authRepository.findUserByEmail(user.email, user.tenantId)
+    return issueSession(fresh!, user.tenant)
+  },
+
+  async workspaceBranding(slug: string) {
+    const t = await prisma.tenant.findFirst({ where: { slug: slug.toLowerCase(), active: true }, select: { name: true, logoUrl: true } })
+    if (!t) throw new AppError('Organisation not found', 404)
+    return t
   },
 
   async verifyMfaLogin(mfaToken: string, code: string) {
@@ -201,16 +237,13 @@ export const authService = {
 
     await authRepository.revokeRefreshToken(refreshTokenValue)
 
-    const roleIds = user.userRoles.map((ur) => ur.role.name)
-    const payload: JwtPayload = {
-      userId: user.id,
-      tenantId: user.tenantId,
-      employeeId: user.employee?.id || '',
-      roleIds,
-      email: user.email,
+    // A deactivated or offboarded user cannot keep a session alive by refreshing
+    if (!user.active || user.employee?.employmentStatus === 'terminated') {
+      await authRepository.revokeAllUserRefreshTokens(user.id)
+      throw new AppError('Account has been deactivated', 401)
     }
 
-    const accessToken = generateAccessToken(payload)
+    const accessToken = generateAccessToken(claimsFor(user, user.tenantId))
     const newRefreshToken = generateRefreshToken()
     const refreshTokenExpiry = getRefreshTokenExpiry()
 
@@ -243,6 +276,7 @@ export const authService = {
       avatarUrl: user.avatarUrl,
       mfaEnabled: user.mfaEnabled,
       tourDoneAt: user.tourDoneAt,
+      mustChangePassword: user.mustChangePassword,
       lastLoginAt: user.lastLoginAt,
       roles: user.userRoles.map((ur) => ({
         id: ur.role.id,
@@ -263,7 +297,7 @@ export const authService = {
             manager: (user.employee as any).manager,
           }
         : null,
-      tenant: user.tenant,
+      tenant: tenantPayload(user.tenant),
     }
   },
 }

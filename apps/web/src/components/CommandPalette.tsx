@@ -17,7 +17,7 @@ export default function CommandPalette({ open, onClose, onTour }: { open: boolea
   const roles = user?.roles?.map((r) => r.name) ?? []
 
   const cmds: Cmd[] = useMemo(() => [
-    ...ALL_ITEMS.filter((it) => canSee(it, roles)).map((it) => ({
+    ...ALL_ITEMS.filter((it) => canSee(it, roles, user?.tenant?.modules ?? [])).map((it) => ({
       id: it.path, label: it.label, hint: it.section.label, icon: it.icon, soon: !!it.soon, keywords: it.keywords,
       run: () => navigate(it.path),
     })),
@@ -26,7 +26,7 @@ export default function CommandPalette({ open, onClose, onTour }: { open: boolea
     ...(user?.employee ? [{ id: 'profile', label: 'My profile', hint: 'Account', icon: 'user' as IconName, run: () => navigate(`/employees/${user.employee!.id}`) }] : []),
     { id: 'tour', label: 'Take the product tour', hint: 'Help', icon: 'compass', run: onTour, keywords: 'help guide onboarding' },
     { id: 'logout', label: 'Sign out', hint: 'Account', icon: 'logout', run: () => { logout().then(() => navigate('/login')) } },
-  ], [roles.join(','), user?.employee?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  ], [roles.join(','), user?.employee?.id, (user?.tenant?.modules ?? []).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const list = useMemo(() => {
     const t = q.trim().toLowerCase()

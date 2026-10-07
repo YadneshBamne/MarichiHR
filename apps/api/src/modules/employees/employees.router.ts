@@ -8,7 +8,11 @@ import {
   jobPositionController,
   workLocationController,
 } from './employees.controller'
+import { requireRoles } from '../../middleware/rbac.middleware'
+import { asyncHandler } from '../../shared/utils/asyncHandler'
+import { accessService } from './employees.service'
 import {
+  AccessSchema,
   CreateEmployeeSchema,
   UpdateEmployeeSchema,
   CreateOrgUnitSchema,
@@ -56,6 +60,14 @@ employeeRouter.get('/:id', requirePermission('employees:read'), employeeControll
 employeeRouter.patch('/:id', requirePermission('employees:write'), validate(UpdateEmployeeSchema), employeeController.update)
 employeeRouter.patch('/:id/bank', requirePermission('employees:write'), validate(BankDetailsSchema), employeeController.updateBank)
 employeeRouter.post('/:id/bank/verify', requirePermission('payroll:disburse'), employeeController.verifyBank)
+// Login access: HR and system admins decide who can sign in and with which roles
+const accessAdmins = requireRoles('hr_admin', 'system_admin')
+employeeRouter.get('/:id/access', accessAdmins, asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await accessService.get(String(req.params.id), req.user!.tenantId) })
+}))
+employeeRouter.put('/:id/access', accessAdmins, validate(AccessSchema), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await accessService.set(String(req.params.id), req.user!, req.body) })
+}))
 employeeRouter.post('/:id/archive', requirePermission('employees:write'), validate(ArchiveSchema), employeeController.archive)
 
 // ─── SKILLS ───────────────────────────────────────────────────

@@ -1,0 +1,49 @@
+PASS  weak password rejected with the rule
+PASS  signup body is strict
+PASS  signup creates the company and signs the owner in
+PASS  owner is employee + HR admin + system admin; company not onboarded yet; all apps installed
+PASS  workspace bootstrapped: 6 roles, 8 leave types, 8 activity types, 5 expense categories, a calendar, a root unit, owner balances
+PASS  new company cannot see another company's people (404)
+PASS  owner sets name, legal name, country, currency, time zone, fiscal year and logo
+PASS  renaming the company renames its root org unit
+PASS  SVG logos are refused (only PNG, JPEG, WebP)
+PASS  unknown time zone refused
+PASS  workspace address cannot be changed through the profile (strict)
+PASS  login page can show the company name and logo for a workspace
+PASS  unknown workspace is 404
+PASS  owner installs only Leave and Attendance
+PASS  an app that is not installed is refused by the API (403 MODULE_DISABLED)
+PASS  expenses refused too
+PASS  installed app works
+PASS  employment contracts stay available without the payroll app
+PASS  unknown app refused
+PASS  finishing onboarding stamps onboardedAt
+PASS  /auth/me carries the company branding and apps for the shell
+PASS  HR adds an employee; no temporary password is generated or returned
+PASS  new employee has no password until access is granted
+PASS  nothing password-like is kept in the event log
+PASS  they cannot sign in yet
+PASS  HR grants manager access with a generated temporary password (shown once)
+PASS  access view never returns the password
+PASS  employee signs in with just email + password (organisation found automatically)
+PASS  until they set a new password every other API is refused (403 PASSWORD_CHANGE_REQUIRED)
+PASS  /auth/me still works so the app can show the change-password screen
+PASS  new password must be strong
+PASS  current password must be right
+PASS  password changed: fresh session without the restriction
+PASS  employee portal works after the change
+PASS  manager role is in effect (approvals inbox open)
+PASS  a manager cannot change access (403)
+PASS  admins cannot remove their own admin access
+PASS  admins cannot disable their own login
+PASS  roles change signs the person out and takes effect at next sign-in
+PASS  an HR admin cannot grant system or compliance roles (403)
+PASS  HR disables a login
+PASS  disabled login cannot refresh its session
+PASS  disabled login cannot sign in
+PASS  the same person can own a second company
+PASS  email in two companies: sign-in asks for the organisation (ORG_REQUIRED)
+PASS  with the organisation it signs into the right one
+PASS  after 10 failed sign-ins the 11th is refused (429)
+PASS  existing company keeps every app (payroll still open)
+48/48 passed

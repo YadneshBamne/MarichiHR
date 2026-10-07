@@ -10,7 +10,7 @@ import { Mark } from './brand/Logo'
 type Step = { target?: string; title: string; body: string; roles?: string[] }
 
 const STEPS: Step[] = [
-  { title: 'Welcome to MarichiHR', body: 'Your people, time, leave and pay in one place. This quick tour shows you around; it takes about a minute and you can skip it any time.' },
+  { title: 'Welcome to {company}', body: 'Your people, time, leave and pay in one place. This quick tour shows you around; it takes about a minute and you can skip it any time.' },
   { target: 'sections', title: 'Everything in six sections', body: 'Overview, People, Time, Pay, Work and Insights. Pick a section here; its pages appear as chips just below.' },
   { target: 'search', title: 'Jump anywhere', body: 'Search finds any page or action. Press Ctrl K (⌘ K on Mac) from anywhere in the app.' },
   { target: 'kpis', title: 'Your month at a glance', body: 'Leave used, attendance and the headline numbers for you and, if you manage people, your team.' },
@@ -20,7 +20,7 @@ const STEPS: Step[] = [
   { target: 'section-work', title: 'Approvals', body: 'Leave, attendance and expense requests waiting for you are in Work → Approvals. A dot appears here when something is pending.', roles: ['manager', 'hr_admin', 'system_admin'] },
   { target: 'notifications', title: 'Notifications', body: 'Approvals, payslips, contract reminders and anything that needs you lands here.' },
   { target: 'profile', title: 'Your account', body: 'Your profile, two-factor security, settings and this tour live here. Sign out from here too.' },
-  { title: 'You are all set', body: 'Modules marked “Soon” are on the roadmap and open a preview of what is coming. Enjoy MarichiHR.' },
+  { title: 'You are all set', body: 'Modules marked “Soon” are on the roadmap and open a preview of what is coming. Enjoy {company}.' },
 ]
 
 const PAD = 8
@@ -28,7 +28,8 @@ const PAD = 8
 export default function ProductTour({ onClose }: { onClose: () => void }) {
   const { user, updateUser } = useAuth()
   const roles = user?.roles?.map((r) => r.name) ?? []
-  const steps = useMemo(() => STEPS.filter((s) => (!s.roles || s.roles.some((r) => roles.includes(r))) && (!s.target || document.querySelector(`[data-tour="${s.target}"]`))), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const company = user?.tenant?.name || 'MarichiHR'
+  const steps = useMemo(() => STEPS.map((s) => ({ ...s, title: s.title.replace('{company}', company), body: s.body.replace('{company}', company) })).filter((s) => (!s.roles || s.roles.some((r) => roles.includes(r))) && (!s.target || document.querySelector(`[data-tour="${s.target}"]`))), []) // eslint-disable-line react-hooks/exhaustive-deps
   const [i, setI] = useState(0)
   const [rect, setRect] = useState<DOMRect | null>(null)
   const spot = useRef<HTMLDivElement>(null)

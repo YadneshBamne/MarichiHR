@@ -20,7 +20,7 @@ export function errorMiddleware(
     return res.status(400).json({
       success: false,
       code: 'VALIDATION_ERROR',
-      message: 'Validation failed',
+      message: err.issues[0] ? `${err.issues[0].message}${err.issues[0].path.length > 1 ? ` (${err.issues[0].path.slice(1).map(String).join('.')})` : ''}` : 'Validation failed',
       fieldErrors: err.issues.map((e) => ({
         field: e.path.map(String).join('.'),
         message: e.message,

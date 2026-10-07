@@ -6,6 +6,7 @@ import api from '../lib/api'
 import { visibleSections, sectionFor } from '../lib/nav'
 import { gsap, reduced } from '../lib/motion'
 import Logo from './brand/Logo'
+import { CompanyLogo } from './company/CompanyParts'
 import Icon from './ui/Icon'
 import Avatar from './ui/Avatar'
 import Popover from './ui/Popover'
@@ -18,7 +19,9 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const roles = user?.roles?.map((r) => r.name) ?? []
-  const sections = visibleSections(roles)
+  const apps = user?.tenant?.modules ?? []
+  const sections = visibleSections(roles, apps)
+  const companyName = user?.tenant?.name || 'MarichiHR'
   const current = sectionFor(location.pathname)
   const active = sections.find((s) => s.key === current?.key) ?? null
   const [palette, setPalette] = useState(false)
@@ -30,7 +33,7 @@ export default function AppShell() {
   const { data: pending = [] } = useQuery({
     queryKey: ['leave-pending-count'],
     queryFn: async () => (await api.get('/leave/requests/pending')).data.data ?? [],
-    enabled: isManager,
+    enabled: isManager && apps.includes('leave'),
     refetchInterval: 60000,
   })
   const pendingCount = Array.isArray(pending) ? pending.length : 0
@@ -53,6 +56,9 @@ export default function AppShell() {
   }, [user?.tourDoneAt]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setMobileNav(false); setMenu(false) }, [location.pathname])
 
+  // Browser tab shows the company, not just the product
+  useEffect(() => { document.title = `${companyName} · MarichiHR` }, [companyName])
+
   const startTour = () => { if (location.pathname !== '/dashboard') navigate('/dashboard'); setTimeout(() => setTour(true), 500) }
   const signOut = async () => { await logout(); navigate('/login') }
 
@@ -66,7 +72,10 @@ export default function AppShell() {
     <div className="canvas" style={{ padding: '18px clamp(12px, 2.4vw, 32px) 40px' }}>
       <a href="#main" style={s.skip} onFocus={(e) => (e.currentTarget.style.top = '8px')} onBlur={(e) => (e.currentTarget.style.top = '-60px')}>Skip to content</a>
       <header style={s.bar}>
-        <Link to="/dashboard" aria-label="MarichiHR home" style={s.logoPill}><Logo size={20} /></Link>
+        <Link to="/dashboard" aria-label={`${companyName} home`} style={s.logoPill} data-tour="brand">
+          <CompanyLogo name={companyName} src={user?.tenant?.logoUrl} size={30} />
+          <span className="brand-name" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 500, letterSpacing: '-0.02em', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{companyName}</span>
+        </Link>
 
         <button className="btn btn-ghost btn-icon mobile-only" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Icon name="grid" size={17} /></button>
         <SectionTabs sections={sections} activeKey={active?.key ?? null} pendingCount={pendingCount} />
@@ -103,6 +112,7 @@ export default function AppShell() {
                 <div style={{ height: 1, background: 'var(--line)', margin: '6px 8px' }} />
                 <button style={{ ...s.menuItem, color: 'var(--danger)' }} onClick={signOut}><Icon name="logout" size={16} /> Sign out</button>
               </nav>
+              <div className="muted" style={{ fontSize: 11, padding: '10px 18px 14px', display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid var(--line)' }}>{companyName} · powered by <Logo size={12} /></div>
             </Popover>
           </div>
         </div>
@@ -213,7 +223,7 @@ function MenuLink({ to, icon, label, soon }: { to: string; icon: Parameters<type
 const s: Record<string, React.CSSProperties> = {
   skip: { position: 'fixed', left: 16, top: -60, zIndex: 1000, background: 'var(--night)', color: 'var(--night-ink)', padding: '8px 14px', borderRadius: 999, fontSize: 13, transition: 'top .2s' },
   bar: { display: 'flex', alignItems: 'center', gap: 12, position: 'relative', zIndex: 50 },
-  logoPill: { display: 'inline-flex', alignItems: 'center', height: 42, padding: '0 18px 0 12px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)' },
+  logoPill: { display: 'inline-flex', alignItems: 'center', gap: 10, height: 44, padding: '0 18px 0 7px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)' },
   tabs: { position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 2, padding: 5, borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)' },
   pill: { position: 'absolute', left: 0, top: 5, bottom: 5, borderRadius: 999, background: 'var(--night)', opacity: 0, zIndex: 0 },
   tab: { position: 'relative', zIndex: 1, height: 34, padding: '0 16px', border: 'none', background: 'transparent', borderRadius: 999, fontSize: 13, fontWeight: 500, transition: 'color .35s var(--ease)', display: 'inline-flex', alignItems: 'center', gap: 6 },

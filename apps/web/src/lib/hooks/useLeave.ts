@@ -42,9 +42,10 @@ export function useMyLeaveRequests(params?: { status?: string; page?: number }) 
   })
 }
 
-export function usePendingLeaveApprovals() {
+export function usePendingLeaveApprovals(enabled = true) {
   return useQuery({
     queryKey: ['leave-pending-approvals'],
+    enabled,
     queryFn: async () => {
       const res = await api.get('/leave/requests/pending')
       return res.data.data

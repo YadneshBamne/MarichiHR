@@ -1,161 +1,145 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import api from '../../lib/api'
 import Modal from '../../components/ui/Modal'
-import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
-import { useCreateEmployee, useOrgTree, useJobPositions, useWorkLocations } from '../../lib/hooks/useEmployees'
+import Icon from '../../components/ui/Icon'
+import { useAuth } from '../../contexts/AuthContext'
+import { useCreateEmployee, useOrgTree, useJobPositions, useWorkLocations, useEmployees } from '../../lib/hooks/useEmployees'
+import { TemporaryPassword } from '../../components/company/AccessCard'
+import { COUNTRIES } from '../../components/company/CompanyParts'
 
-interface Props {
-  open: boolean
-  onClose: () => void
-}
+interface Props { open: boolean; onClose: () => void }
 
+const ROLES = [
+  { v: 'employee', l: 'Employee', h: 'Self-service only' },
+  { v: 'manager', l: 'Manager', h: 'Approves their team' },
+  { v: 'hr_admin', l: 'HR admin', h: 'Runs people operations' },
+  { v: 'payroll_admin', l: 'Payroll / finance', h: 'Runs payroll and finance approvals' },
+]
+const today = () => new Date().toISOString().slice(0, 10)
+
+// Add a person, place them in the hierarchy (unit + manager), and optionally create their login straight away
 export default function CreateEmployeeModal({ open, onClose }: Props) {
+  const qc = useQueryClient()
+  const { user } = useAuth()
   const createEmployee = useCreateEmployee()
   const { data: orgTree = [] } = useOrgTree()
   const { data: positions = [] } = useJobPositions()
   const { data: locations = [] } = useWorkLocations()
-
-  const [form, setForm] = useState({
-    firstName: '', lastName: '', workEmail: '',
-    orgUnitId: '', jobPositionId: '', workLocationId: '',
-    hireDate: new Date().toISOString().split('T')[0],
-    employmentType: 'full_time', taxJurisdiction: 'ZM',
+  const { data: people } = useEmployees({ limit: 100 })
+  const flatOrg = ((function flat(units: any[], depth = 0): any[] { return units.flatMap((u: any) => [{ ...u, depth }, ...flat(u.children || [], depth + 1)]) })(Array.isArray(orgTree) ? orgTree : []))
+  const initial = () => ({
+    firstName: '', lastName: '', workEmail: '', orgUnitId: '', jobPositionId: '', workLocationId: '', managerId: user?.employee?.id ?? '',
+    hireDate: today(), employmentType: 'full_time', taxJurisdiction: (user?.tenant as any)?.primaryCountry || '', role: 'employee', createLogin: true,
   })
-  const [result, setResult] = useState<{ tempPassword: string; employeeCode: string } | null>(null)
+  const [form, setForm] = useState(initial)
+  const [result, setResult] = useState<{ name: string; code: string; email: string; password?: string; accessError?: string } | null>(null)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { if (!form.orgUnitId && flatOrg[0]) setForm((f) => ({ ...f, orgUnitId: flatOrg[0].id })) }, [flatOrg.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }))
 
-  const flattenOrg = (units: any[], depth = 0): any[] =>
-    units.flatMap((u: any) => [{ ...u, depth }, ...flattenOrg(u.children || [], depth + 1)])
-
-  const flatOrg = flattenOrg(orgTree)
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setBusy(true)
     try {
-      const res = await createEmployee.mutateAsync(form)
-      setResult({ tempPassword: res.tempPassword, employeeCode: res.employee.employeeCode })
+      const body: Record<string, unknown> = { firstName: form.firstName.trim(), lastName: form.lastName.trim(), workEmail: form.workEmail.trim().toLowerCase(), orgUnitId: form.orgUnitId, hireDate: form.hireDate, employmentType: form.employmentType }
+      for (const k of ['jobPositionId', 'workLocationId', 'managerId', 'taxJurisdiction'] as const) if (form[k]) body[k] = form[k]
+      const res = await createEmployee.mutateAsync(body)
+      const emp = res.employee
+      let password: string | undefined, accessError: string | undefined
+      if (form.createLogin || form.role !== 'employee') {
+        try {
+          const acc = (await api.put(`/employees/${emp.id}/access`, { roles: form.role === 'employee' ? [] : [form.role], ...(form.createLogin && { password: 'generate', loginEnabled: true }) })).data.data
+          password = acc.temporaryPassword
+        } catch (err: any) { accessError = err?.response?.data?.message || 'Login could not be created' }
+      }
+      qc.invalidateQueries({ queryKey: ['employees'] })
+      setResult({ name: `${form.firstName} ${form.lastName}`.trim(), code: emp.employeeCode, email: body.workEmail as string, password, accessError })
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to create employee')
-    }
+      setError(err?.response?.data?.message || 'Could not add this person')
+    } finally { setBusy(false) }
   }
-
-  const handleClose = () => {
-    setForm({ firstName: '', lastName: '', workEmail: '', orgUnitId: '', jobPositionId: '', workLocationId: '', hireDate: new Date().toISOString().split('T')[0], employmentType: 'full_time', taxJurisdiction: 'ZM' })
-    setResult(null)
-    setError('')
-    onClose()
-  }
+  const close = () => { setForm(initial()); setResult(null); setError(''); onClose() }
 
   if (result) {
     return (
-      <Modal open={open} onClose={handleClose} title="Employee Created">
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
-          <div style={{ fontSize: '16px', fontWeight: '500', color: 'var(--ink)', marginBottom: '4px' }}>
-            {form.firstName} {form.lastName} added
+      <Modal open={open} onClose={close} title="Person added">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--honey)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={20} stroke={2.2} /></span>
+            <div><div style={{ fontFamily: 'var(--font-display)', fontSize: 22 }}>{result.name}</div><div className="dim" style={{ fontSize: 13 }}>Employee code {result.code}</div></div>
           </div>
-          <div style={{ fontSize: '13px', color: 'var(--dim)', marginBottom: '20px' }}>
-            Employee code: <strong>{result.employeeCode}</strong>
+          {result.password && <TemporaryPassword email={result.email} password={result.password} workspace={user?.tenant?.slug} />}
+          {!result.password && !result.accessError && <p className="dim" style={{ fontSize: 13 }}>No login yet. Create one any time from their profile under Login & access.</p>}
+          {result.accessError && <div role="alert" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 14, padding: '10px 14px', fontSize: 13 }}>{result.accessError}. You can retry from their profile.</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={() => { setForm(initial()); setResult(null) }}><Icon name="plus" size={14} /> Add another</button>
+            <button className="btn btn-primary" onClick={close}>Done</button>
           </div>
-          <div style={{ backgroundColor: 'var(--warn-bg)', border: '1px solid var(--honey-2)', borderRadius: '14px', padding: '14px', textAlign: 'left', marginBottom: '20px' }}>
-            <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--warn)', marginBottom: '6px' }}>
-              🔐 Temporary Password — share securely
-            </div>
-            <div style={{ fontFamily: 'monospace', fontSize: '15px', color: 'var(--ink)', letterSpacing: '0.05em' }}>
-              {result.tempPassword}
-            </div>
-          </div>
-          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>
-            Done
-          </button>
         </div>
       </Modal>
     )
   }
 
+  const managers = (people?.data ?? []).filter((p: any) => p.id)
   return (
-    <Modal open={open} onClose={handleClose} title="Add Employee" width={600}>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          <FormField label="First name" required>
-            <input style={inputStyle} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required />
-          </FormField>
-          <FormField label="Last name" required>
-            <input style={inputStyle} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required />
-          </FormField>
+    <Modal open={open} onClose={close} title="Add a person" width={640}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="grid-2">
+          <div className="field"><label htmlFor="ce-fn">First name</label><input id="ce-fn" className="input" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required /></div>
+          <div className="field"><label htmlFor="ce-ln">Last name</label><input id="ce-ln" className="input" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required /></div>
+        </div>
+        <div className="field"><label htmlFor="ce-em">Work email (their sign-in)</label><input id="ce-em" className="input" type="email" value={form.workEmail} onChange={(e) => set('workEmail', e.target.value)} required /></div>
+        <div className="grid-2">
+          <div className="field"><label htmlFor="ce-unit">Department</label>
+            <select id="ce-unit" className="input select" value={form.orgUnitId} onChange={(e) => set('orgUnitId', e.target.value)} required>
+              {flatOrg.map((u: any) => <option key={u.id} value={u.id}>{'· '.repeat(u.depth)}{u.name}</option>)}
+            </select></div>
+          <div className="field"><label htmlFor="ce-mgr">Reports to</label>
+            <select id="ce-mgr" className="input select" value={form.managerId} onChange={(e) => set('managerId', e.target.value)}>
+              <option value="">No manager</option>
+              {managers.map((p: any) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.jobPosition?.title ? ` · ${p.jobPosition.title}` : ''}</option>)}
+            </select></div>
+          <div className="field"><label htmlFor="ce-pos">Job position</label>
+            <select id="ce-pos" className="input select" value={form.jobPositionId} onChange={(e) => set('jobPositionId', e.target.value)}>
+              <option value="">None</option>{positions.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select></div>
+          <div className="field"><label htmlFor="ce-loc">Work location</label>
+            <select id="ce-loc" className="input select" value={form.workLocationId} onChange={(e) => set('workLocationId', e.target.value)}>
+              <option value="">None</option>{locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}{l.city ? ` (${l.city})` : ''}</option>)}
+            </select></div>
+          <div className="field"><label htmlFor="ce-type">Employment type</label>
+            <select id="ce-type" className="input select" value={form.employmentType} onChange={(e) => set('employmentType', e.target.value)}>
+              <option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contractor">Contractor</option><option value="intern">Intern</option>
+            </select></div>
+          <div className="field"><label htmlFor="ce-hire">Start date</label><input id="ce-hire" className="input" type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></div>
+          <div className="field"><label htmlFor="ce-tax">Tax country</label>
+            <select id="ce-tax" className="input select" value={form.taxJurisdiction} onChange={(e) => set('taxJurisdiction', e.target.value)}>
+              <option value="">Not set</option>{COUNTRIES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+            </select></div>
         </div>
 
-        <FormField label="Work email" required>
-          <input style={inputStyle} type="email" value={form.workEmail} onChange={(e) => setForm({ ...form, workEmail: e.target.value })} required />
-        </FormField>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          <FormField label="Department / Org unit" required>
-            <select style={selectStyle} value={form.orgUnitId} onChange={(e) => setForm({ ...form, orgUnitId: e.target.value })} required>
-              <option value="">Select...</option>
-              {flatOrg.map((u: any) => (
-                <option key={u.id} value={u.id}>
-                  {'  '.repeat(u.depth)}{u.name}
-                </option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Job position">
-            <select style={selectStyle} value={form.jobPositionId} onChange={(e) => setForm({ ...form, jobPositionId: e.target.value })}>
-              <option value="">Select...</option>
-              {positions.map((p: any) => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </FormField>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          <FormField label="Work location">
-            <select style={selectStyle} value={form.workLocationId} onChange={(e) => setForm({ ...form, workLocationId: e.target.value })}>
-              <option value="">Select...</option>
-              {locations.map((l: any) => (
-                <option key={l.id} value={l.id}>{l.name} {l.city ? `(${l.city})` : ''}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Employment type" required>
-            <select style={selectStyle} value={form.employmentType} onChange={(e) => setForm({ ...form, employmentType: e.target.value })}>
-              <option value="full_time">Full Time</option>
-              <option value="part_time">Part Time</option>
-              <option value="contractor">Contractor</option>
-              <option value="intern">Intern</option>
-            </select>
-          </FormField>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          <FormField label="Hire date" required>
-            <input style={inputStyle} type="date" value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} required />
-          </FormField>
-          <FormField label="Tax jurisdiction">
-            <select style={selectStyle} value={form.taxJurisdiction} onChange={(e) => setForm({ ...form, taxJurisdiction: e.target.value })}>
-              <option value="ZM">Zambia (ZRA)</option>
-              <option value="IN">India (Income Tax)</option>
-              <option value="KE">Kenya (eTIMS)</option>
-              <option value="NG">Nigeria (NRS)</option>
-            </select>
-          </FormField>
-        </div>
-
-        {error && (
-          <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: '12px', padding: '10px 12px', fontSize: '13px', border: '1px solid var(--danger-line)' }}>
-            {error}
+        <fieldset className="well" style={{ border: 'none', padding: 16 }}>
+          <legend style={{ fontWeight: 500, fontSize: 14, padding: 0, float: 'left', width: '100%', marginBottom: 10 }}>Login & role</legend>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, clear: 'both' }}>
+            {ROLES.map((r) => (
+              <label key={r.v} className="card" style={{ padding: 10, cursor: 'pointer', border: form.role === r.v ? '1.5px solid var(--night)' : '1px solid var(--hair)' }}>
+                <input type="radio" name="ce-role" value={r.v} checked={form.role === r.v} onChange={() => set('role', r.v)} style={{ marginRight: 6 }} />
+                <strong style={{ fontWeight: 500, fontSize: 13 }}>{r.l}</strong><div className="dim" style={{ fontSize: 11, marginTop: 2 }}>{r.h}</div>
+              </label>
+            ))}
           </div>
-        )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13 }}>
+            <input type="checkbox" checked={form.createLogin} onChange={(e) => set('createLogin', e.target.checked)} /> Create their login now (temporary password, changed at first sign-in)
+          </label>
+        </fieldset>
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer', color: 'var(--ink)' }}>
-            Cancel
-          </button>
-          <button type="submit" disabled={createEmployee.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: createEmployee.isPending ? 0.7 : 1 }}>
-            {createEmployee.isPending ? 'Creating...' : 'Create Employee'}
-          </button>
+        {error && <div role="alert" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 14, padding: '10px 14px', fontSize: 13 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button type="button" className="btn btn-ghost" onClick={close}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={busy || !form.firstName.trim() || !form.lastName.trim() || !form.workEmail.trim() || !form.orgUnitId}>{busy ? 'Adding…' : 'Add person'}</button>
         </div>
       </form>
     </Modal>

@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -20,6 +21,13 @@ model Tenant {
   timezone        String   @default("UTC")
   logoUrl         String?
   ssoProvider     String?
+  legalName       String?
+  industry        String?
+  companySize     String?
+  primaryCountry  String?
+  modules         String[]  @default([])
+  ownerUserId     String?
+  onboardedAt     DateTime?
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -72,6 +80,7 @@ model User {
   mfaLastStep   Int?
   googleSub     String?
   tourDoneAt    DateTime?
+  mustChangePassword Boolean @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

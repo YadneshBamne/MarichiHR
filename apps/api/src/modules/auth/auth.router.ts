@@ -2,12 +2,15 @@ import { Router } from 'express'
 import { authController } from './auth.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { authenticate } from '../../middleware/auth.middleware'
-import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema, TourSchema } from './auth.schema'
+import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema, TourSchema, SignupSchema, ChangePasswordSchema } from './auth.schema'
 import { googleSso } from './google.sso'
 
 export const authRouter = Router()
 
 authRouter.post('/login', validate(LoginSchema), authController.login)
+authRouter.post('/signup', validate(SignupSchema), authController.signup)
+authRouter.get('/workspace/:slug', authController.workspace)
+authRouter.post('/change-password', authenticate, validate(ChangePasswordSchema), authController.changePassword)
 authRouter.post('/refresh', validate(RefreshSchema), authController.refresh)
 authRouter.post('/logout', authController.logout)
 authRouter.get('/me', authenticate, authController.me)

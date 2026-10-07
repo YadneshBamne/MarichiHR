@@ -277,9 +277,10 @@ export const employeeRepository = {
     })
   },
 
+  // Next code after the highest existing EMPnnnn (counting rows breaks once codes have gaps)
   async generateEmployeeCode(tenantId: string): Promise<string> {
-    const count = await prisma.employee.count({ where: { tenantId } })
-    return `EMP${String(count + 1).padStart(4, '0')}`
+    const rows = await prisma.$queryRaw<{ n: number | null }[]>`SELECT max(substring("employeeCode" from 4)::int) AS n FROM employees WHERE "tenantId" = ${tenantId} AND "employeeCode" ~ '^EMP[0-9]+$'`
+    return `EMP${String((rows[0]?.n ?? 0) + 1).padStart(4, '0')}`
   },
 
   async addSkill(employeeId: string, data: AddSkillDto) {

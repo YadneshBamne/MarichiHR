@@ -11,12 +11,13 @@ import {
 type Tab = 'leave' | 'attendance'
 
 export default function ApprovalsPage() {
-  const { isManager } = useAuth()
-  const [activeTab, setActiveTab] = useState<Tab>('leave')
+  const { isManager, hasApp } = useAuth()
+  const lv = hasApp('leave'), att = hasApp('attendance')
+  const [activeTab, setActiveTab] = useState<Tab>(lv ? 'leave' : 'attendance')
 
-  const { data: pendingLeave = [] } = usePendingLeaveApprovals()
-  const { data: pendingReg = [] } = useAttPendingReg()
-  const { data: pendingOT = [] } = useAttPendingOT()
+  const { data: pendingLeave = [] } = usePendingLeaveApprovals(isManager && lv)
+  const { data: pendingReg = [] } = useAttPendingReg(isManager && att)
+  const { data: pendingOT = [] } = useAttPendingOT(isManager && att)
 
   const leaveCount = Array.isArray(pendingLeave) ? pendingLeave.length : 0
   const attendanceCount = (Array.isArray(pendingReg) ? pendingReg.length : 0) + (Array.isArray(pendingOT) ? pendingOT.length : 0)
@@ -33,8 +34,8 @@ export default function ApprovalsPage() {
   }
 
   const TABS = [
-    { key: 'leave' as Tab, label: `Leave Requests`, count: leaveCount },
-    { key: 'attendance' as Tab, label: `Attendance`, count: attendanceCount },
+    ...(lv ? [{ key: 'leave' as Tab, label: 'Leave requests', count: leaveCount }] : []),
+    ...(att ? [{ key: 'attendance' as Tab, label: 'Attendance', count: attendanceCount }] : []),
   ]
 
   return (
@@ -65,8 +66,9 @@ export default function ApprovalsPage() {
         ))}
       </div>
 
-      {activeTab === 'leave' && <LeaveApprovalsPanel />}
-      {activeTab === 'attendance' && <ApprovalsPanel />}
+      {activeTab === 'leave' && lv && <LeaveApprovalsPanel />}
+      {activeTab === 'attendance' && att && <ApprovalsPanel />}
+      {!lv && !att && <div className="card" style={{ padding: 40, textAlign: 'center' }}><div className="display" style={{ fontSize: 22 }}>Nothing to approve here yet</div><p className="dim" style={{ marginTop: 6, fontSize: 13 }}>Approvals come from the Leave and Attendance apps. Expense approvals live in Expenses.</p></div>}
     </div>
   )
 }

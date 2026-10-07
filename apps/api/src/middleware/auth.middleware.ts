@@ -7,7 +7,10 @@ export interface AuthPayload {
   tenantId: string
   roleIds: string[]
   employeeId?: string
+  pwc?: boolean
 }
+
+const PWC_ALLOWED = ['/api/v1/auth/me', '/api/v1/auth/change-password', '/api/v1/auth/logout']
 
 declare global {
   namespace Express {
@@ -26,6 +29,9 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
     const token = authHeader.split(' ')[1]
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as AuthPayload
+    if (payload.pwc && !PWC_ALLOWED.some((p) => req.originalUrl.split('?')[0] === p)) {
+      throw new AppError('Set a new password before continuing', 403, 'PASSWORD_CHANGE_REQUIRED')
+    }
     req.user = payload
     next()
   } catch (err) {
