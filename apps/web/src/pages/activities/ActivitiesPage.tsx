@@ -45,7 +45,7 @@ export default function ActivitiesPage() {
     <div style={s.page}>
       <div style={s.header}>
         <div>
-          <h2 style={s.title}>My Activities</h2>
+          <h2 style={s.title}>Tasks</h2>
           <p style={s.sub}>Tasks and follow-ups assigned to you</p>
         </div>
       </div>

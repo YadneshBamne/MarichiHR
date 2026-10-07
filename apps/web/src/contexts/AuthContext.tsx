@@ -107,7 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasApp = (app: string) => user?.tenant?.modules?.includes(app) ?? false
 
   const isHR = hasRole('hr_admin') || hasRole('system_admin') || hasRole('payroll_admin')
-  const isManager = hasRole('manager') || isHR
+  // People with a team to approve for (payroll staff are not approvers)
+  const isManager = hasRole('manager') || hasRole('hr_admin') || hasRole('system_admin')
   const isAdmin = hasRole('hr_admin') || hasRole('system_admin')
 
   return (

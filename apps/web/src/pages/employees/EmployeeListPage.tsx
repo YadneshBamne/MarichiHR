@@ -6,6 +6,7 @@ import { useReveal, useRowsIn } from '../../lib/motion'
 import PageHeader, { SearchField, EmptyState } from '../../components/ui/PageHeader'
 import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
+import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import CreateEmployeeModal from './CreateEmployeeModal'
 
 const STATUS_PILL: Record<string, string> = { active: 'ok', probation: 'honey', notice: 'warn', on_leave: 'info', terminated: 'mute', resigned: 'mute' }
@@ -17,7 +18,8 @@ function flatten(nodes: any[] = [], out: any[] = []): any[] {
 }
 
 export default function EmployeeListPage() {
-  const { isHR } = useAuth()
+  const { isAdmin: isHR } = useAuth() // only HR / system admins add people
+  const pageTitle = usePageLabel('/employees')
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
@@ -42,7 +44,7 @@ export default function EmployeeListPage() {
   return (
     <div ref={page$}>
       <PageHeader
-        title="People"
+        title={pageTitle}
         sub={meta ? `${meta.total} ${archived ? 'including archived' : 'active'} ${meta.total === 1 ? 'person' : 'people'}` : ' '}
         actions={<>
           <SearchField value={q} onChange={setQ} placeholder="Search by name, email or code" width={280} />

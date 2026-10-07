@@ -1,0 +1,48 @@
+PASS  employee dashboard: only their own section
+PASS  employee dashboard carries own leave, attendance, tasks
+PASS  manager dashboard: own + team (direct reports)
+PASS  manager team lists only people who report to them
+PASS  payroll/finance dashboard: payroll only (no employee record, no team, no company)
+PASS  HR/admin dashboard: own + company-wide team + company + payroll
+PASS  company section has headcount and departments
+PASS  employee has no approvals waiting by definition
+PASS  manager counts load
+PASS  employee cannot open team attendance today (403)
+PASS  employee cannot open team leave calendar (403)
+PASS  employee cannot open leave approvals inbox (403)
+PASS  employee cannot open attendance approvals inbox (403)
+PASS  employee cannot open expense approvals inbox (403)
+PASS  employee cannot open employee directory (403)
+PASS  employee cannot open payroll cycles (403)
+PASS  employee cannot open salary structures (403)
+PASS  employee cannot open scheduled jobs (403)
+PASS  employee cannot open offboarding list (403)
+PASS  employee can open their own /leave/balances/me
+PASS  employee can open their own /attendance/today
+PASS  employee can open their own /payroll/payslips/me
+PASS  employee can open their own /expenses/claims/me
+PASS  employee can open their own /activities/mine
+PASS  manager can open /attendance/team/today
+PASS  manager can open /leave/calendar/team
+PASS  manager can open /leave/requests/pending
+PASS  manager can open /employees
+PASS  manager directory is limited to themselves and their reports
+PASS  manager cannot open /payroll/cycles (403)
+PASS  manager cannot open /salary/structures (403)
+PASS  manager cannot open /exits (403)
+PASS  manager cannot open /system/jobs (403)
+PASS  manager cannot open /company/modules (403)
+PASS  finance can open /payroll/cycles
+PASS  finance can open /salary/structures
+PASS  finance can open /expenses/claims/awaiting-finance
+PASS  finance cannot open /leave/requests/pending (403)
+PASS  finance cannot open /attendance/team/today (403)
+PASS  finance cannot open /attendance/regularisations/pending (403)
+PASS  finance cannot add employees (403)
+PASS  HR/admin can open /attendance/team/today
+PASS  HR/admin can open /leave/requests/pending
+PASS  HR/admin can open /employees
+PASS  HR/admin can open /payroll/cycles
+PASS  HR/admin can open /system/jobs
+PASS  HR/admin can open /exits
+47/47 passed

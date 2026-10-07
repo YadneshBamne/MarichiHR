@@ -22,17 +22,17 @@ PASS  FINANCE signed off by its responsible user
 PASS  ADMIN signed off by its responsible user
 PASS  MANAGER signed off by its responsible user
 PASS  signing twice is 400
-PASS  2028-05 payroll run skips the leaver ("full & final")
+PASS  2028-07 payroll run skips the leaver ("full & final")
 PASS  payroll_admin cannot compute (403)
 PASS  HR computes: status computed
-PASS  salary prorated by the payroll engine: BASIC 3478.26 (8000 × 10/23 weekdays)
+PASS  salary prorated by the payroll engine: BASIC 3047.62 (8000 × 8/21 weekdays)
 PASS  salary carries PAYE and NAPSA from the engine
 PASS  leave encashment: 10 days × 266.67 = 2666.7
 PASS  notice shortfall recovery: 7 × 266.67 = 1866.69 (deduction)
 PASS  pending approved reimbursement included (300)
 PASS  manual recovery line (500)
 PASS  gratuity is a labelled 0 placeholder
-PASS  totals: earnings 11662.35 − deductions 3610.6 = net 8051.75
+PASS  totals: earnings 10585.75 − deductions 3242.4 = net 7343.35
 PASS  HR who computed cannot approve (403)
 PASS  manager without payroll:disburse cannot approve (403)
 PASS  pay before approval is 400

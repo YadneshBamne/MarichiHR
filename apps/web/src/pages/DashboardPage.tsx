@@ -1,23 +1,23 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
-import { useTodayAttendance, useClockIn, useClockOut } from '../lib/hooks/useAttendance'
-import { useReveal, useCountUp, gsap, reduced, pop } from '../lib/motion'
-import { useToast } from '../components/ui/Toast'
+import { useReveal, useCountUp, gsap, reduced } from '../lib/motion'
+import { primaryRole } from '../components/AppShell'
+import { TimeTracker, TasksCard, CardHead } from '../components/dashboard/Widgets'
 import Icon, { type IconName } from '../components/ui/Icon'
 import Avatar from '../components/ui/Avatar'
+import Badge from '../components/ui/Badge'
 
-// ─── date helpers (date-only values are UTC-midnight YYYY-MM-DD) ──────────────
-const ymd = (d: Date) => d.toISOString().slice(0, 10)
+// Role-based home. The API decides which sections exist for this person (self / team / company / payroll);
+// this page lays them out on a 12-column grid so every row lines up, whatever the role.
+export { TimeTracker } from '../components/dashboard/Widgets'
+
 const utc = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00Z`)
-const addDays = (s: string, n: number) => ymd(new Date(utc(s).getTime() + n * 86400000))
-const localToday = () => { const d = new Date(); return ymd(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))) }
-const mondayOf = (s: string) => addDays(s, -((utc(s).getUTCDay() + 6) % 7))
 const fmt = (s: string, o: Intl.DateTimeFormatOptions) => utc(s).toLocaleDateString(undefined, { timeZone: 'UTC', ...o })
-const DAY_HOURS = 8
-const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
+const STAGE: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'HR review', approved: 'HR approved', finance_approved: 'Finance approved', disbursed: 'Paid' }
+const STAGES = ['draft', 'processing', 'review', 'approved', 'finance_approved', 'disbursed']
 
 function greeting() {
   const h = new Date().getHours()
@@ -25,179 +25,195 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const { user, hasRole, hasApp } = useAuth()
-  const att = hasApp('attendance'), lv = hasApp('leave'), pay = hasApp('payroll')
-  const isManager = hasRole('manager') || hasRole('hr_admin') || hasRole('system_admin')
-  const hasEmployee = !!user?.employee
-  const today = localToday()
-  const thisMonth = { y: utc(today).getUTCFullYear(), m: utc(today).getUTCMonth() + 1 }
-  const prevMonth = thisMonth.m === 1 ? { y: thisMonth.y - 1, m: 12 } : { y: thisMonth.y, m: thisMonth.m - 1 }
+  const { user } = useAuth()
+  const roles = user?.roles?.map((r) => r.name) ?? []
+  const role = primaryRole(roles)
+  const { data: d, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: async () => (await api.get('/dashboard')).data.data, staleTime: 30_000 })
+  const ref = useReveal<HTMLDivElement>(!!d)
+  const first = user?.employee?.firstName || user?.fullName?.split(' ')[0]
+  const has = (a: string) => d?.apps?.includes(a)
 
-  const dash = useQuery({ queryKey: ['dashboard'], enabled: hasEmployee, queryFn: async () => (await api.get('/activities/dashboard')).data.data })
-  const calNow = useQuery({ queryKey: ['attendance-calendar-me', thisMonth.y, thisMonth.m], enabled: hasEmployee && att, queryFn: async () => (await api.get('/attendance/calendar/me', { params: { year: thisMonth.y, month: thisMonth.m } })).data.data })
-  const calPrev = useQuery({ queryKey: ['attendance-calendar-me', prevMonth.y, prevMonth.m], enabled: hasEmployee && att && utc(today).getUTCDate() < 8, queryFn: async () => (await api.get('/attendance/calendar/me', { params: { year: prevMonth.y, month: prevMonth.m } })).data.data })
-  const payslips = useQuery({ queryKey: ['my-payslips'], enabled: hasEmployee && pay, queryFn: async () => (await api.get('/payroll/payslips/me')).data.data as any[] })
-  const unread = useQuery({ queryKey: ['notifications'], queryFn: async () => (await api.get('/notifications')).data.data })
-
-  const days = useMemo(() => [...(calPrev.data?.calendar ?? []), ...(calNow.data?.calendar ?? [])] as any[], [calNow.data, calPrev.data])
-  const emp = dash.data?.employee
-  const balances: any[] = emp?.leaveBalances ?? []
-  const leaveTotal = balances.reduce((a, b) => a + (b.total || 0), 0)
-  const leaveUsed = balances.reduce((a, b) => a + (b.used || 0), 0)
-  const leaveLeft = balances.reduce((a, b) => a + (b.available || 0), 0)
-
-  // Attendance so far this month: present (or half) working days over working days elapsed
-  const monthDays = (calNow.data?.calendar ?? []).filter((d: any) => d.date < today && !d.isWeekend)
-  const presentish = monthDays.filter((d: any) => ['present', 'half_day', 'on_leave'].includes(d.status)).length
-  const attendancePct = monthDays.length ? Math.round((presentish / monthDays.length) * 100) : 0
-  const monthHours = calNow.data?.summary?.totalWorkedHours ?? 0
-  const expectedHours = monthDays.length * DAY_HOURS
-  const hoursPct = expectedHours ? Math.min(100, Math.round((monthHours / expectedHours) * 100)) : 0
-
-  const lastPay = (payslips.data ?? []).find((p) => ymd(new Date(p.payrollCycle.payPeriodEnd)) <= today) ?? payslips.data?.[0]
-  const ref = useReveal<HTMLDivElement>()
+  // Quick actions only for things this person can actually do
+  const actions: [string, IconName, string][] = [
+    ...(d?.self && has('leave') ? [['/leave', 'leaf', 'Apply for leave'] as [string, IconName, string]] : []),
+    ...(d?.self && has('expenses') ? [['/expenses', 'receipt', 'New expense claim'] as [string, IconName, string]] : []),
+    ...(d?.team?.approvals?.total ? [['/approvals', 'checkCircle', `Review approvals (${d.team.approvals.total})`] as [string, IconName, string]] : []),
+    ...(d?.company ? [['/employees', 'plus', 'Add employee'] as [string, IconName, string]] : []),
+    ...(d?.payroll?.current && d.payroll.current.status !== 'disbursed' ? [[`/payroll/cycles/${d.payroll.current.id}`, 'wallet', 'Open payroll cycle'] as [string, IconName, string]] : []),
+  ]
 
   return (
     <div ref={ref}>
-      {/* ─── Greeting + KPI rail ─── */}
-      <div data-rise className="dash-head">
-        <h1 style={{ fontSize: 'clamp(34px, 4.4vw, 54px)', lineHeight: 1.05 }}>{greeting()}, {user?.employee?.firstName || user?.fullName?.split(' ')[0]}</h1>
-      </div>
-      <div className="dash-kpis" data-tour="kpis">
-        <div className="kpi-rail" data-rise>
-          {hasEmployee ? (
-            <>
-              {lv && <Seg label="Leave used" pct={leaveTotal ? Math.round((leaveUsed / leaveTotal) * 100) : 0} kind="night" grow={1.1} />}
-              {att && <Seg label="Attendance" pct={attendancePct} kind="honey" grow={1} />}
-              {att && <Seg label="Hours vs plan" pct={hoursPct} kind="stripes" grow={2.2} />}
-              <Seg label="Open tasks" pct={emp?.pendingActivities ?? 0} raw kind="outline" grow={0.9} />
-            </>
-          ) : (
-            <div className="dim" style={{ fontSize: 13 }}>Signed in as {user?.roles?.map((r) => r.name.replace(/_/g, ' ')).join(', ')} without an employee record. Personal widgets are hidden.</div>
-          )}
+      <header data-rise style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
+        <div style={{ flex: '1 1 320px' }}>
+          <div className="dim" style={{ fontSize: 13 }}>{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+          <h1 style={{ fontSize: 'clamp(30px, 3.6vw, 44px)', lineHeight: 1.05, marginTop: 2 }}>{greeting()}, {first}</h1>
         </div>
-        <div className="kpi-nums" data-rise>
-          {isManager && dash.data?.manager ? (
-            <>
-              <BigNum value={dash.data.manager.teamSize} label="Team" icon="users" />
-              <BigNum value={(lv ? dash.data.manager.pendingLeaveApprovals : 0) + (att ? dash.data.manager.pendingRegularisations : 0)} label="To approve" icon="checkCircle" to="/approvals" />
-              {lv ? <BigNum value={Math.round(leaveLeft * 10) / 10} label="Leave days" icon="leaf" /> : <BigNum value={unread.data?.unread ?? 0} label="Unread" icon="bell" />}
-            </>
-          ) : (
-            <>
-              {lv && <BigNum value={Math.round(leaveLeft * 10) / 10} label="Leave days" icon="leaf" to="/leave" />}
-              <BigNum value={emp?.pendingActivities ?? 0} label="Tasks" icon="list" to="/activities" />
-              <BigNum value={unread.data?.unread ?? 0} label="Unread" icon="bell" />
-            </>
-          )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} data-tour="quick-actions">
+          {actions.slice(0, 3).map(([to, ic, label], i) => <Link key={to} to={to} className={`btn ${i === 0 ? 'btn-primary' : 'btn-ghost'}`}><Icon name={ic} size={15} /> {label}</Link>)}
         </div>
-      </div>
+      </header>
 
-      {/* ─── Card grid ─── */}
-      {hasEmployee ? (
-        <div className={att && lv ? 'dash-grid' : 'dash-grid-auto'}>
-          <ProfileCard lastPay={pay ? lastPay : null} />
-          {att && <ProgressCard days={days} today={today} />}
-          {att && <TimeTracker />}
-          <TasksCard />
-          <AccordionCard balances={lv ? balances : []} payslips={pay ? payslips.data ?? [] : []} apps={{ lv, pay, att }} />
-          {lv && <WeekCard isManager={isManager} />}
-        </div>
-      ) : (
-        <StaffHome />
+      {isLoading || !d ? <Skeleton /> : (
+        <>
+          <Kpis d={d} role={role} />
+          {role === 'payroll_admin' || role === 'compliance_officer' ? <PayrollRows d={d} /> : null}
+          {d.team && <TeamRows d={d} />}
+          {d.company && <CompanyRows d={d} />}
+          {d.self && <SelfRows d={d} />}
+          {d.payroll && role !== 'payroll_admin' && role !== 'compliance_officer' && <PayrollRows d={d} />}
+          {!d.self && !d.team && !d.payroll && !d.company && (
+            <section className="card" style={{ padding: 40, textAlign: 'center' }}><div className="display" style={{ fontSize: 22 }}>Nothing to show yet</div><p className="dim" style={{ marginTop: 6 }}>Your administrator hasn't linked an employee record or role to your account.</p></section>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-// ─── KPI pieces ──────────────────────────────────────────────────────────────
-function Seg({ label, pct, kind, grow, raw }: { label: string; pct: number; kind: string; grow: number; raw?: boolean }) {
-  const n = useCountUp(pct, (v) => (raw ? `${Math.round(v)}` : `${Math.round(v)}%`))
-  const ref = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    if (ref.current && !reduced()) gsap.fromTo(ref.current, { scaleX: 0 }, { scaleX: 1, duration: 1, ease: 'power3.out', delay: 0.2, transformOrigin: '0 50%' })
-  }, [])
+// ─── KPI tiles: always four, always the same height ──────────────────────────
+function Kpis({ d, role }: { d: any; role: string }) {
+  const s = d.self, t = d.team, c = d.company, p = d.payroll
+  const has = (a: string) => d.apps.includes(a)
+  const leaveLeft = s?.leave?.balances?.reduce((a: number, b: any) => a + b.available, 0) ?? 0
+  const att = s?.attendance?.month
+  const tiles: { label: string; value: number; suffix?: string; icon: IconName; to?: string; tone?: 'honey' | 'night' }[] = []
+  if (role === 'system_admin' || role === 'hr_admin') {
+    tiles.push({ label: 'Employees', value: c?.headcount ?? 0, icon: 'users', to: '/employees', tone: 'night' })
+    if (t?.today) tiles.push({ label: 'In today', value: t.today.in, suffix: `/ ${t.size}`, icon: 'clock', to: '/attendance' })
+    tiles.push({ label: 'Approvals waiting', value: t?.approvals?.total ?? 0, icon: 'checkCircle', to: '/approvals', tone: 'honey' })
+    tiles.push({ label: 'Joined this month', value: c?.joiners ?? 0, icon: 'sparkle' })
+    if (!t?.today && has('exits')) tiles.push({ label: 'Exits in progress', value: c?.exitsOpen ?? 0, icon: 'door', to: '/exits' })
+  } else if (role === 'payroll_admin' || role === 'compliance_officer') {
+    tiles.push({ label: 'Open payroll cycles', value: p?.openCycles ?? 0, icon: 'wallet', to: '/payroll', tone: 'night' })
+    tiles.push({ label: 'Payslips in current cycle', value: p?.current?.payslips ?? 0, icon: 'file', to: p?.current ? `/payroll/cycles/${p.current.id}` : '/payroll' })
+    tiles.push({ label: 'Expenses to finance-approve', value: p?.expensesAwaitingFinance ?? 0, icon: 'receipt', to: '/expenses', tone: 'honey' })
+    tiles.push({ label: 'Payroll inputs to approve', value: p?.inputsToApprove ?? 0, icon: 'checkCircle' })
+  } else if (role === 'manager') {
+    tiles.push({ label: 'Team members', value: t?.size ?? 0, icon: 'users', to: '/employees', tone: 'night' })
+    if (t?.today) tiles.push({ label: 'Team in today', value: t.today.in, suffix: `/ ${t.size}`, icon: 'clock', to: '/attendance' })
+    tiles.push({ label: 'Approvals waiting', value: t?.approvals?.total ?? 0, icon: 'checkCircle', to: '/approvals', tone: 'honey' })
+    if (has('leave')) tiles.push({ label: 'My leave days left', value: Math.round(leaveLeft * 10) / 10, icon: 'leaf', to: '/leave' })
+  } else {
+    if (has('leave')) tiles.push({ label: 'Leave days left', value: Math.round(leaveLeft * 10) / 10, icon: 'leaf', to: '/leave', tone: 'night' })
+    if (att) tiles.push({ label: 'Days present this month', value: att.present, suffix: `/ ${att.workingDays}`, icon: 'calendar', to: '/attendance' })
+    if (att) tiles.push({ label: 'Hours this month', value: Math.round(att.hours * 10) / 10, icon: 'clock', to: '/attendance' })
+    tiles.push({ label: 'Open tasks', value: s?.tasks?.open ?? 0, icon: 'list', to: '/activities', tone: 'honey' })
+    if (s?.payslip && tiles.length < 4) tiles.push({ label: `Net pay · ${fmt(s.payslip.start, { month: 'short' })}`, value: s.payslip.net, icon: 'wallet', to: `/payroll/payslips/${s.payslip.id}` })
+  }
   return (
-    <div style={{ flex: grow, minWidth: 90 }}>
-      <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>{label}</div>
-      <div ref={ref} className={`seg ${kind}`} style={kind === 'stripes' ? { animation: 'stripes 3.2s linear infinite', backgroundSize: '22px 22px' } : undefined}>
-        <span className="num" style={kind === 'stripes' ? { background: 'var(--solid)', padding: '2px 8px', borderRadius: 999 } : undefined}><span ref={n}>0</span></span>
-      </div>
+    <div className="dgrid" data-tour="kpis" style={{ marginBottom: 'var(--gap)' }}>
+      {tiles.slice(0, 4).map((k) => <Kpi key={k.label} {...k} />)}
     </div>
   )
 }
 
-function BigNum({ value, label, icon, to }: { value: number; label: string; icon: IconName; to?: string }) {
-  const n = useCountUp(value, (v) => (Number.isInteger(value) ? Math.round(v).toString() : v.toFixed(1)))
+function Kpi({ label, value, suffix, icon, to, tone }: { label: string; value: number; suffix?: string; icon: IconName; to?: string; tone?: 'honey' | 'night' }) {
+  const n = useCountUp(value, (v) => (Number.isInteger(value) ? Math.round(v).toLocaleString() : v.toFixed(1)))
+  const bg = tone === 'night' ? 'var(--night)' : tone === 'honey' ? 'var(--honey)' : undefined
+  const fg = tone === 'night' ? 'var(--night-ink)' : 'var(--ink)'
   const body = (
     <>
-      <div className="display num" style={{ fontSize: 'clamp(36px, 4vw, 54px)', lineHeight: 1 }}><span ref={n}>0</span></div>
-      <div className="dim" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}><Icon name={icon} size={13} /> {label}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 13, color: tone === 'night' ? 'var(--night-dim)' : tone === 'honey' ? 'var(--honey-ink)' : 'var(--dim)' }}>{label}</span>
+        <span style={{ width: 34, height: 34, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: tone === 'night' ? 'var(--night-2)' : tone === 'honey' ? 'rgba(255,255,255,.35)' : 'var(--well)' }}><Icon name={icon} size={16} /></span>
+      </div>
+      <div style={{ marginTop: 18, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <span className="display num" style={{ fontSize: 44, lineHeight: 1 }}><span ref={n}>0</span></span>
+        {suffix && <span style={{ fontSize: 14, opacity: 0.6 }}>{suffix}</span>}
+      </div>
     </>
   )
-  return to ? <Link to={to} style={{ display: 'block' }}>{body}</Link> : <div>{body}</div>
+  const style = { padding: 20, background: bg, color: fg, display: 'block', minHeight: 132 } as const
+  return to ? <Link to={to} data-card className="card lift span-3" style={style}>{body}</Link> : <div data-card className="card span-3" style={style}>{body}</div>
 }
 
-// ─── Profile hero ────────────────────────────────────────────────────────────
-function ProfileCard({ lastPay }: { lastPay: any }) {
-  const { user } = useAuth()
-  const name = user?.fullName || ''
-  const title = (user?.employee as any)?.jobPosition?.title || user?.roles?.find((r) => r.name !== 'employee')?.name.replace(/_/g, ' ') || 'Team member'
-  const net = useCountUp(lastPay?.netPay ?? null, (v) => Math.round(v).toLocaleString())
+// ─── Manager / HR: team today + approvals, team leave this week ──────────────
+function TeamRows({ d }: { d: any }) {
+  const t = d.team
+  const scopeLabel = t.scope === 'company' ? 'Company' : 'Team'
   return (
-    <Link to={user?.employee ? `/employees/${user.employee.id}` : '/dashboard'} data-card className="card lift area-profile" style={{ position: 'relative', overflow: 'hidden', minHeight: 300, display: 'block', background: 'linear-gradient(160deg, var(--honey-2), var(--app-3) 55%, var(--honey) 140%)' }}>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }}>
-        <Avatar name={name} src={user?.avatarUrl} size={150} />
-      </div>
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '60px 20px 18px', background: 'linear-gradient(transparent, rgba(37,37,35,.72))', color: 'var(--night-ink)', display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-          <div style={{ fontSize: 12, opacity: 0.8, textTransform: 'capitalize' }}>{title}</div>
-        </div>
-        {lastPay && (
-          <span title="Net pay on your latest payslip" style={{ padding: '7px 12px', borderRadius: 999, border: '1px solid rgba(255,255,255,.4)', background: 'rgba(255,255,255,.12)', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', backdropFilter: 'blur(6px)' }}>
-            {lastPay.currency} <span ref={net} className="num">0</span>
-          </span>
+    <div className="dgrid row">
+      <section data-card className="card span-8" style={{ padding: 22 }}>
+        <CardHead title={`${scopeLabel} today`} to={t.scope === 'company' ? '/employees' : '/employees'} />
+        {t.today && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8, marginTop: 14 }}>
+            {([['In', t.today.in, 'honey'], ['On leave', t.today.onLeave, 'night'], ['Not in yet', t.today.notIn, 'outline'], ['Absent', t.today.absent, 'stripes']] as [string, number, string][]).map(([l, v, k]) => (
+              <div key={l}><div className="dim" style={{ fontSize: 12, marginBottom: 5 }}>{l}</div><div className={`seg ${k}`} style={k === 'stripes' ? { backgroundSize: '22px 22px' } : undefined}><span className="num">{v}</span></div></div>
+            ))}
+          </div>
         )}
-      </div>
-    </Link>
+        {t.people.length === 0 ? <Empty icon="users" text={t.scope === 'company' ? 'No employees yet. Add your first people from Employees.' : 'Nobody reports to you yet.'} /> : (
+          <ul style={{ listStyle: 'none', marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+            {t.people.map((p: any) => (
+              <li key={p.id}>
+                <Link to={`/employees/${p.id}`} className="well" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px' }}>
+                  <Avatar name={p.name} src={p.avatarUrl} size={32} />
+                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: 'block', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span><span className="muted" style={{ fontSize: 11 }}>{p.title ?? '—'}</span></span>
+                  <StatusDot s={p.status} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section data-card className="card span-4" style={{ padding: 22, display: 'flex', flexDirection: 'column' }} data-tour="approvals-card">
+        <CardHead title="Approvals" to="/approvals" />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          {t.approvals.leave > 0 && <span className="pill honey" style={{ textTransform: 'none' }}>{t.approvals.leave} leave</span>}
+          {t.approvals.attendance > 0 && <span className="pill info" style={{ textTransform: 'none' }}>{t.approvals.attendance} attendance</span>}
+          {t.approvals.expenses > 0 && <span className="pill warn" style={{ textTransform: 'none' }}>{t.approvals.expenses} expenses</span>}
+          {t.approvals.finance > 0 && <span className="pill night" style={{ textTransform: 'none' }}>{t.approvals.finance} finance</span>}
+        </div>
+        {t.approvals.total === 0 ? <Empty icon="checkCircle" text="You're all caught up." /> : t.approvals.items.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, flex: 1 }}>
+            {t.approvals.expenses > 0 && <TodoLine n={t.approvals.expenses} label="expense claims to approve" to="/expenses" />}
+            {t.approvals.finance > 0 && <TodoLine n={t.approvals.finance} label="claims awaiting finance approval" to="/expenses" />}
+            {t.approvals.signoffs > 0 && <TodoLine n={t.approvals.signoffs} label="exit clearances to sign off" to="/exits" />}
+          </div>
+        ) : (
+          <ul style={{ listStyle: 'none', marginTop: 12, flex: 1 }}>
+            {t.approvals.items.map((a: any) => (
+              <li key={a.kind + a.id} style={{ borderTop: '1px solid var(--line)' }}>
+                <Link to={a.link} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0' }}>
+                  <Avatar name={a.who} size={30} />
+                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: 'block', fontSize: 13, fontWeight: 500 }}>{a.who}</span><span className="dim" style={{ fontSize: 12 }}>{a.title} · {a.detail}</span></span>
+                  <Icon name="chevronRight" size={15} className="muted" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {t.approvals.total > 0 && <Link to="/approvals" className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>Open approvals inbox</Link>}
+      </section>
+
+      {d.apps.includes('leave') && <WeekLeave week={t.week} label={scopeLabel} />}
+    </div>
   )
 }
 
-// ─── Hours over the last 7 days ──────────────────────────────────────────────
-function ProgressCard({ days, today }: { days: any[]; today: string }) {
-  const week = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6)).map((d) => {
-    const rec = days.find((x) => x.date === d)
-    return { date: d, hours: rec?.record?.workedHours ?? 0, status: rec?.status ?? 'no_record', weekend: [0, 6].includes(utc(d).getUTCDay()) }
-  })
-  const worked = week.filter((d) => d.hours > 0)
-  const avg = worked.length ? worked.reduce((a, b) => a + b.hours, 0) / worked.length : 0
-  const avgRef = useCountUp(avg, (v) => v.toFixed(1))
-  const max = Math.max(DAY_HOURS + 2, ...week.map((d) => d.hours))
-  const [hot, setHot] = useState(6)
-  const bars = useRef<HTMLDivElement>(null)
+function WeekLeave({ week, label }: { week: any; label: string }) {
+  const days = Array.from({ length: 5 }, (_, i) => new Date(utc(week.start).getTime() + i * 86400000).toISOString().slice(0, 10))
+  const today = new Date().toISOString().slice(0, 10)
+  const grid = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
-    if (bars.current && !reduced()) gsap.fromTo(bars.current.querySelectorAll('[data-bar]'), { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: 'back.out(1.6)', stagger: 0.05, delay: 0.35, transformOrigin: '50% 100%', clearProps: 'transform' })
-  }, [days.length])
-  const h = (n: number) => `${Math.floor(n)}h ${String(Math.round((n % 1) * 60)).padStart(2, '0')}m`
+    if (grid.current && !reduced()) gsap.fromTo(grid.current.querySelectorAll('[data-ev]'), { opacity: 0, y: 12, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.55, stagger: 0.05, delay: 0.2, ease: 'back.out(1.6)', clearProps: 'opacity,transform' })
+  }, [week.start])
   return (
-    <section data-card className="card area-progress" style={{ padding: 22, display: 'flex', flexDirection: 'column' }}>
-      <CardHead title="Progress" to="/attendance" />
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 10 }}>
-        <span className="display num" style={{ fontSize: 40 }}><span ref={avgRef}>0</span> h</span>
-        <span className="dim" style={{ fontSize: 12, lineHeight: 1.3 }}>Avg. workday<br />last 7 days</span>
-      </div>
-      <div ref={bars} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 16, minHeight: 130 }} role="img" aria-label={`Hours worked: ${week.map((d) => `${fmt(d.date, { weekday: 'short' })} ${d.hours.toFixed(1)}`).join(', ')}`}>
-        {week.map((d, i) => {
-          const on = i === hot
+    <section data-card className="card span-12" style={{ padding: 22 }} data-tour="week">
+      <CardHead title={`${label} leave this week`} to="/leave" />
+      <div ref={grid} style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 8, marginTop: 14 }}>
+        {days.map((day) => {
+          const on = week.leave.filter((l: any) => l.start <= day && l.end >= day)
           return (
-            <div key={d.date} onMouseEnter={() => setHot(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', position: 'relative' }}>
-              {on && d.hours > 0 && <span className="pill honey" style={{ position: 'absolute', top: -4, whiteSpace: 'nowrap', zIndex: 1 }}>{h(d.hours)}</span>}
-              <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', borderLeft: d.hours ? 'none' : '1px dashed var(--line-2)', marginLeft: d.hours ? 0 : '50%' }}>
-                {d.hours > 0 && <span data-bar style={{ width: 10, height: `${(d.hours / max) * 88}%`, borderRadius: 8, background: on ? 'var(--honey)' : 'var(--night)', transition: 'background-color .3s' }} />}
+            <div key={day} style={{ borderLeft: '1px solid var(--line)', paddingLeft: 8, minHeight: 96 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span className="display num" style={{ fontSize: 16, width: 30, height: 30, lineHeight: '30px', textAlign: 'center', borderRadius: '50%', background: day === today ? 'var(--night)' : 'transparent', color: day === today ? 'var(--night-ink)' : 'var(--dim)' }}>{utc(day).getUTCDate()}</span>
+                <span className="dim" style={{ fontSize: 12 }}>{fmt(day, { weekday: 'short' })}</span>
               </div>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: d.hours ? 'var(--night)' : 'var(--line-2)', margin: '8px 0 6px' }} />
-              <span className="dim" style={{ fontSize: 11 }}>{fmt(d.date, { weekday: 'narrow' })}</span>
+              {on.length === 0 && <div className="muted" style={{ fontSize: 11 }}>Everyone in</div>}
+              {on.map((l: any) => <div key={l.id + day} data-ev title={`${l.name} · ${l.type}`} style={{ background: 'var(--honey-2)', borderRadius: 10, padding: '5px 8px', marginBottom: 5, fontSize: 11.5, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong style={{ fontWeight: 600 }}>{l.name.split(' ')[0]}</strong> · {l.type}</div>)}
             </div>
           )
         })}
@@ -206,295 +222,209 @@ function ProgressCard({ days, today }: { days: any[]; today: string }) {
   )
 }
 
-// ─── Live time tracker (clock in / out) ──────────────────────────────────────
-export function TimeTracker() {
-  const { data: t } = useTodayAttendance()
-  const clockIn = useClockIn()
-  const clockOut = useClockOut()
-  const toast = useToast()
-  const [now, setNow] = useState(Date.now())
-  const ring = useRef<SVGCircleElement>(null)
-  const running = !!t?.clockedIn && !t?.clockedOut
-  useEffect(() => {
-    if (!running) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [running])
-  const secs = running && t?.checkInTime ? Math.max(0, (now - new Date(t.checkInTime).getTime()) / 1000) : (t?.workedHours ?? 0) * 3600
-  const hh = String(Math.floor(secs / 3600)).padStart(2, '0')
-  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, '0')
-  const ss = String(Math.floor(secs % 60)).padStart(2, '0')
-  const pct = Math.min(100, (secs / (DAY_HOURS * 3600)) * 100)
-  useLayoutEffect(() => {
-    if (!ring.current) return
-    if (reduced()) ring.current.style.strokeDashoffset = String(100 - pct)
-    else gsap.to(ring.current, { strokeDashoffset: 100 - pct, duration: 1.2, ease: 'power3.inOut' })
-  }, [Math.floor(pct)]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const where = () => new Promise<{ latitude?: number; longitude?: number }>((res) => {
-    if (!navigator.geolocation) return res({})
-    navigator.geolocation.getCurrentPosition((p) => res({ latitude: p.coords.latitude, longitude: p.coords.longitude }), () => res({}), { timeout: 5000 })
-  })
-  const start = async () => {
-    try { await clockIn.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked in. Have a good day!') } catch (e) { toast(errMsg(e), 'error') }
-  }
-  const stop = async () => {
-    try { await clockOut.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked out. Hours saved to attendance.') } catch (e) { toast(errMsg(e), 'error') }
-  }
-  const status = t?.clockedOut ? `Done · ${(t.workedHours ?? 0).toFixed(1)} h` : running ? `Since ${new Date(t!.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not clocked in'
-  const ticks = Array.from({ length: 60 }, (_, i) => { const a = (i / 60) * Math.PI * 2 - Math.PI / 2; const r1 = i % 5 ? 86 : 82; return { x1: 100 + Math.cos(a) * r1, y1: 100 + Math.sin(a) * r1, x2: 100 + Math.cos(a) * 91, y2: 100 + Math.sin(a) * 91 } })
+// ─── HR / admin: company snapshot ───────────────────────────────────────────
+function CompanyRows({ d }: { d: any }) {
+  const c = d.company
+  const max = Math.max(1, ...c.departments.map((x: any) => x.count))
+  const checklist: [boolean, string, string, string][] = [
+    [c.headcount > 1, 'Add your employees', `${c.headcount} on the books`, '/employees'],
+    [c.noLogin === 0, 'Give everyone a login', c.noLogin ? `${c.noLogin} without a login yet` : 'Everyone can sign in', '/employees'],
+    [d.apps.length > 0, 'Choose your apps', `${d.apps.length} installed`, '/settings/apps'],
+    [true, 'Company profile', 'Name, logo, country, currency', '/settings/company'],
+  ]
   return (
-    <section data-card data-tour="clock" className="card area-timer" style={{ padding: 22, display: 'flex', flexDirection: 'column' }}>
-      <CardHead title="Time tracker" to="/attendance" />
-      <div style={{ position: 'relative', width: '100%', maxWidth: 220, aspectRatio: '1', margin: '10px auto 4px' }}>
-        <svg viewBox="0 0 200 200" style={{ width: '100%', height: '100%' }} aria-hidden="true">
-          {ticks.map((k, i) => <line key={i} {...k} stroke="var(--line-2)" strokeWidth={i % 5 ? 1 : 1.6} />)}
-          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--well)" strokeWidth="14" />
-          <circle ref={ring} cx="100" cy="100" r="70" fill="none" stroke="var(--honey)" strokeWidth="14" strokeLinecap="round" pathLength={100} strokeDasharray="100" strokeDashoffset="100" transform="rotate(-90 100 100)" />
-        </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }} aria-live="off">
-          <span className="display num" style={{ fontSize: 40 }}>{hh}:{mm}</span>
-          <span className="dim num" style={{ fontSize: 11 }}>{running ? `${ss}s · running` : status}</span>
-        </div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
-        <button className="btn btn-primary btn-icon" aria-label="Clock in" title="Clock in" disabled={!!t?.clockedIn || clockIn.isPending} onClick={start}><Icon name="play" size={15} /></button>
-        <button className="btn btn-ghost btn-icon" aria-label="Clock out" title="Clock out" disabled={!running || clockOut.isPending} onClick={stop}><Icon name="stop" size={14} /></button>
-        <span className="dim" style={{ fontSize: 12, marginLeft: 'auto', textAlign: 'right' }}>{status}</span>
-      </div>
-    </section>
-  )
-}
-
-// ─── Tasks (activities assigned to me) ───────────────────────────────────────
-const TASK_ICON: Record<string, IconName> = { email: 'mail', call: 'phone', meeting: 'users', 'to-do': 'checkCircle', todo: 'checkCircle', document: 'file', upload: 'file' }
-function TasksCard() {
-  const qc = useQueryClient()
-  const toast = useToast()
-  const { data: tasks = [], isLoading } = useQuery({ queryKey: ['my-activities'], queryFn: async () => (await api.get('/activities/mine')).data.data as any[] })
-  const [done, setDone] = useState<string[]>([])
-  const complete = useMutation({
-    mutationFn: (id: string) => api.post(`/activities/${id}/complete`, { doneNote: 'Completed from the dashboard' }),
-    onSuccess: () => { toast('Task completed'); setTimeout(() => { qc.invalidateQueries({ queryKey: ['my-activities'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }) }, 900) },
-    onError: (e, id) => { setDone((d) => d.filter((x) => x !== id)); toast(errMsg(e), 'error') },
-  })
-  const today = localToday()
-  const weekEnd = addDays(today, 7)
-  const overdue = tasks.filter((t) => ymd(new Date(t.dueDate)) < today).length
-  const thisWeek = tasks.filter((t) => { const d = ymd(new Date(t.dueDate)); return d >= today && d <= weekEnd }).length
-  const later = tasks.length - overdue - thisWeek
-  const pct = tasks.length ? Math.round(((tasks.length - overdue) / tasks.length) * 100) : 100
-  const pctRef = useCountUp(pct, (v) => `${Math.round(v)}%`)
-  const tick = (id: string, el: HTMLElement) => { setDone((d) => [...d, id]); pop(el, 0.4); complete.mutate(id) }
-  const phases = [{ label: 'Overdue', n: overdue, tone: 'var(--danger)' }, { label: 'This week', n: thisWeek, tone: 'var(--honey)' }, { label: 'Later', n: later, tone: 'var(--night)' }]
-  return (
-    <section data-card data-tour="tasks" className="card area-tasks" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ padding: '6px 6px 0', display: 'flex', alignItems: 'baseline' }}>
-        <h2 style={{ fontSize: 22, flex: 1 }}>My tasks</h2>
-        <span className="display num" style={{ fontSize: 36 }} title="Share of open tasks that are on time"><span ref={pctRef}>0%</span></span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, padding: '0 6px' }}>
-        {phases.map((p) => (
-          <div key={p.label}>
-            <div className="dim num" style={{ fontSize: 11, marginBottom: 4 }}>{p.n}</div>
-            <div style={{ height: 30, borderRadius: 10, background: 'var(--well)', overflow: 'hidden', position: 'relative' }}>
-              <span style={{ position: 'absolute', inset: 0, background: p.tone, transformOrigin: '0 50%', transform: `scaleX(${tasks.length ? p.n / tasks.length : 0})`, transition: 'transform .9s var(--ease)', opacity: 0.9 }} />
-              <span style={{ position: 'relative', fontSize: 11, fontWeight: 600, padding: '0 8px', lineHeight: '30px', color: p.n && p.tone !== 'var(--honey)' ? 'var(--night-ink)' : 'var(--ink)', mixBlendMode: 'normal' }}>{p.label}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="card-night scroll-y" style={{ flex: 1, borderRadius: 22, padding: 16, minHeight: 260, maxHeight: 480 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 500, flex: 1 }}>Open tasks</span>
-          <span className="display num" style={{ fontSize: 28 }}>{tasks.length}</span>
-        </div>
-        {isLoading && [0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 40, marginBottom: 10, opacity: 0.15 }} />)}
-        {!isLoading && tasks.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--night-dim)', fontSize: 13 }}><Icon name="sparkle" size={22} style={{ color: 'var(--honey)' }} /><div style={{ marginTop: 8 }}>Nothing on your plate. New tasks assigned to you show up here.</div></div>
-        )}
-        <ul style={{ listStyle: 'none' }}>
-          {tasks.map((t) => {
-            const isDone = done.includes(t.id)
-            const due = ymd(new Date(t.dueDate))
-            const late = due < today
-            return (
-              <li key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 2px', opacity: isDone ? 0.55 : 1, transition: 'opacity .4s' }}>
-                <span style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--night-2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon name={TASK_ICON[(t.activityType?.name || '').toLowerCase()] ?? 'checkCircle'} size={15} />
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 13, textDecoration: isDone ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
-                  <span style={{ fontSize: 11, color: late ? '#f2a48d' : 'var(--night-dim)' }}>{late ? 'Overdue · ' : ''}{fmt(due, { day: 'numeric', month: 'short' })}</span>
-                </span>
-                <button aria-label={`Mark "${t.title}" done`} disabled={isDone} onClick={(e) => tick(t.id, e.currentTarget)}
-                  style={{ width: 26, height: 26, borderRadius: '50%', border: 'none', background: isDone ? 'var(--honey)' : 'var(--night-2)', color: 'var(--ink)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {isDone && <Icon name="check" size={14} stroke={2.2} />}
-                </button>
+    <div className="dgrid row">
+      <section data-card className="card span-6" style={{ padding: 22 }}>
+        <CardHead title="Headcount by department" to="/employees" />
+        {c.departments.length === 0 ? <Empty icon="layers" text="No departments with people yet." /> : (
+          <ul style={{ listStyle: 'none', marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {c.departments.map((dep: any) => (
+              <li key={dep.name}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span>{dep.name}</span><span className="num dim">{dep.count}</span></div>
+                <div style={{ height: 8, borderRadius: 4, background: 'var(--well)', marginTop: 5, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${(dep.count / max) * 100}%`, background: 'var(--night)', borderRadius: 4, transition: 'width 1s var(--ease)' }} /></div>
               </li>
-            )
-          })}
-        </ul>
-      </div>
-    </section>
-  )
-}
-
-// ─── Accordion: balances, payslips, quick actions ────────────────────────────
-function AccordionCard({ balances, payslips, apps }: { balances: any[]; payslips: any[]; apps: { lv: boolean; pay: boolean; att: boolean } }) {
-  const { user } = useAuth()
-  const [open, setOpen] = useState<string | null>(apps.lv ? 'balances' : apps.pay ? 'payslips' : 'actions')
-  const sections: { key: string; title: string; body: React.ReactNode }[] = [
-    {
-      key: 'balances', title: 'Leave balances', body: balances.length ? (
-        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {balances.map((b) => (
-            <li key={b.code}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span>{b.leaveType}</span><span className="num dim">{b.available} / {b.total}</span></div>
-              <div style={{ height: 6, borderRadius: 3, background: 'var(--well)', marginTop: 5, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${b.total ? Math.min(100, (b.available / b.total) * 100) : 0}%`, background: 'var(--night)', borderRadius: 3, transition: 'width 1s var(--ease)' }} /></div>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="dim" style={{ fontSize: 12 }}>No leave allocated yet.</p>,
-    },
-    {
-      key: 'payslips', title: 'Payslips', body: payslips.length ? (
-        <ul style={{ listStyle: 'none' }}>
-          {payslips.slice(0, 3).map((p) => (
-            <li key={p.id}>
-              <Link to={`/payroll/payslips/${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
-                <span style={{ width: 34, height: 34, borderRadius: 12, background: 'var(--well)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="file" size={16} /></span>
-                <span style={{ flex: 1 }}><span style={{ display: 'block', fontSize: 13 }}>{new Date(p.payrollCycle.payPeriodStart).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span><span className="muted" style={{ fontSize: 11 }}>Net {p.currency} {Number(p.netPay).toLocaleString()}</span></span>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section data-card className="card span-6" style={{ padding: 22 }}>
+        <CardHead title="Workspace setup" to="/settings" />
+        <ul style={{ listStyle: 'none', marginTop: 12 }}>
+          {checklist.map(([done, title, sub, to]) => (
+            <li key={title} style={{ borderTop: '1px solid var(--line)' }}>
+              <Link to={to} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0' }}>
+                <span style={{ width: 26, height: 26, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: done ? 'var(--honey)' : 'transparent', border: done ? 'none' : '1.5px solid var(--line-2)' }}>{done && <Icon name="check" size={13} stroke={2.4} />}</span>
+                <span style={{ flex: 1 }}><span style={{ display: 'block', fontSize: 13.5, fontWeight: 500 }}>{title}</span><span className="dim" style={{ fontSize: 12 }}>{sub}</span></span>
                 <Icon name="chevronRight" size={15} className="muted" />
               </Link>
             </li>
           ))}
         </ul>
-      ) : <p className="dim" style={{ fontSize: 12 }}>Payslips appear here once payroll is released.</p>,
-    },
-    {
-      key: 'actions', title: 'Quick actions', body: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {([...(apps.lv ? [['/leave', 'leaf', 'Apply for leave']] : []), ['/expenses', 'receipt', 'New expense claim'], ...(apps.att ? [['/attendance', 'clock', 'Fix a missed punch']] : []), ['/security', 'lock', 'Turn on two-factor']] as [string, IconName, string][]).filter(([to]) => to !== '/expenses' || user?.tenant?.modules?.includes('expenses')).map(([to, ic, label]) => (
-            <Link key={to} to={to} className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }}><Icon name={ic} size={14} /> {label}</Link>
-          ))}
-        </div>
-      ),
-    },
-  ]
-  const shown = sections.filter((x) => (x.key !== 'balances' || apps.lv) && (x.key !== 'payslips' || apps.pay))
-  return (
-    <section data-card data-tour="balances" className="card area-acc" style={{ padding: '8px 20px' }}>
-      {shown.map((s, i) => <AccItem key={s.key} title={s.title} open={open === s.key} last={i === shown.length - 1} onToggle={() => setOpen(open === s.key ? null : s.key)}>{s.body}</AccItem>)}
-    </section>
-  )
-}
-
-function AccItem({ title, open, onToggle, children, last }: { title: string; open: boolean; onToggle: () => void; children: React.ReactNode; last: boolean }) {
-  const body = useRef<HTMLDivElement>(null)
-  const chev = useRef<HTMLSpanElement>(null)
-  const first = useRef(true)
-  useLayoutEffect(() => {
-    const el = body.current
-    if (!el) return
-    if (first.current || reduced()) { el.style.height = open ? 'auto' : '0px'; first.current = false; return }
-    gsap.to(chev.current, { rotation: open ? 180 : 0, duration: 0.45, ease: 'power3.out' })
-    if (open) gsap.fromTo(el, { height: 0 }, { height: 'auto', duration: 0.5, ease: 'power3.out' })
-    else gsap.to(el, { height: 0, duration: 0.4, ease: 'power3.inOut' })
-    if (open) gsap.fromTo(el.children, { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.45, delay: 0.08, ease: 'power3.out', clearProps: 'opacity,transform' })
-  }, [open])
-  return (
-    <div style={{ borderBottom: last ? 'none' : '1px solid var(--line)' }}>
-      <button onClick={onToggle} aria-expanded={open} style={{ display: 'flex', width: '100%', alignItems: 'center', padding: '14px 0', border: 'none', background: 'none', fontSize: 14, fontWeight: 500, textAlign: 'left' }}>
-        <span style={{ flex: 1 }}>{title}</span>
-        <span ref={chev} style={{ display: 'inline-flex', transform: open ? 'rotate(180deg)' : undefined }}><Icon name="chevronDown" size={16} /></span>
-      </button>
-      <div ref={body} style={{ overflow: 'hidden', height: 0 }}><div style={{ paddingBottom: 14 }}>{children}</div></div>
+        {d.apps.includes('exits') && c.exitsOpen > 0 && <Link to="/exits" className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}><Icon name="door" size={13} /> {c.exitsOpen} exit{c.exitsOpen === 1 ? '' : 's'} in progress</Link>}
+      </section>
     </div>
   )
 }
 
-// ─── Week of leave (mine + my team) ──────────────────────────────────────────
-function WeekCard({ isManager }: { isManager: boolean }) {
-  const { user } = useAuth()
-  const today = localToday()
-  const [start, setStart] = useState(mondayOf(today))
-  const dir = useRef(0)
-  const end = addDays(start, 6)
-  const mine = useQuery({ queryKey: ['leave-requests-me', 'week'], queryFn: async () => (await api.get('/leave/requests/me', { params: { limit: 100 } })).data.data })
-  const team = useQuery({ queryKey: ['leave-team-week', start], enabled: isManager, queryFn: async () => (await api.get('/leave/calendar/team', { params: { startDate: start, endDate: end } })).data.data as any[] })
-  const myList: any[] = Array.isArray(mine.data) ? mine.data : mine.data?.items ?? mine.data?.data ?? []
-  const events = [
-    ...myList.filter((r) => ['approved', 'pending'].includes(r.status)).map((r) => ({ id: r.id, who: 'You', name: user?.fullName || 'You', type: r.leaveType?.name, start: ymd(new Date(r.startDate)), end: ymd(new Date(r.endDate)), pending: r.status === 'pending', mine: true })),
-    ...(team.data ?? []).map((r) => ({ id: r.id, who: r.employee?.user?.fullName?.split(' ')[0], name: r.employee?.user?.fullName, type: r.leaveType?.name, start: ymd(new Date(r.startDate)), end: ymd(new Date(r.endDate)), pending: false, mine: false })),
-  ].filter((e) => e.start <= end && e.end >= start)
-  const days = Array.from({ length: 6 }, (_, i) => addDays(start, i))
-  const grid = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    if (!grid.current || reduced()) return
-    gsap.fromTo(grid.current.querySelectorAll('[data-day]'), { x: dir.current * 26, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, stagger: 0.035, ease: 'power3.out', clearProps: 'opacity,transform' })
-    gsap.fromTo(grid.current.querySelectorAll('[data-ev]'), { opacity: 0, y: 14, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.06, delay: 0.15, ease: 'back.out(1.7)', clearProps: 'opacity,transform' })
-  }, [start, events.length])
-  const move = (n: number) => { dir.current = n; setStart(addDays(start, n * 7)) }
+// ─── Personal: clock, hours, leave, tasks, pay ──────────────────────────────
+function SelfRows({ d }: { d: any }) {
+  const s = d.self
+  const att = s.attendance
+  const lv = s.leave
+  const managerLike = !!d.team
   return (
-    <section data-card data-tour="week" className="card area-week" style={{ padding: 20, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => move(-1)} aria-label="Previous week"><Icon name="chevronLeft" size={14} /> {fmt(addDays(start, -7), { day: 'numeric', month: 'short' })}</button>
-        <h2 style={{ flex: 1, textAlign: 'center', fontSize: 18 }}>{fmt(start, { day: 'numeric', month: 'short' })} – {fmt(addDays(start, 5), { day: 'numeric', month: 'short' })}</h2>
-        {start !== mondayOf(today) && <button className="link" onClick={() => { dir.current = start > today ? -1 : 1; setStart(mondayOf(today)) }}>Today</button>}
-        <button className="btn btn-ghost btn-sm" onClick={() => move(1)} aria-label="Next week">{fmt(addDays(start, 7), { day: 'numeric', month: 'short' })} <Icon name="chevronRight" size={14} /></button>
+    <>
+      {managerLike && <h2 data-rise className="display" style={{ fontSize: 22, margin: '8px 2px 12px' }}>My work</h2>}
+      <div className="dgrid row">
+        {att && <TimeTracker className="span-4" />}
+        {att && <HoursCard last7={att.last7} />}
+        {lv && <LeaveCard lv={lv} span={att ? 'span-4' : 'span-6'} />}
+        <TasksCard className={att ? 'span-6' : lv ? 'span-6' : 'span-8'} />
+        <PayCard payslip={s.payslip} apps={d.apps} span={att || lv ? 'span-6' : 'span-4'} />
       </div>
-      <div ref={grid} style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6, marginTop: 14, flex: 1, minHeight: 190 }}>
-        {days.map((d) => {
-          const isToday = d === today
-          const dayEvents = events.filter((e) => e.start <= d && e.end >= d)
-          return (
-            <div key={d} data-day style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', borderLeft: '1px solid var(--line)', paddingLeft: 6, minWidth: 0 }}>
-              <div style={{ textAlign: 'center', marginBottom: 10 }}>
-                <div className="dim" style={{ fontSize: 11 }}>{fmt(d, { weekday: 'short' })}</div>
-                <div className="display num" style={{ fontSize: 18, width: 34, height: 34, lineHeight: '34px', margin: '2px auto 0', borderRadius: '50%', background: isToday ? 'var(--night)' : 'transparent', color: isToday ? 'var(--night-ink)' : 'var(--dim)' }}>{utc(d).getUTCDate()}</div>
-              </div>
-              {dayEvents.map((e) => (
-                <div key={e.id + d} data-ev title={`${e.name} · ${e.type}${e.pending ? ' (pending)' : ''}`} style={{ borderRadius: 12, padding: '6px 8px', marginBottom: 6, fontSize: 11.5, lineHeight: 1.3, background: e.mine ? (e.pending ? 'var(--card-2)' : 'var(--night)') : 'var(--honey-2)', color: e.mine && !e.pending ? 'var(--night-ink)' : 'var(--ink)', border: e.pending ? '1px dashed var(--line-2)' : '1px solid transparent', overflow: 'hidden' }}>
-                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.who}</div>
-                  <div style={{ opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.type}{e.pending ? ' · pending' : ''}</div>
+    </>
+  )
+}
+
+function HoursCard({ last7 }: { last7: { date: string; hours: number }[] }) {
+  const worked = last7.filter((x) => x.hours > 0)
+  const avg = worked.length ? worked.reduce((a, b) => a + b.hours, 0) / worked.length : 0
+  const avgRef = useCountUp(avg, (v) => v.toFixed(1))
+  const max = Math.max(10, ...last7.map((x) => x.hours))
+  const [hot, setHot] = useState(6)
+  const bars = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (bars.current && !reduced()) gsap.fromTo(bars.current.querySelectorAll('[data-bar]'), { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: 'back.out(1.6)', stagger: 0.05, delay: 0.3, transformOrigin: '50% 100%', clearProps: 'transform' })
+  }, [])
+  return (
+    <section data-card className="card span-4" style={{ padding: 22, display: 'flex', flexDirection: 'column' }}>
+      <CardHead title="Hours" to="/attendance" />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
+        <span className="display num" style={{ fontSize: 38 }}><span ref={avgRef}>0</span> h</span>
+        <span className="dim" style={{ fontSize: 12, lineHeight: 1.3 }}>average workday<br />last 7 days</span>
+      </div>
+      <div ref={bars} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 14, minHeight: 120 }}>
+        {last7.map((x, i) => (
+          <div key={x.date} onMouseEnter={() => setHot(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', position: 'relative' }}>
+            {i === hot && x.hours > 0 && <span className="pill honey" style={{ position: 'absolute', top: -4, zIndex: 1, textTransform: 'none' }}>{x.hours.toFixed(1)}h</span>}
+            <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+              {x.hours > 0 ? <span data-bar style={{ width: 10, height: `${(x.hours / max) * 88}%`, borderRadius: 8, background: i === hot ? 'var(--honey)' : 'var(--night)' }} /> : <span style={{ width: 1, height: '100%', borderLeft: '1px dashed var(--line-2)' }} />}
+            </div>
+            <span className="dim" style={{ fontSize: 11, marginTop: 6 }}>{fmt(x.date, { weekday: 'narrow' })}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function LeaveCard({ lv, span }: { lv: any; span: string }) {
+  return (
+    <section data-card className={`card ${span}`} style={{ padding: 22, display: 'flex', flexDirection: 'column' }} data-tour="balances">
+      <CardHead title="My leave" to="/leave" />
+      {lv.balances.length === 0 ? <Empty icon="leaf" text="No leave allocated yet." /> : (
+        <ul style={{ listStyle: 'none', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {lv.balances.filter((b: any) => b.total > 0 || b.used > 0).slice(0, 4).map((b: any) => (
+            <li key={b.code}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span>{b.name}</span><span className="num dim">{b.available} left</span></div>
+              <div style={{ height: 6, borderRadius: 3, background: 'var(--well)', marginTop: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${b.total ? Math.min(100, (b.available / b.total) * 100) : 0}%`, background: 'var(--night)', borderRadius: 3 }} /></div>
+            </li>
+          ))}
+          {lv.balances.every((b: any) => !(b.total > 0 || b.used > 0)) && <li className="dim" style={{ fontSize: 12 }}>Balances appear once leave is allocated or accrued.</li>}
+        </ul>
+      )}
+      <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+        {lv.upcoming.length > 0
+          ? <div className="well" style={{ padding: '8px 12px', fontSize: 12.5 }}><strong style={{ fontWeight: 500 }}>Next:</strong> {lv.upcoming[0].type}, {fmt(lv.upcoming[0].start, { day: 'numeric', month: 'short' })}{lv.upcoming[0].end !== lv.upcoming[0].start ? ` – ${fmt(lv.upcoming[0].end, { day: 'numeric', month: 'short' })}` : ''} <Badge label={lv.upcoming[0].status} /></div>
+          : <Link to="/leave" className="btn btn-ghost btn-sm" style={{ width: '100%' }}><Icon name="plus" size={13} /> Apply for leave</Link>}
+      </div>
+    </section>
+  )
+}
+
+function PayCard({ payslip, apps, span }: { payslip: any; apps: string[]; span: string }) {
+  const net = useCountUp(payslip?.net ?? null, (v) => Math.round(v).toLocaleString())
+  return (
+    <section data-card className={`card ${span}`} style={{ padding: 22, display: 'flex', flexDirection: 'column', background: payslip ? 'linear-gradient(140deg, var(--honey-2), var(--app-3))' : undefined }}>
+      <CardHead title={apps.includes('payroll') ? 'My pay' : 'Shortcuts'} to={apps.includes('payroll') ? '/payroll' : '/security'} />
+      {apps.includes('payroll') && (payslip ? (
+        <div style={{ marginTop: 10 }}>
+          <div className="dim" style={{ fontSize: 12 }}>Net pay · {fmt(payslip.start, { month: 'long', year: 'numeric' })}</div>
+          <div className="display num" style={{ fontSize: 40, lineHeight: 1.1 }}>{payslip.currency} <span ref={net}>0</span></div>
+          <Link to={`/payroll/payslips/${payslip.id}`} className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>View payslip <Icon name="arrowRight" size={13} /></Link>
+        </div>
+      ) : <Empty icon="wallet" text="Your payslips appear here after your first payroll." />)}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 'auto', paddingTop: 14 }}>
+        {apps.includes('expenses') && <Link to="/expenses" className="btn btn-ghost btn-sm"><Icon name="receipt" size={13} /> Claim an expense</Link>}
+        {apps.includes('attendance') && <Link to="/attendance" className="btn btn-ghost btn-sm"><Icon name="clock" size={13} /> Fix a missed punch</Link>}
+        <Link to="/security" className="btn btn-ghost btn-sm"><Icon name="lock" size={13} /> Two-factor</Link>
+      </div>
+    </section>
+  )
+}
+
+// ─── Payroll staff: the cycle in flight ─────────────────────────────────────
+function PayrollRows({ d }: { d: any }) {
+  const p = d.payroll
+  if (!p) return null
+  const c = p.current
+  const idx = c ? STAGES.indexOf(c.status) : -1
+  return (
+    <div className="dgrid row">
+      <section data-card className="card span-8" style={{ padding: 22 }}>
+        <CardHead title="Payroll" to={c ? `/payroll/cycles/${c.id}` : '/payroll'} />
+        {!c ? <Empty icon="wallet" text="No payroll cycles yet. Create one from Payroll." /> : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+              <span className="display" style={{ fontSize: 26 }}>{fmt(c.start, { day: 'numeric', month: 'short' })} – {fmt(c.end, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <Badge label={c.status} /><span className="dim" style={{ fontSize: 13 }}>{c.payslips} payslips</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, minmax(0,1fr))`, gap: 6, marginTop: 16 }}>
+              {STAGES.map((st, i) => (
+                <div key={st}>
+                  <div className={`seg ${i < idx ? 'night' : i === idx ? 'honey' : 'outline'}`} style={{ height: 28, fontSize: 11, padding: '0 10px' }}>{i < idx ? <Icon name="check" size={12} stroke={2.4} /> : i + 1}</div>
+                  <div className={i <= idx ? '' : 'muted'} style={{ fontSize: 11, marginTop: 5 }}>{STAGE[st]}</div>
                 </div>
               ))}
             </div>
-          )
-        })}
-      </div>
-      {events.length === 0 && <p className="dim" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>No leave {isManager ? 'for you or your team ' : ''}this week.</p>}
-    </section>
-  )
-}
-
-function CardHead({ title, to }: { title: string; to: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      <h2 style={{ fontSize: 20, flex: 1 }}>{title}</h2>
-      <Link to={to} aria-label={`Open ${title}`} className="btn btn-ghost btn-icon" style={{ width: 34, height: 34 }} onMouseEnter={(e) => { if (!reduced()) gsap.fromTo(e.currentTarget.firstChild, { x: -3, y: 3 }, { x: 0, y: 0, duration: 0.4, ease: 'back.out(2)' }) }}><Icon name="arrowUpRight" size={15} /></Link>
+          </>
+        )}
+      </section>
+      <section data-card className="card span-4" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <CardHead title="To do" to="/payroll" />
+        <TodoLine n={p.expensesAwaitingFinance} label="expense claims to finance-approve" to="/expenses" />
+        <TodoLine n={p.inputsToApprove} label="payroll inputs to approve" to={c ? `/payroll/cycles/${c.id}` : '/payroll'} />
+        <TodoLine n={p.openCycles} label="payroll cycles not yet paid" to="/payroll" />
+        {p.lastPaid && <div className="muted" style={{ fontSize: 12, marginTop: 'auto' }}>Last paid: {fmt(p.lastPaid.start, { month: 'long', year: 'numeric' })}</div>}
+      </section>
     </div>
   )
 }
 
-// People without an employee record (e.g. finance) get a launcher instead of personal widgets
-function StaffHome() {
-  const links: [string, IconName, string, string][] = [
-    ['/payroll', 'wallet', 'Payroll', 'Cycles, approvals, bank file and GL export'],
-    ['/expenses', 'receipt', 'Expenses', 'Finance approval and reimbursement'],
-    ['/compensation', 'sliders', 'Compensation', 'Structures, rules and grade bands'],
-    ['/attendance', 'clock', 'Attendance', 'Lock attendance before payroll'],
-  ]
+function TodoLine({ n, label, to }: { n: number; label: string; to: string }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--gap)', marginTop: 24 }}>
-      {links.map(([to, ic, t, b]) => (
-        <Link key={to} to={to} data-card className="card lift" style={{ padding: 22 }}>
-          <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--honey)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name={ic} size={20} /></span>
-          <h2 style={{ fontSize: 22, marginTop: 16 }}>{t}</h2>
-          <p className="dim" style={{ fontSize: 13, marginTop: 4 }}>{b}</p>
-        </Link>
-      ))}
+    <Link to={to} className="well" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
+      <span className="display num" style={{ fontSize: 24, minWidth: 30 }}>{n}</span>
+      <span className="dim" style={{ flex: 1, fontSize: 13 }}>{label}</span>
+      <Icon name="chevronRight" size={14} className="muted" />
+    </Link>
+  )
+}
+
+function StatusDot({ s }: { s: string }) {
+  const m: Record<string, [string, string]> = { in: ['var(--ok)', 'In'], on_leave: ['var(--honey)', 'On leave'], absent: ['var(--danger)', 'Absent'], not_in: ['var(--grey)', 'Not in'] }
+  const [c, l] = m[s] ?? m.not_in
+  return <span title={l} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11 }} className="dim"><span style={{ width: 8, height: 8, borderRadius: '50%', background: c }} />{l}</span>
+}
+
+function Empty({ icon, text }: { icon: IconName; text: string }) {
+  return <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 8, padding: '22px 10px', color: 'var(--faint)', fontSize: 13 }}><Icon name={icon} size={22} /><span>{text}</span></div>
+}
+
+function Skeleton() {
+  return (
+    <div className="dgrid">
+      {[3, 3, 3, 3, 8, 4, 4, 4, 4].map((n, i) => <div key={i} className={`skeleton span-${n}`} style={{ height: i < 4 ? 132 : 260, borderRadius: 'var(--r-card)' }} />)}
     </div>
   )
 }

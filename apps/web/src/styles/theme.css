@@ -173,11 +173,11 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 
 /* Responsive helpers */
 .mobile-only { display: none !important; }
-@media (max-width: 1099px) {
+@media (max-width: 1023px) {
   .desktop-only { display: none !important; }
   .mobile-only { display: inline-flex !important; }
 }
-nav a:hover, [role='dialog'] nav button:hover { background: var(--well); }
+nav a:not(.side-link):hover, [role='dialog'] nav button:hover { background: var(--well); }
 @media (max-width: 899px) {
   .login-grid { grid-template-columns: 1fr !important; }
   .login-brand { display: none !important; }
@@ -229,3 +229,28 @@ th { text-transform: none !important; letter-spacing: 0 !important; background-c
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 599px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ─── App shell: sidebar + main ─── */
+.shell { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 18px; padding: 14px clamp(12px, 2vw, 24px) 40px 14px; transition: grid-template-columns .35s var(--ease); }
+.shell[data-collapsed='1'] { grid-template-columns: 76px minmax(0, 1fr); }
+.shell-side { position: sticky; top: 14px; height: calc(100vh - 28px); }
+.shell-main { min-width: 0; padding-top: 4px; }
+.sidebar { display: flex; flex-direction: column; height: 100%; width: 100%; padding: 14px 10px; background: var(--card-2); overflow: hidden; }
+.side-link { position: relative; z-index: 1; display: flex; align-items: center; gap: 11px; border-radius: 14px; font-size: 13.5px; font-weight: 500; transition: color .3s var(--ease), background-color .25s; }
+.side-link:not([aria-current]):hover { background: var(--well); color: var(--ink) !important; }
+.side-user { display: flex; align-items: center; gap: 10px; padding: 10px 8px; margin-top: 8px; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; }
+.side-user:hover { background: var(--well); }
+.desktop-only-block { display: block; }
+@media (max-width: 1023px) {
+  .shell, .shell[data-collapsed='1'] { grid-template-columns: minmax(0, 1fr); padding: 12px 12px 40px; }
+  .desktop-only-block { display: none !important; }
+}
+
+/* ─── Dashboard 12-column grid: cards in a row share its height ─── */
+.dgrid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); align-items: stretch; }
+.dgrid.row { margin-bottom: var(--gap); }
+.span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; } .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
+@media (max-width: 1279px) { .span-3 { grid-column: span 6; } .span-4 { grid-column: span 6; } .span-8 { grid-column: span 12; } }
+@media (max-width: 699px) { .span-3, .span-4, .span-6, .span-8 { grid-column: span 12; } }
+
+[role='dialog'] .sidebar { background: var(--solid); }

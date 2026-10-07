@@ -63,7 +63,7 @@ export default function LeaveTypesPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Leave types</h2>
+          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Leave policies</h2>
           <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Accrual, carry-forward and approval rules. Archived types can no longer be applied for.</p>
         </div>
         <button style={primaryBtn} onClick={() => { setError(''); setForm({ ...BLANK }) }}>+ New leave type</button>

@@ -1,9 +1,11 @@
 import type { IconName } from '../components/ui/Icon'
 import type { AppKey } from './apps'
 
-// The product map. `soon` modules are on the roadmap: they show in navigation with a "Soon" tag and open a preview page.
+// The product map, in standard HRMS terms. It drives the sidebar, the command palette, route titles and the tour.
+// `soon` modules are on the roadmap: admins see them with a "Soon" tag and a preview page.
 export interface NavItem {
   label: string
+  selfLabel?: string // shown to people who only see their own records (no team or company scope)
   path: string
   icon: IconName
   roles?: string[] // any of these role names; omitted = everyone
@@ -13,64 +15,105 @@ export interface NavItem {
 }
 export interface NavSection { key: string; label: string; icon: IconName; items: NavItem[] }
 
-const HR = ['hr_admin', 'system_admin']
-const STAFF = ['hr_admin', 'payroll_admin', 'compliance_officer']
+export const ROLE = {
+  HR: ['hr_admin', 'system_admin'],
+  ADMIN: ['hr_admin', 'system_admin'],
+  PAYROLL: ['hr_admin', 'payroll_admin', 'compliance_officer'],
+  APPROVERS: ['manager', 'hr_admin', 'system_admin'],
+  DIRECTORY: ['manager', 'hr_admin', 'system_admin', 'payroll_admin', 'compliance_officer'],
+}
+const soon = (phase: string, blurb: string, features: string[]) => ({ phase, blurb, features })
 
 export const SECTIONS: NavSection[] = [
-  { key: 'overview', label: 'Overview', icon: 'home', items: [{ label: 'Dashboard', path: '/dashboard', icon: 'home', keywords: 'home today' }] },
   {
-    key: 'people', label: 'People', icon: 'users', items: [
-      { label: 'Directory', path: '/employees', icon: 'users', roles: HR, keywords: 'employees staff team' },
-      { label: 'Exits', path: '/exits', icon: 'door', app: 'exits', keywords: 'offboarding resignation full and final settlement' },
-      { label: 'Org chart', path: '/soon/org-chart', icon: 'layers', soon: { phase: 'Phase 5', blurb: 'See the whole organisation as an interactive tree, from board to every team.', features: ['Drag to explore departments and reporting lines', 'Open counts and vacancies per unit', 'Export as PDF for board packs'] } },
-      { label: 'Recruitment', path: '/soon/recruitment', icon: 'briefcase', roles: HR, soon: { phase: 'Later', blurb: 'Requisitions, candidates and offers that flow straight into onboarding.', features: ['Job requisitions with approval', 'Candidate pipeline and interview kits', 'Offer letters that create the employee record'] } },
+    key: 'home', label: 'Home', icon: 'home', items: [
+      { label: 'Dashboard', path: '/dashboard', icon: 'home', keywords: 'home today overview' },
+      { label: 'Approvals', path: '/approvals', icon: 'checkCircle', roles: ROLE.APPROVERS, keywords: 'pending requests inbox leave attendance' },
+      { label: 'Tasks', path: '/activities', icon: 'list', keywords: 'activities to do follow ups' },
     ],
   },
   {
-    key: 'time', label: 'Time', icon: 'clock', items: [
-      { label: 'Leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'holiday vacation time off balance' },
-      { label: 'Attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out regularisation overtime' },
-      { label: 'Leave types', path: '/leave-types', icon: 'sliders', roles: ['hr_admin'], app: 'leave', keywords: 'leave policy accrual configuration' },
-      { label: 'Holidays', path: '/soon/holidays', icon: 'calendar', soon: { phase: 'Phase 3', blurb: 'Country holiday calendars that drive leave, attendance and payroll.', features: ['Calendars per country and location', 'Optional holidays with quotas', 'Import official lists each year'] } },
+    key: 'employees', label: 'Employees', icon: 'users', items: [
+      { label: 'Employees', selfLabel: 'My team', path: '/employees', icon: 'users', roles: ROLE.DIRECTORY, keywords: 'directory staff people team' },
+      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ROLE.PAYROLL, keywords: 'exits resignation full and final settlement clearance' },
+      { label: 'Org chart', path: '/soon/org-chart', icon: 'layers', roles: ROLE.ADMIN, soon: soon('Phase 5', 'See the whole organisation as an interactive tree, from board to every team.', ['Drag to explore departments and reporting lines', 'Open counts and vacancies per unit', 'Export as PDF for board packs']) },
+      { label: 'Recruitment', path: '/soon/recruitment', icon: 'briefcase', roles: ROLE.ADMIN, soon: soon('Later', 'Requisitions, candidates and offers that flow straight into onboarding.', ['Job requisitions with approval', 'Candidate pipeline and interview kits', 'Offer letters that create the employee record']) },
     ],
   },
   {
-    key: 'pay', label: 'Pay', icon: 'wallet', items: [
-      { label: 'Payroll', path: '/payroll', icon: 'wallet', app: 'payroll', keywords: 'payslips salary cycles bank file' },
-      { label: 'Expenses', path: '/expenses', icon: 'receipt', app: 'expenses', keywords: 'claims reimbursements per diem' },
-      { label: 'Compensation', path: '/compensation', icon: 'sliders', roles: STAFF, app: 'payroll', keywords: 'salary structures rules grade bands contracts' },
-      { label: 'Tax & compliance', path: '/soon/tax', icon: 'scale', soon: { phase: 'Phase 3', blurb: 'Versioned statutory tables and filings for every country you employ in.', features: ['Zambia PAYE, NAPSA and NHIMA tables by effective date', 'India TDS (cumulative), Kenya and Nigeria', 'Tax declarations, certificates and statutory filing exports'] } },
-      { label: 'Incentives', path: '/soon/incentives', icon: 'gift', soon: { phase: 'Phase 4', blurb: 'Bonuses, commissions and recognition paid through payroll.', features: ['Nominations with approval', 'Commission plans and targets', 'Payouts posted as payroll inputs'] } },
+    key: 'time', label: 'Time & Attendance', icon: 'clock', items: [
+      { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out timesheet regularisation overtime' },
+      { label: 'Leave', selfLabel: 'My leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'time off holiday vacation balance' },
+      { label: 'Leave policies', path: '/leave-types', icon: 'sliders', roles: ['hr_admin'], app: 'leave', keywords: 'leave types accrual configuration' },
+      { label: 'Holiday calendar', path: '/soon/holidays', icon: 'calendar', roles: ROLE.ADMIN, soon: soon('Phase 3', 'Country holiday calendars that drive leave, attendance and payroll.', ['Calendars per country and location', 'Optional holidays with quotas', 'Import official lists each year']) },
     ],
   },
   {
-    key: 'work', label: 'Work', icon: 'checkCircle', items: [
-      { label: 'Approvals', path: '/approvals', icon: 'checkCircle', roles: ['manager', ...HR], keywords: 'pending requests inbox' },
-      { label: 'Activities', path: '/activities', icon: 'list', keywords: 'tasks to do follow ups' },
-      { label: 'Policies', path: '/soon/policies', icon: 'book', soon: { phase: 'Phase 4', blurb: 'Publish handbooks and policies, and track who has read and accepted them.', features: ['Versioned policies with publish workflow', 'Read and accept tracking', 'Reminders for pending acknowledgements'] } },
-      { label: 'Grievances', path: '/soon/grievances', icon: 'flag', soon: { phase: 'Phase 4', blurb: 'A confidential way to raise and resolve concerns.', features: ['Anonymous or named submissions', 'Case handling with restricted access', 'Resolution timelines and audit'] } },
-      { label: 'Forums', path: '/soon/forums', icon: 'message', soon: { phase: 'Phase 4', blurb: 'Company-wide discussions and announcements.', features: ['Channels by team or topic', 'Announcements with read receipts', 'Moderation tools'] } },
+    key: 'payroll', label: 'Payroll & Expenses', icon: 'wallet', items: [
+      { label: 'Payroll', selfLabel: 'My payslips', path: '/payroll', icon: 'wallet', app: 'payroll', keywords: 'payslips salary cycles bank file' },
+      { label: 'Expenses', selfLabel: 'My expenses', path: '/expenses', icon: 'receipt', app: 'expenses', keywords: 'claims reimbursements per diem' },
+      { label: 'Salary structures', path: '/compensation', icon: 'sliders', roles: ROLE.PAYROLL, app: 'payroll', keywords: 'compensation rules grade bands contracts' },
+      { label: 'Tax & compliance', path: '/soon/tax', icon: 'scale', roles: ROLE.PAYROLL, soon: soon('Phase 3', 'Versioned statutory tables and filings for every country you employ in.', ['Zambia PAYE, NAPSA and NHIMA tables by effective date', 'India TDS (cumulative), Kenya and Nigeria', 'Tax declarations, certificates and statutory filing exports']) },
+      { label: 'Incentives', path: '/soon/incentives', icon: 'gift', roles: ROLE.PAYROLL, soon: soon('Phase 4', 'Bonuses, commissions and recognition paid through payroll.', ['Nominations with approval', 'Commission plans and targets', 'Payouts posted as payroll inputs']) },
     ],
   },
   {
-    key: 'insights', label: 'Insights', icon: 'chart', items: [
-      { label: 'Reports', path: '/soon/reports', icon: 'chart', roles: [...HR, 'payroll_admin'], soon: { phase: 'Phase 5', blurb: 'Headcount, attrition, leave and payroll analytics with exports.', features: ['Ready-made people and payroll reports', 'Filters by unit, location and period', 'Scheduled exports to CSV and PDF'] } },
-      { label: 'Audit log', path: '/soon/audit', icon: 'audit', roles: [...HR, 'compliance_officer'], soon: { phase: 'Phase 5', blurb: 'Every sensitive change, who made it and when, searchable.', features: ['Filter by person, record and action', 'Before and after values', 'Export for auditors'] } },
+    key: 'workplace', label: 'Workplace', icon: 'book', items: [
+      { label: 'Policies', path: '/soon/policies', icon: 'book', roles: ROLE.ADMIN, soon: soon('Phase 4', 'Publish handbooks and policies, and track who has read and accepted them.', ['Versioned policies with publish workflow', 'Read and accept tracking', 'Reminders for pending acknowledgements']) },
+      { label: 'Grievances', path: '/soon/grievances', icon: 'flag', roles: ROLE.ADMIN, soon: soon('Phase 4', 'A confidential way to raise and resolve concerns.', ['Anonymous or named submissions', 'Case handling with restricted access', 'Resolution timelines and audit']) },
+      { label: 'Announcements', path: '/soon/forums', icon: 'message', roles: ROLE.ADMIN, soon: soon('Phase 4', 'Company-wide announcements and discussions.', ['Announcements with read receipts', 'Channels by team or topic', 'Moderation tools']) },
+    ],
+  },
+  {
+    key: 'reports', label: 'Reports & Audit', icon: 'chart', items: [
+      { label: 'Reports', path: '/soon/reports', icon: 'chart', roles: [...ROLE.HR, 'payroll_admin'], soon: soon('Phase 5', 'Headcount, attrition, leave and payroll analytics with exports.', ['Ready-made people and payroll reports', 'Filters by unit, location and period', 'Scheduled exports to CSV and PDF']) },
+      { label: 'Audit log', path: '/soon/audit', icon: 'audit', roles: [...ROLE.HR, 'compliance_officer'], soon: soon('Phase 5', 'Every sensitive change, who made it and when, searchable.', ['Filter by person, record and action', 'Before and after values', 'Export for auditors']) },
+    ],
+  },
+  {
+    key: 'admin', label: 'Administration', icon: 'settings', items: [
+      { label: 'Company profile', path: '/settings/company', icon: 'briefcase', roles: ROLE.ADMIN, keywords: 'name logo country currency time zone' },
+      { label: 'Apps', path: '/settings/apps', icon: 'grid', roles: ROLE.ADMIN, keywords: 'modules install' },
+      { label: 'Settings', path: '/settings', icon: 'settings', roles: [...ROLE.ADMIN, 'payroll_admin'], keywords: 'configuration scheduled jobs' },
     ],
   },
 ]
 
-export const SETTINGS_PATH = '/settings'
+// Account pages everyone has, outside the groups
+export const ACCOUNT_ITEMS: NavItem[] = [
+  { label: 'Security', path: '/security', icon: 'lock', keywords: 'two-factor mfa password' },
+]
+
 export const ALL_ITEMS = SECTIONS.flatMap((s) => s.items.map((i) => ({ ...i, section: s })))
 
 export const canSee = (item: NavItem, roleNames: string[], apps?: string[]) =>
   (!item.roles || item.roles.some((r) => roleNames.includes(r))) && (!item.app || !apps || apps.includes(item.app))
 
-export function visibleSections(roleNames: string[], apps?: string[]) {
-  return SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => canSee(i, roleNames, apps)) })).filter((s) => s.items.length)
+// People who only see their own records get "My …" labels
+export const hasTeamScope = (roleNames: string[]) => roleNames.some((r) => ROLE.DIRECTORY.includes(r))
+export const labelFor = (item: NavItem, roleNames: string[]) => {
+  if (!item.selfLabel) return item.label
+  if (item.path === '/employees') return roleNames.some((r) => ROLE.HR.includes(r) || r === 'payroll_admin' || r === 'compliance_officer') ? item.label : item.selfLabel
+  if (item.path === '/payroll') return roleNames.some((r) => ROLE.PAYROLL.includes(r)) ? item.label : item.selfLabel
+  if (item.path === '/expenses') return roleNames.some((r) => [...ROLE.APPROVERS, 'payroll_admin'].includes(r)) ? item.label : item.selfLabel
+  return hasTeamScope(roleNames) ? item.label : item.selfLabel
 }
 
-export function sectionFor(pathname: string) {
+export function visibleSections(roleNames: string[], apps?: string[]) {
+  return SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => canSee(i, roleNames, apps)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
+}
+
+// Most specific match wins (/settings/apps before /settings)
+export function itemFor(pathname: string) {
   const p = pathname === '/' ? '/dashboard' : pathname
-  return SECTIONS.find((s) => s.items.some((i) => p === i.path || p.startsWith(i.path + '/'))) ?? null
+  return [...ALL_ITEMS, ...ACCOUNT_ITEMS.map((i) => ({ ...i, section: null as any }))]
+    .filter((i) => p === i.path || p.startsWith(i.path + '/'))
+    .sort((a, b) => b.path.length - a.path.length)[0] ?? null
+}
+export const sectionFor = (pathname: string) => itemFor(pathname)?.section ?? null
+
+// Page title for a route, in the same words as the sidebar ("My leave" for self-service users, "Leave" for approvers)
+export function navLabel(path: string, roleNames: string[]) {
+  const it = ALL_ITEMS.find((i) => i.path === path)
+  return it ? labelFor(it, roleNames) : ''
 }

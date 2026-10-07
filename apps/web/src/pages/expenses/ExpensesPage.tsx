@@ -4,6 +4,7 @@ import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import NewClaimModal from './NewClaimModal'
 import { useMyClaims, usePendingClaims, useAwaitingFinance, useWithdrawClaim, useClaimAction } from '../../lib/hooks/useExpenses'
+import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import { money, fmtDate } from '../../lib/format'
 
 type Tab = 'mine' | 'approvals' | 'finance'
@@ -11,6 +12,7 @@ type Tab = 'mine' | 'approvals' | 'finance'
 const statusBadge = (status: string) => <Badge label={status.replace(/_/g, ' ')} variant={status} />
 
 export default function ExpensesPage() {
+  const pageTitle = usePageLabel('/expenses')
   const { user, hasRole } = useAuth()
   const canApprove = hasRole('manager') || hasRole('hr_admin')
   const canFinance = hasRole('payroll_admin') || hasRole('hr_admin')
@@ -27,7 +29,7 @@ export default function ExpensesPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Expenses</h2>
+          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>{pageTitle}</h2>
           <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Claim reimbursements and per diem — paid with your salary, untaxed</p>
         </div>
         <button onClick={() => setShowNew(true)} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ New claim</button>

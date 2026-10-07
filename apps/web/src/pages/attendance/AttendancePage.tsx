@@ -8,11 +8,13 @@ import AttendanceCalendarView from './AttendanceCalendarView'
 import RegularisationModal from './RegularisationModal'
 import OvertimeModal from './OvertimeModal'
 import ApprovalsPanel from './ApprovalsPanel'
+import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import TeamTodayPanel from './TeamTodayPanel'
 
 type Tab = 'my' | 'team' | 'approvals'
 
 export default function AttendancePage() {
+  const pageTitle = usePageLabel('/attendance')
   const { isManager } = useAuth()
   const [activeTab, setActiveTab] = useState<Tab>('my')
   const [showReg, setShowReg] = useState(false)
@@ -29,7 +31,7 @@ export default function AttendancePage() {
 
   return (
     <div ref={ref}>
-      <PageHeader title="Attendance" sub="Clock in, check your month and fix missed punches." actions={<>
+      <PageHeader title={pageTitle} sub="Clock in, check your month and fix missed punches." actions={<>
         <button className="btn btn-ghost" onClick={() => setShowOT(true)}><Icon name="clock" size={15} /> Request overtime</button>
         <button className="btn btn-primary" onClick={() => setShowReg(true)}><Icon name="refresh" size={15} /> Fix a missed punch</button>
       </>} />

@@ -38,6 +38,7 @@ const NotFoundPage = lazy(() => import('./pages/system/StatusPages').then((m) =>
 const ComingSoonPage = lazy(() => import('./pages/system/StatusPages').then((m) => ({ default: m.ComingSoonPage })))
 
 const HR = ['hr_admin', 'system_admin']
+const DIRECTORY = ['manager', 'hr_admin', 'system_admin', 'payroll_admin', 'compliance_officer']
 const STAFF = ['hr_admin', 'payroll_admin', 'compliance_officer']
 const ADMINS = ['hr_admin', 'system_admin']
 const guard = (el: ReactNode, opts: { roles?: string[]; app?: string } = {}) => <ProtectedRoute {...opts}>{el}</ProtectedRoute>
@@ -63,7 +64,7 @@ export default function App() {
                   <Route path="/onboarding" element={<ProtectedRoute stage="onboarding"><OnboardingPage /></ProtectedRoute>} />
                   <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                     <Route path="dashboard" element={page(<DashboardPage />)} />
-                    <Route path="employees" element={page(guard(<EmployeeListPage />, { roles: HR }))} />
+                    <Route path="employees" element={page(guard(<EmployeeListPage />, { roles: DIRECTORY }))} />
                     <Route path="employees/:id" element={page(<EmployeeProfilePage />)} />
                     <Route path="leave" element={page(guard(<LeavePage />, { app: 'leave' }))} />
                     <Route path="leave-types" element={page(guard(<LeaveTypesPage />, { roles: ['hr_admin'], app: 'leave' }))} />
@@ -78,7 +79,7 @@ export default function App() {
                     <Route path="exits/:id" element={page(guard(<ExitDetailPage />, { app: 'exits' }))} />
                     <Route path="compensation" element={page(guard(<SalarySetupPage />, { roles: STAFF, app: 'payroll' }))} />
                     <Route path="security" element={page(<SecurityPage />)} />
-                    <Route path="settings" element={page(<SettingsPage />)} />
+                    <Route path="settings" element={page(guard(<SettingsPage />, { roles: [...ADMINS, 'payroll_admin'] }))} />
                     <Route path="settings/company" element={page(guard(<CompanySettingsPage />, { roles: ADMINS }))} />
                     <Route path="settings/apps" element={page(guard(<AppsSettingsPage />, { roles: ADMINS }))} />
                     <Route path="soon/:slug" element={page(<ComingSoonPage />)} />

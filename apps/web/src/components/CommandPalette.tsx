@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { ALL_ITEMS, canSee } from '../lib/nav'
+import { ALL_ITEMS, canSee, labelFor } from '../lib/nav'
 import { gsap, reduced } from '../lib/motion'
 import Icon, { type IconName } from './ui/Icon'
 
@@ -18,14 +18,13 @@ export default function CommandPalette({ open, onClose, onTour }: { open: boolea
 
   const cmds: Cmd[] = useMemo(() => [
     ...ALL_ITEMS.filter((it) => canSee(it, roles, user?.tenant?.modules ?? [])).map((it) => ({
-      id: it.path, label: it.label, hint: it.section.label, icon: it.icon, soon: !!it.soon, keywords: it.keywords,
+      id: it.path, label: labelFor(it, roles), hint: it.section.label, icon: it.icon, soon: !!it.soon, keywords: it.keywords,
       run: () => navigate(it.path),
     })),
-    { id: 'security', label: 'Security & two-factor', hint: 'Account', icon: 'lock', run: () => navigate('/security'), keywords: 'mfa password totp' },
-    { id: 'settings', label: 'Settings', hint: 'Workspace', icon: 'settings', run: () => navigate('/settings') },
-    ...(user?.employee ? [{ id: 'profile', label: 'My profile', hint: 'Account', icon: 'user' as IconName, run: () => navigate(`/employees/${user.employee!.id}`) }] : []),
+    { id: 'security', label: 'Security & two-factor', hint: 'My account', icon: 'lock', run: () => navigate('/security'), keywords: 'mfa password totp' },
+    ...(user?.employee ? [{ id: 'profile', label: 'My profile', hint: 'My account', icon: 'user' as IconName, run: () => navigate(`/employees/${user.employee!.id}`) }] : []),
     { id: 'tour', label: 'Take the product tour', hint: 'Help', icon: 'compass', run: onTour, keywords: 'help guide onboarding' },
-    { id: 'logout', label: 'Sign out', hint: 'Account', icon: 'logout', run: () => { logout().then(() => navigate('/login')) } },
+    { id: 'logout', label: 'Sign out', hint: 'My account', icon: 'logout', run: () => { logout().then(() => navigate('/login')) } },
   ], [roles.join(','), user?.employee?.id, (user?.tenant?.modules ?? []).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const list = useMemo(() => {

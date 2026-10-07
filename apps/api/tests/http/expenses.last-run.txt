@@ -36,7 +36,7 @@ PASS  finance user approves claim 300
 PASS  finance user approves claim 450
 PASS  finance user approves claim 40
 PASS  finance approve twice is 400
-PASS  create 2028-06 cycle
+PASS  create 2028-08 cycle
 PASS  run cycle
 PASS  Jane (no contract) is skipped
 PASS  EMP0001: one REIMB line per finance-approved claim (1)

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
-import { requirePermission } from '../../middleware/rbac.middleware'
+import { requirePermission, requireRoles } from '../../middleware/rbac.middleware'
 import { leaveController } from './leave.controller'
 import { contractController } from '../employees/contracts.controller'
 import { validate } from '../../middleware/validate.middleware'
@@ -31,7 +31,7 @@ leaveRouter.post('/requests/:id/reject', requirePermission('leave:approve'), lea
 leaveRouter.post('/requests/:id/cancel', requirePermission('leave:write'), leaveController.cancel)
 
 // ─── TEAM CALENDAR ────────────────────────────────────────────
-leaveRouter.get('/calendar/team', requirePermission('leave:read'), leaveController.getTeamCalendar)
+leaveRouter.get('/calendar/team', requirePermission('leave:read'), requireRoles('manager', 'hr_admin', 'system_admin'), leaveController.getTeamCalendar)
 
 // ─── ALLOCATION REQUESTS ──────────────────────────────────────
 leaveRouter.post('/allocation-requests', requirePermission('leave:write'), leaveController.requestAllocation)

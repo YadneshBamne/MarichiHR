@@ -19,7 +19,7 @@ export default function SalarySetupPage() {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Compensation setup</h2>
+        <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Salary structures</h2>
         <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Salary structures, formula rules, grade bands and employee contracts{canEdit ? '' : ' (read only)'}</p>
       </div>
       <div className="chips" style={{ marginBottom: 20 }}>

@@ -24,7 +24,7 @@ export default function ExitsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Exits</h2>
+          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Offboarding</h2>
           <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Resignations, terminations and full &amp; final settlements</p>
         </div>
         {hasRole('hr_admin') && tab === 'exits' && (

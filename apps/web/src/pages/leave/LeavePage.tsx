@@ -5,11 +5,13 @@ import Badge from '../../components/ui/Badge'
 import ApplyLeaveModal from './ApplyLeaveModal'
 import AllocationRequestModal from './AllocationRequestModal'
 import LeaveApprovalsPanel from './LeaveApprovalsPanel'
+import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import TeamLeaveCalendar from './TeamLeaveCalendar'
 
 type Tab = 'overview' | 'requests' | 'approvals' | 'calendar'
 
 export default function LeavePage() {
+  const pageTitle = usePageLabel('/leave')
   const { isManager } = useAuth()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showApply, setShowApply] = useState(false)
@@ -21,10 +23,10 @@ export default function LeavePage() {
   const cancelLeave = useCancelLeave()
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'My Balances' },
-    { key: 'requests', label: 'My Requests' },
+    { key: 'overview', label: 'Balances' },
+    { key: 'requests', label: 'Requests' },
     ...(isManager ? [{ key: 'approvals' as Tab, label: 'Approvals' }] : []),
-    { key: 'calendar', label: 'Team Calendar' },
+    ...(isManager ? [{ key: 'calendar' as Tab, label: 'Team calendar' }] : []),
   ]
 
   const formatDate = (iso: string) =>
@@ -34,7 +36,7 @@ export default function LeavePage() {
     <div style={s.page}>
       <div style={s.header}>
         <div>
-          <h2 style={s.title}>Leave</h2>
+          <h2 style={s.title}>{pageTitle}</h2>
           <p style={s.sub}>Manage your time off</p>
         </div>
         <div style={s.headerActions}>

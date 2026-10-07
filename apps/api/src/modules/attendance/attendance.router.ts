@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
-import { requirePermission } from '../../middleware/rbac.middleware'
+import { requirePermission, requireRoles } from '../../middleware/rbac.middleware'
 import { attendanceController } from './attendance.controller'
 
 export const attendanceRouter = Router()
@@ -17,7 +17,8 @@ attendanceRouter.get('/calendar/me', requirePermission('attendance:read'), atten
 attendanceRouter.get('/calendar/:employeeId', requirePermission('attendance:read'), attendanceController.getEmployeeCalendar)
 
 // ─── TEAM VIEW ────────────────────────────────────────────────
-attendanceRouter.get('/team/today', requirePermission('attendance:read'), attendanceController.getTeamToday)
+// Team views are for people with a team: managers and HR
+attendanceRouter.get('/team/today', requirePermission('attendance:read'), requireRoles('manager', 'hr_admin', 'system_admin'), attendanceController.getTeamToday)
 
 // ─── REGULARISATIONS ──────────────────────────────────────────
 attendanceRouter.post('/regularisations', requirePermission('attendance:write'), attendanceController.raiseRegularisation)

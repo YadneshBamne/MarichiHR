@@ -10,17 +10,17 @@ import { Mark } from './brand/Logo'
 type Step = { target?: string; title: string; body: string; roles?: string[] }
 
 const STEPS: Step[] = [
-  { title: 'Welcome to {company}', body: 'Your people, time, leave and pay in one place. This quick tour shows you around; it takes about a minute and you can skip it any time.' },
-  { target: 'sections', title: 'Everything in six sections', body: 'Overview, People, Time, Pay, Work and Insights. Pick a section here; its pages appear as chips just below.' },
+  { title: 'Welcome to {company}', body: 'Your attendance, leave, pay and approvals in one place. This quick tour shows you around; it takes about a minute and you can skip it any time.' },
+  { target: 'sidebar', title: 'Navigation', body: 'Every module you have access to is in this sidebar, grouped the usual way: Employees, Time & Attendance, Payroll & Expenses and more. Collapse it with the arrow, or press Ctrl + \\.' },
   { target: 'search', title: 'Jump anywhere', body: 'Search finds any page or action. Press Ctrl K (⌘ K on Mac) from anywhere in the app.' },
-  { target: 'kpis', title: 'Your month at a glance', body: 'Leave used, attendance and the headline numbers for you and, if you manage people, your team.' },
+  { target: 'kpis', title: 'Your numbers', body: 'The figures that matter for your role, updated live. Click a tile to open the details.' },
+  { target: 'approvals-card', title: 'Approvals', body: 'Leave, attendance and expense requests from your team land here. Open the inbox to approve or reject.', roles: ['manager', 'hr_admin', 'system_admin'] },
   { target: 'clock', title: 'Clock in and out', body: 'Start your day here. The timer runs while you are clocked in and your hours flow into attendance and payroll.' },
-  { target: 'tasks', title: 'Your task list', body: 'Activities assigned to you show up here. Tick one off when it is done; the record is updated straight away.' },
-  { target: 'week', title: 'Your week', body: 'Approved leave for you and your team, and public holidays, laid out by day.' },
-  { target: 'section-work', title: 'Approvals', body: 'Leave, attendance and expense requests waiting for you are in Work → Approvals. A dot appears here when something is pending.', roles: ['manager', 'hr_admin', 'system_admin'] },
+  { target: 'balances', title: 'Your leave', body: 'What you have left of each leave type, and your next approved leave.' },
+  { target: 'tasks', title: 'Your tasks', body: 'Tasks assigned to you. Tick one off when it is done; the record is updated straight away.' },
   { target: 'notifications', title: 'Notifications', body: 'Approvals, payslips, contract reminders and anything that needs you lands here.' },
-  { target: 'profile', title: 'Your account', body: 'Your profile, two-factor security, settings and this tour live here. Sign out from here too.' },
-  { title: 'You are all set', body: 'Modules marked “Soon” are on the roadmap and open a preview of what is coming. Enjoy {company}.' },
+  { target: 'profile', title: 'Your account', body: 'Your profile, two-factor security and this tour live here. Sign out from here too.' },
+  { title: 'You are all set', body: 'Enjoy {company}. You can restart this tour any time from your account menu.' },
 ]
 
 const PAD = 8
@@ -29,7 +29,7 @@ export default function ProductTour({ onClose }: { onClose: () => void }) {
   const { user, updateUser } = useAuth()
   const roles = user?.roles?.map((r) => r.name) ?? []
   const company = user?.tenant?.name || 'MarichiHR'
-  const steps = useMemo(() => STEPS.map((s) => ({ ...s, title: s.title.replace('{company}', company), body: s.body.replace('{company}', company) })).filter((s) => (!s.roles || s.roles.some((r) => roles.includes(r))) && (!s.target || document.querySelector(`[data-tour="${s.target}"]`))), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const steps = useMemo(() => STEPS.map((s) => ({ ...s, title: s.title.replace('{company}', company), body: s.body.replace('{company}', company) })).filter((s) => (!s.roles || s.roles.some((r) => roles.includes(r))) && (!s.target || !!document.querySelector(`[data-tour="${s.target}"]`)?.getClientRects().length)), []) // eslint-disable-line react-hooks/exhaustive-deps
   const [i, setI] = useState(0)
   const [rect, setRect] = useState<DOMRect | null>(null)
   const spot = useRef<HTMLDivElement>(null)

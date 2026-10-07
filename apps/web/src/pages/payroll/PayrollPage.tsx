@@ -8,6 +8,7 @@ import PageHeader, { EmptyState } from '../../components/ui/PageHeader'
 import Badge from '../../components/ui/Badge'
 import Icon from '../../components/ui/Icon'
 import CreateCycleModal from './CreateCycleModal'
+import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import { money, fmtPeriod } from '../../lib/format'
 
 type Tab = 'cycles' | 'mine'
@@ -16,6 +17,7 @@ const STAGES = ['draft', 'processing', 'review', 'approved', 'finance_approved',
 const STAGE_LABEL: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'HR review', approved: 'HR approved', finance_approved: 'Finance approved', disbursed: 'Disbursed' }
 
 export default function PayrollPage() {
+  const pageTitle = usePageLabel('/payroll')
   const { hasRole } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
@@ -41,7 +43,7 @@ export default function PayrollPage() {
   return (
     <div ref={ref}>
       <PageHeader
-        title="Payroll"
+        title={pageTitle}
         sub={isStaff ? 'Calculate, approve and pay, with HR and finance sign-off on every cycle.' : 'Your payslips and pay history.'}
         actions={isStaff && canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined}
       >

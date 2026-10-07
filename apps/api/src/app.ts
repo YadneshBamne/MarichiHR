@@ -15,6 +15,7 @@ import { expensesRouter } from './modules/expenses/expenses.router'
 import { exitsRouter } from './modules/exits/exits.router'
 import { notificationsRouter, systemRouter } from './modules/notifications/notifications.router'
 import { companyRouter } from './modules/company/company.router'
+import { dashboardRouter } from './modules/dashboard/dashboard.router'
 import { authenticate } from './middleware/auth.middleware'
 import { requireModule } from './middleware/module.middleware'
 
@@ -52,6 +53,7 @@ export function createApp() {
   app.use('/api/v1/expenses', authenticate, requireModule('expenses'), expensesRouter)
   app.use('/api/v1/exits', authenticate, requireModule('exits'), exitsRouter)
   app.use('/api/v1/company', companyRouter)
+  app.use('/api/v1/dashboard', dashboardRouter)
   app.use('/api/v1/notifications', notificationsRouter)
   app.use('/api/v1/system', systemRouter)
 
