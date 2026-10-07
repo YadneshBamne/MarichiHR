@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { authController } from './auth.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { authenticate } from '../../middleware/auth.middleware'
-import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema, TourSchema, SignupSchema, ChangePasswordSchema } from './auth.schema'
+import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema, GoogleIdTokenSchema, TourSchema, SignupSchema, ChangePasswordSchema } from './auth.schema'
 import { googleSso } from './google.sso'
 
 export const authRouter = Router()
@@ -28,3 +28,4 @@ authRouter.get('/google', googleSso.start)
 authRouter.get('/google/callback', googleSso.callback)
 authRouter.get('/google/signup/:code', googleSso.signupProfile)
 authRouter.post('/google/exchange', validate(SsoExchangeSchema), googleSso.exchange)
+authRouter.post('/google/id-token', validate(GoogleIdTokenSchema), googleSso.idToken)

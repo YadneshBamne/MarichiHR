@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { gsap, reduced } from '../lib/motion'
 import Logo, { Mark } from '../components/brand/Logo'
 import Icon from '../components/ui/Icon'
+import GoogleButton from '../components/auth/GoogleButton'
 
 export const API_URL = import.meta.env.MARICHI_API_URL || 'http://localhost:4000/api/v1'
 export const SSO_ERRORS: Record<string, string> = {
@@ -24,7 +25,7 @@ const readOrg = () => { try { return localStorage.getItem(LAST_ORG) || '' } catc
 type Mode = 'signin' | 'mfa' | 'forgot'
 
 export default function LoginPage() {
-  const { login, verifyMfa } = useAuth()
+  const { login, verifyMfa, googleLogin } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [params] = useSearchParams()
@@ -34,7 +35,8 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '', tenantSlug: readOrg() })
   const [showPw, setShowPw] = useState(false)
   const [code, setCode] = useState('')
-  const [google, setGoogle] = useState(false)
+  // Google's client id when Google sign-in is on (null: off)
+  const [google, setGoogle] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   // The organisation is only needed when an email belongs to several companies (or for Google sign-in)
@@ -44,7 +46,7 @@ export default function LoginPage() {
   const from = (location.state as any)?.from || '/dashboard'
 
   useEffect(() => {
-    api.get('/auth/providers').then((r) => setGoogle(!!r.data.data.google)).catch(() => {})
+    api.get('/auth/providers').then((r) => setGoogle(r.data.data.google ? r.data.data.googleClientId : null)).catch(() => {})
     const e = params.get('sso_error')
     if (e) setError(SSO_ERRORS[e] || 'Google sign-in failed. Please try again.')
   }, [params])
@@ -77,6 +79,23 @@ export default function LoginPage() {
     } catch (err: any) {
       if (err?.response?.data?.code === 'ORG_REQUIRED') setShowOrg(true)
       setError(err?.response?.data?.message || (err?.response ? 'Sign-in failed. Check your details.' : 'Cannot reach the server. Check your connection.'))
+      shake()
+    } finally { setLoading(false) }
+  }
+
+  // One click on Google's button: the ID token signs in directly (or asks for the organisation / the 2-step code)
+  const onGoogle = async (credential: string) => {
+    setError('')
+    setLoading(true)
+    try {
+      const org = showOrg ? form.tenantSlug.trim().toLowerCase() : ''
+      const pending = await googleLogin(credential, org || undefined)
+      try { if (org) localStorage.setItem(LAST_ORG, org) } catch { /* private mode */ }
+      if (pending) { setMfaToken(pending); setCode(''); setMode('mfa') }
+      else navigate(from, { replace: true })
+    } catch (err: any) {
+      if (err?.response?.data?.code === 'ORG_REQUIRED') setShowOrg(true)
+      setError(err?.response?.data?.message || (err?.response ? 'Google sign-in failed. Please try again.' : 'Cannot reach the server. Check your connection.'))
       shake()
     } finally { setLoading(false) }
   }
@@ -138,15 +157,19 @@ export default function LoginPage() {
               {google && (
                 <>
                   <div data-rise style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', fontSize: 12 }} className="muted"><span style={rule} />or<span style={rule} /></div>
-                  <button data-rise type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} 
-                    onClick={() => {
-                      // The organisation is optional: one account with this Google email signs straight in
-                      const org = showOrg ? form.tenantSlug.trim().toLowerCase() : ''
-                      if (org) try { localStorage.setItem(LAST_ORG, org) } catch { /* ignore */ }
-                      window.location.href = `${API_URL}/auth/google${org ? `?tenant=${encodeURIComponent(org)}` : ''}`
-                    }}>
-                    <GoogleG /> Continue with Google
-                  </button>
+                  <div data-rise>
+                    <GoogleButton clientId={google} onCredential={onGoogle} fallback={
+                      <button type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} 
+                        onClick={() => {
+                          // The organisation is optional: one account with this Google email signs straight in
+                          const org = showOrg ? form.tenantSlug.trim().toLowerCase() : ''
+                          if (org) try { localStorage.setItem(LAST_ORG, org) } catch { /* ignore */ }
+                          window.location.href = `${API_URL}/auth/google${org ? `?tenant=${encodeURIComponent(org)}` : ''}`
+                        }}>
+                        <GoogleG /> Continue with Google
+                      </button>
+                    } />
+                  </div>
                 </>
               )}
             </form>

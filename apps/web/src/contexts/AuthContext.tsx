@@ -15,6 +15,7 @@ interface AuthContextType {
   signup: (input: SignupInput) => Promise<string>
   verifyMfa: (mfaToken: string, code: string) => Promise<void>
   exchangeSso: (code: string) => Promise<string | null>
+  googleLogin: (credential: string, tenantSlug?: string) => Promise<string | null>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   logout: () => Promise<void>
   refreshMe: () => Promise<void>
@@ -76,6 +77,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const exchangeSso = async (code: string) => startSession((await api.post('/auth/google/exchange', { code })).data.data)
 
+  const googleLogin = async (credential: string, tenantSlug?: string) =>
+    startSession((await api.post('/auth/google/id-token', { credential, intent: 'login', ...(tenantSlug && { tenantSlug }) })).data.data)
+
   const changePassword = async (currentPassword: string, newPassword: string) => {
     startSession((await api.post('/auth/change-password', { currentPassword, newPassword })).data.data)
   }
@@ -107,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = hasRole('hr_admin') || hasRole('system_admin')
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, signup, verifyMfa, exchangeSso, changePassword, logout, refreshMe, updateUser, hasRole, hasApp, isHR, isManager, isAdmin }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, signup, verifyMfa, exchangeSso, googleLogin, changePassword, logout, refreshMe, updateUser, hasRole, hasApp, isHR, isManager, isAdmin }}>
       {children}
     </AuthContext.Provider>
   )

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { gsap, reduced } from '../../lib/motion'
 import { BrandPanel, GoogleG, API_URL, SSO_ERRORS } from '../LoginPage'
 import api from '../../lib/api'
+import GoogleButton from '../../components/auth/GoogleButton'
 import Logo from '../../components/brand/Logo'
 import Icon from '../../components/ui/Icon'
 
@@ -24,12 +25,12 @@ export default function SignupPage() {
   const ref = useRef<HTMLFormElement>(null)
   const pwOk = rules(f.password).every((r) => r.ok)
   const [params, setParams] = useSearchParams()
-  const [googleOn, setGoogleOn] = useState(false)
+  const [googleId, setGoogleId] = useState<string | null>(null)
   // After Continue with Google: the verified profile fills in name and email; only the company name is left to type
   const [google, setGoogle] = useState<{ code: string; email: string; avatarUrl: string | null } | null>(null)
 
   useEffect(() => {
-    api.get('/auth/providers').then((r) => setGoogleOn(!!r.data.data.google)).catch(() => {})
+    api.get('/auth/providers').then((r) => setGoogleId(r.data.data.google ? r.data.data.googleClientId : null)).catch(() => {})
     const e = params.get('sso_error')
     if (e) setError(SSO_ERRORS[e] || 'Google sign-up failed. Please try again.')
     const code = params.get('google')
@@ -43,6 +44,17 @@ export default function SignupPage() {
         .catch(() => setError('Your Google sign-up expired. Choose Continue with Google again.'))
     }
   }, [params])
+
+  // Google's button hands back a verified ID token; the API parks the profile and the form fills in from it
+  const onGoogle = async (credential: string) => {
+    setError('')
+    try {
+      const r = await api.post('/auth/google/id-token', { credential, intent: 'signup' })
+      setParams({ google: r.data.data.signupCode }, { replace: true })
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Google sign-up failed. Please try again.')
+    }
+  }
 
   const dropGoogle = () => { setGoogle(null); setF((cur) => ({ ...cur, email: '' })); setParams({}, { replace: true }) }
   useLayoutEffect(() => {
@@ -114,12 +126,16 @@ export default function SignupPage() {
           <button data-rise className="btn btn-primary" type="submit" disabled={loading || !f.companyName.trim() || !f.fullName.trim() || (!google && (!f.email || !pwOk))} style={{ width: '100%', height: 46 }}>
             {loading ? <><span className="spinner" style={{ borderTopColor: 'var(--night-ink)' }} /> Creating your workspace…</> : <>Create workspace <Icon name="arrowRight" size={16} /></>}
           </button>
-          {googleOn && !google && (
+          {googleId && !google && (
             <>
               <div data-rise className="muted" style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0', fontSize: 12 }}><span style={line} />or<span style={line} /></div>
-              <button data-rise type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} onClick={() => { window.location.href = `${API_URL}/auth/google?intent=signup` }}>
-                <GoogleG /> Continue with Google
-              </button>
+              <div data-rise>
+                <GoogleButton clientId={googleId} text="signup_with" onCredential={onGoogle} fallback={
+                  <button type="button" className="btn btn-ghost" style={{ width: '100%', height: 46 }} onClick={() => { window.location.href = `${API_URL}/auth/google?intent=signup` }}>
+                    <GoogleG /> Continue with Google
+                  </button>
+                } />
+              </div>
             </>
           )}
           <p data-rise className="muted" style={{ fontSize: 12, marginTop: 14, textAlign: 'center' }}>You'll be the owner and administrator of this workspace.</p>

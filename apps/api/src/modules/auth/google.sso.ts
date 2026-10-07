@@ -36,8 +36,55 @@ export async function takeGoogleSignup(code: string): Promise<GoogleProfile | nu
   return raw ? JSON.parse(raw) : null
 }
 
+type GoogleInfo = { sub: string; email: string; name?: string; picture?: string }
+
+// Sign-up: park the verified profile for 15 minutes; POST /auth/signup consumes it with the company name
+async function parkSignup(info: GoogleInfo) {
+  const code = crypto.randomBytes(24).toString('hex')
+  const profile: GoogleProfile = { sub: info.sub, email: info.email.toLowerCase(), name: (info.name || '').slice(0, 80), picture: info.picture?.startsWith('https://') ? info.picture.slice(0, 500) : null }
+  await redis.set(`gsignup:${code}`, JSON.stringify(profile), 'EX', 900)
+  return code
+}
+
+// Sign-in: an active user in an active company with this Google account (sub) or verified email, in the given
+// organisation or, without one, the only such user anywhere. Returns an error reason instead when there isn't one.
+async function matchGoogleUser(info: GoogleInfo, tenantSlug: string | null) {
+  const tenant = tenantSlug ? await authRepository.findTenantBySlug(tenantSlug) : null
+  if (tenantSlug && !tenant) return 'no_account'
+  const matches = await prisma.user.findMany({
+    where: {
+      active: true, tenant: { active: true }, ...(tenant && { tenantId: tenant.id }),
+      OR: [{ googleSub: info.sub }, { email: { equals: info.email, mode: 'insensitive' } }],
+    },
+    take: 2,
+  })
+  if (matches.length > 1) return 'org_required'
+  const user = matches[0]
+  if (!user || (user.googleSub && user.googleSub !== info.sub)) return 'no_account'
+  if (!user.googleSub) await prisma.user.update({ where: { id: user.id }, data: { googleSub: info.sub } })
+  return user
+}
+
+// "Sign in with Google" button (Google Identity Services): the browser gets a signed ID token. Google's tokeninfo
+// endpoint checks the signature and expiry; the audience, issuer and verified email are checked here.
+async function verifyIdToken(credential: string): Promise<GoogleInfo> {
+  const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`)
+  const t = (r.ok ? await r.json() : null) as Record<string, string> | null
+  if (!t || t.aud !== process.env.GOOGLE_CLIENT_ID || !['accounts.google.com', 'https://accounts.google.com'].includes(t.iss) || Number(t.exp) * 1000 < Date.now()) {
+    throw new AppError('Google sign-in could not be verified. Please try again.', 401)
+  }
+  if (!t.email || t.email_verified !== 'true') throw new AppError('Your Google email address is not verified.', 401)
+  return { sub: t.sub, email: t.email, name: t.name, picture: t.picture }
+}
+
+const ID_ERRORS: Record<string, [string, number, string]> = {
+  no_account: ['No workspace uses that Google account yet. To start one, choose Get started and continue with Google.', 404, 'NO_ACCOUNT'],
+  org_required: ['That Google account is in more than one organisation. Enter your organisation, then continue with Google.', 400, 'ORG_REQUIRED'],
+}
+
 export const googleSso = {
-  providers: (_req: Request, res: Response) => res.json({ success: true, data: { google: googleEnabled() } }),
+  // The client id is public (it is in every Google sign-in page); the web app needs it for the Google button
+  providers: (_req: Request, res: Response) => res.json({ success: true, data: { google: googleEnabled(), googleClientId: googleEnabled() ? process.env.GOOGLE_CLIENT_ID : null } }),
 
   start: asyncHandler(async (req: Request, res: Response) => {
     if (!googleEnabled()) throw new AppError('Google sign-in is not configured', 501)
@@ -86,27 +133,12 @@ export const googleSso = {
       if (!infoRes.ok) return back('google_error')
       const info = (await infoRes.json()) as { sub: string; email?: string; email_verified?: boolean; name?: string; picture?: string }
       if (!info.email || !info.email_verified) return back('email_unverified')
+      const g = { ...info, email: info.email }
 
-      if (st.intent === 'signup') {
-        const code = crypto.randomBytes(24).toString('hex')
-        const profile: GoogleProfile = { sub: info.sub, email: info.email.toLowerCase(), name: (info.name || '').slice(0, 80), picture: info.picture?.startsWith('https://') ? info.picture.slice(0, 500) : null }
-        await redis.set(`gsignup:${code}`, JSON.stringify(profile), 'EX', 900)
-        return res.redirect(`${clientUrl()}/signup?google=${code}`)
-      }
-
-      const tenant = st.tenant ? await authRepository.findTenantBySlug(st.tenant) : null
-      if (st.tenant && !tenant) return back('no_account')
-      const matches = await prisma.user.findMany({
-        where: {
-          active: true, tenant: { active: true }, ...(tenant && { tenantId: tenant.id }),
-          OR: [{ googleSub: info.sub }, { email: { equals: info.email, mode: 'insensitive' } }],
-        },
-        take: 2,
-      })
-      if (matches.length > 1) return back('org_required')
-      const user = matches[0]
-      if (!user || (user.googleSub && user.googleSub !== info.sub)) return back('no_account')
-      if (!user.googleSub) await prisma.user.update({ where: { id: user.id }, data: { googleSub: info.sub } })
+      if (st.intent === 'signup') return res.redirect(`${clientUrl()}/signup?google=${await parkSignup(g)}`)
+      const found = await matchGoogleUser(g, st.tenant)
+      if (typeof found === 'string') return back(found)
+      const user = found
 
       const code = crypto.randomBytes(24).toString('hex')
       await redis.set(`sso:${code}`, JSON.stringify({ userId: user.id, tenantId: user.tenantId }), 'EX', 60)
@@ -116,6 +148,21 @@ export const googleSso = {
       fail(res, 'server_error')
     }
   },
+
+  // ID token from the Google button: sign in (login page) or park a sign-up (sign-up page), same rules as the redirect flow
+  idToken: asyncHandler(async (req: Request, res: Response) => {
+    if (!googleEnabled()) throw new AppError('Google sign-in is not configured', 501)
+    const { credential, intent, tenantSlug } = req.body as { credential: string; intent: 'login' | 'signup'; tenantSlug?: string }
+    const info = await verifyIdToken(credential)
+    if (intent === 'signup') return res.json({ success: true, data: { signupCode: await parkSignup(info) } })
+    const found = await matchGoogleUser(info, tenantSlug?.trim().toLowerCase() || null)
+    if (typeof found === 'string') throw new AppError(...ID_ERRORS[found])
+    const [tenant, user] = await Promise.all([
+      prisma.tenant.findFirstOrThrow({ where: { id: found.tenantId, active: true } }),
+      authRepository.findUserByEmail(found.email, found.tenantId),
+    ])
+    res.json({ success: true, data: await completeLogin(user!, tenant) })
+  }),
 
   // Prefill for the sign-up form (read-only; the code is consumed by POST /auth/signup)
   signupProfile: asyncHandler(async (req: Request, res: Response) => {

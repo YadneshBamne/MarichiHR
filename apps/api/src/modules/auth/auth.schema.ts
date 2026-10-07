@@ -49,3 +49,11 @@ export const TourSchema = z.object({
 export const SsoExchangeSchema = z.object({
   body: z.object({ code: z.string().min(1) }).strict(),
 })
+
+export const GoogleIdTokenSchema = z.object({
+  body: z.object({
+    credential: z.string().min(20).max(4096),
+    intent: z.enum(['login', 'signup']),
+    tenantSlug: z.string().trim().max(60).optional(),
+  }).strict(),
+})

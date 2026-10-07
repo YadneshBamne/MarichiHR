@@ -31,6 +31,19 @@ const DAY = 86_400_000
     check('unknown organisation is refused', res.status === 404, res.status)
   }
 
+  // ─── GOOGLE BUTTON (ID TOKEN) ──────────────────────────────
+  r = await api(null, 'GET', '/auth/providers')
+  check('providers gives the public client id for the Google button when enabled', !google || (typeof r.body.googleClientId === 'string' && r.body.googleClientId.endsWith('.apps.googleusercontent.com')), r.data)
+  if (google) {
+    r = await api(null, 'POST', '/auth/google/id-token', { credential: 'x'.repeat(40) + '.forged.token', intent: 'login' })
+    check('a forged Google ID token is refused (401)', r.status === 401, r.data)
+    const fake = jwt.sign({ aud: 'someone-else', iss: 'https://accounts.google.com', email: 'a@b.c', email_verified: true, sub: '1' }, 'not-google')
+    r = await api(null, 'POST', '/auth/google/id-token', { credential: fake, intent: 'signup' })
+    check('a self-signed ID token cannot start a sign-up (401)', r.status === 401, r.data)
+  }
+  r = await api(null, 'POST', '/auth/google/id-token', { credential: 'x'.repeat(40), intent: 'admin' })
+  check('ID-token body is validated (intent login|signup only)', r.status === 400, r.data)
+
   // ─── SIGN-UP BODY RULES ────────────────────────────────────
   const code = crypto.randomBytes(24).toString('hex')
   const email = `g.owner.${TAG}@example.com`
