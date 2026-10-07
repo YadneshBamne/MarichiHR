@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { label: 'Approvals', path: '/approvals', icon: '✓', roles: ['manager', 'hr_admin', 'system_admin'] },
   { label: 'Activities', path: '/activities', icon: '📋', roles: [] },
   { label: 'Exits', path: '/exits', icon: '🚪', roles: [] },
+  { label: 'Compensation', path: '/compensation', icon: '⚙', roles: ['hr_admin', 'payroll_admin', 'compliance_officer'] },
 ]
 
 export default function AppShell() {
@@ -132,7 +133,7 @@ const s: Record<string, React.CSSProperties> = {
   userInfo: { overflow: 'hidden' },
   userName: { fontSize: '12px', fontWeight: '500', color: '#1a1a18', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   userRole: { fontSize: '11px', color: '#8c8c88', textTransform: 'capitalize', whiteSpace: 'nowrap' },
-  main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  main: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   topBar: { height: '57px', backgroundColor: '#fff', borderBottom: '0.5px solid #e2e0da', display: 'flex', alignItems: 'center', gap: '12px', padding: '0 20px', flexShrink: 0 },
   menuBtn: { background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#5c5c58', padding: '4px', lineHeight: 1 },
   pageTitle: { fontSize: '15px', fontWeight: '500', color: '#1a1a18', flex: 1 },

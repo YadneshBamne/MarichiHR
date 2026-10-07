@@ -74,6 +74,23 @@ export const salaryController = {
     res.json({ success: true, data: result })
   }),
 
+  updateStructureType: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await salaryService.updateStructureType(req.params.id as string, req.user!.tenantId, req.body) })
+  }),
+
+  updateStructure: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await salaryService.updateStructure(req.params.id as string, req.user!.tenantId, req.body) })
+  }),
+
+  checkRule: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await salaryService.checkRule(req.user!.tenantId, req.body) })
+  }),
+
+  listContracts: asyncHandler(async (req: Request, res: Response) => {
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined
+    res.json({ success: true, data: await salaryService.listContracts(req.user!.tenantId, status) })
+  }),
+
   listInputTypes: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!
     const result = await salaryService.listInputTypes(tenantId)

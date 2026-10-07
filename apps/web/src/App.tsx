@@ -18,6 +18,7 @@ import ApprovalsPage from './pages/approvals/ApprovalsPage'
 import ActivitiesPage from './pages/activities/ActivitiesPage'
 import ExitsPage from './pages/exits/ExitsPage'
 import ExitDetailPage from './pages/exits/ExitDetailPage'
+import SalarySetupPage from './pages/salary/SalarySetupPage'
 
 export default function App() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
               <Route path="activities" element={<ActivitiesPage />} />
               <Route path="exits" element={<ExitsPage />} />
               <Route path="exits/:id" element={<ExitDetailPage />} />
+              <Route path="compensation" element={<SalarySetupPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

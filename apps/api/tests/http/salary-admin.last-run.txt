@@ -1,0 +1,41 @@
+PASS  create structure type
+PASS  duplicate structure type name is 409
+PASS  strict body: tenantId rejected 400
+PASS  payroll_admin (no salary:write) cannot create (403)
+PASS  create structure
+PASS  duplicate structure code is 409
+PASS  update structure
+PASS  formula rule BASIC created
+PASS  syntax error in formula rejected 400
+PASS  sandbox: import() in formula rejected 400
+PASS  unknown symbol rejected 400
+PASS  reference to a later rule rejected 400
+PASS  unknown percentage base rejected 400
+PASS  duplicate rule code in structure is 409
+PASS  rule code must be UPPER_CASE (400)
+PASS  percentage rule on BASIC created
+PASS  conditional tax rule with compute_zra_paye created
+PASS  check endpoint: TA = 10% of BASIC (10000) = 1000 on a 20000 sample
+PASS  check endpoint reports a bad formula as 400 with the reason
+PASS  manager cannot use the formula check (403)
+PASS  editing HRA to reference later GROSS rejected 400
+PASS  valid edit accepted
+PASS  band with mid < min rejected 400
+PASS  create band
+PASS  update that breaks mid ≤ max rejected 400
+PASS  contract without employeeId is 400 (was 500)
+PASS  contract with until < from is 400
+PASS  create contract with structure + band (future date, Jane untouched today)
+PASS  contracts list (payroll_admin): includes employee, structure and band
+PASS  contracts list is 403 for a manager
+PASS  state machine: new → running is refused (400)
+PASS  contract draft → draft
+PASS  contract confirm → confirmed
+PASS  transition body is strict (400)
+PASS  archiving a structure used by a live contract is 409
+PASS  link structure to contract
+PASS  cancel the test contract
+PASS  state transitions recorded (draft, confirm, cancel)
+PASS  archive structure once no live contract uses it
+
+39/39 passed
