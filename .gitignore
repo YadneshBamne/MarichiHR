@@ -15,3 +15,4 @@ apps/*/.env
 .impeccable/
 skills-lock.json
 apps/api/tmp/
+CLAUDE.md
