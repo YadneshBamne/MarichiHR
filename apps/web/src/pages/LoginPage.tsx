@@ -7,7 +7,7 @@ import { gsap, reduced } from '../lib/motion'
 import Logo, { Mark } from '../components/brand/Logo'
 import Icon from '../components/ui/Icon'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1'
+const API_URL = import.meta.env.MARICHI_API_URL || 'http://localhost:4000/api/v1'
 const SSO_ERRORS: Record<string, string> = {
   no_account: 'That Google account is not linked to an active user in this organisation.',
   email_unverified: 'Your Google email address is not verified.',

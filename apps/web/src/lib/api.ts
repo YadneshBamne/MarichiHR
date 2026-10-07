@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1'
+const BASE_URL = import.meta.env.MARICHI_API_URL || 'http://localhost:4000/api/v1'
 
 let accessToken: string | null = null
 let refreshPromise: Promise<string | null> | null = null
