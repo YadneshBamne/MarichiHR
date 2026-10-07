@@ -37,5 +37,4 @@ PASS  link structure to contract
 PASS  cancel the test contract
 PASS  state transitions recorded (draft, confirm, cancel)
 PASS  archive structure once no live contract uses it
-
 39/39 passed

@@ -35,6 +35,22 @@ export const authController = {
     })
   }),
 
+  mfaVerify: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await authService.verifyMfaLogin(req.body.mfaToken, req.body.code) })
+  }),
+
+  mfaSetup: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await authService.mfaSetup(req.user!.userId) })
+  }),
+
+  mfaEnable: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await authService.mfaEnable(req.user!.userId, req.body.code) })
+  }),
+
+  mfaDisable: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await authService.mfaDisable(req.user!.userId, req.body.code) })
+  }),
+
   me: asyncHandler(async (req: Request, res: Response) => {
     const { userId } = req.user!
     const user = await authService.getMe(userId)

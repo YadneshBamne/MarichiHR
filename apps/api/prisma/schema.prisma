@@ -46,6 +46,8 @@ model Tenant {
   fxRates              FxRate[]
   reimbursementClaims  ReimbursementClaim[]
   employeeExits        EmployeeExit[]
+  notifications        Notification[]
+  chatterMessages      ChatterMessage[]
 
   @@map("tenants")
 }
@@ -67,6 +69,8 @@ model User {
   lastLoginAt   DateTime?
   mfaEnabled    Boolean   @default(false)
   mfaSecret     String?
+  mfaLastStep   Int?
+  googleSub     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -74,8 +78,10 @@ model User {
   userRoles     UserRole[]
   employee      Employee?
   refreshTokens RefreshToken[]
+  notifications Notification[]
 
   @@unique([tenantId, email])
+  @@unique([tenantId, googleSub])
   @@map("users")
 }
 
@@ -587,6 +593,7 @@ model LeaveApproval {
   comments       String?
   actionedAt     DateTime?
   deadlineAt     DateTime?
+  escalatedAt    DateTime?
   createdAt      DateTime  @default(now())
 
   leaveRequest LeaveRequest @relation(fields: [leaveRequestId], references: [id])
@@ -753,6 +760,7 @@ model Activity {
 
 model ChatterMessage {
   id          String   @id @default(uuid())
+  tenantId    String
   entityType  String
   entityId    String
   messageType String   @default("comment")
@@ -762,10 +770,36 @@ model ChatterMessage {
   isInternal  Boolean  @default(false)
   createdAt   DateTime @default(now())
 
+  tenant Tenant    @relation(fields: [tenantId], references: [id])
   author Employee? @relation(fields: [authorId], references: [id])
 
-  @@index([entityType, entityId])
+  @@index([tenantId, entityType, entityId])
   @@map("chatter_messages")
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────
+
+model Notification {
+  id         String    @id @default(uuid())
+  tenantId   String
+  userId     String
+  type       String
+  title      String
+  body       String
+  link       String?
+  entityType String?
+  entityId   String?
+  eventId    String?
+  deliveries Json      @default("[]")
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId, type])
+  @@index([tenantId, userId, readAt])
+  @@map("notifications")
 }
 
 // ─── EVENT BUS ────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import {
 } from '../../shared/utils/businessDate'
 
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
+import { PAYROLL_CONFIG } from '../payroll/payroll.config'
 
 const ymdOf = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -384,5 +385,75 @@ export const attendanceService = {
       message: `Attendance locked for ${startDate} to ${endDate}`,
       recordsLocked: result.count,
     }
+  },
+
+  // Nightly job: a working day (resource calendar, minus the employee's public holidays) that has no attendance record
+  // and no approved leave becomes an 'absent' record with source 'system'. Looks back a few days so a missed run
+  // catches up; days already recorded or inside a payroll cycle whose attendance is locked are never touched.
+  // `asOf` (YYYY-MM-DD) and `employeeIds` narrow a run for tests and back-fills; the scheduled job passes neither.
+  async markAbsences(tenantId: string, opts: { lookbackDays?: number; asOf?: string; employeeIds?: string[] } = {}) {
+    const lookbackDays = opts.lookbackDays ?? 3
+    const today = opts.asOf ? normaliseDateInput(opts.asOf) : await businessToday(tenantId)
+    const dates: string[] = []
+    for (let i = lookbackDays; i >= 1; i--) dates.push(ymdOf(new Date(today.getTime() - i * 86_400_000)))
+    const from = normaliseDateInput(dates[0])
+    const to = normaliseDateInput(dates[dates.length - 1])
+
+    const [employees, holidays, records, leaves, lockedCycles] = await Promise.all([
+      prisma.employee.findMany({
+        where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, ...(opts.employeeIds && { id: { in: opts.employeeIds } }) },
+        select: {
+          id: true, hireDate: true, exitDate: true, taxJurisdiction: true,
+          workLocation: { select: { countryCode: true } },
+          resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } },
+        },
+      }),
+      prisma.holiday.findMany({
+        where: { date: { gte: from, lte: to }, isOptional: false, calendar: { tenantId } },
+        select: { date: true, calendar: { select: { countryCode: true } } },
+      }),
+      prisma.attendanceRecord.findMany({
+        where: { employee: { tenantId }, date: { gte: from, lte: to } },
+        select: { employeeId: true, date: true },
+      }),
+      prisma.leaveRequest.findMany({
+        where: { status: 'approved', employee: { tenantId }, startDate: { lte: to }, endDate: { gte: from } },
+        select: { employeeId: true, startDate: true, endDate: true },
+      }),
+      prisma.payrollCycle.findMany({
+        where: { tenantId, attendanceLockedAt: { not: null }, payPeriodStart: { lte: to }, payPeriodEnd: { gte: from } },
+        select: { payPeriodStart: true, payPeriodEnd: true },
+      }),
+    ])
+
+    const recorded = new Set(records.map((r) => `${r.employeeId}|${ymdOf(r.date)}`))
+    const locked = (d: string) => lockedCycles.some((c) => ymdOf(c.payPeriodStart) <= d && d <= ymdOf(c.payPeriodEnd))
+    const onLeave = (empId: string, d: string) => leaves.some((l) => l.employeeId === empId && ymdOf(l.startDate) <= d && d <= ymdOf(l.endDate))
+    const isHoliday = (country: string | null | undefined, d: string) =>
+      holidays.some((h) => ymdOf(h.date) === d && (!h.calendar.countryCode || h.calendar.countryCode === country))
+
+    const created: { employeeId: string; date: string }[] = []
+    for (const emp of employees) {
+      // dayOfWeek in resource calendars: 0 = Monday ... 6 = Sunday
+      // ponytail: two-week calendars (weekType) are treated as one repeating week
+      const workDays = new Set<number>(emp.resourceCalendar?.days?.length ? emp.resourceCalendar.days.map((d) => d.dayOfWeek) : PAYROLL_CONFIG.DEFAULT_WORKING_DAYS)
+      const country = emp.workLocation?.countryCode || emp.taxJurisdiction
+      const marked: string[] = []
+      for (const d of dates) {
+        if (d < ymdOf(emp.hireDate) || (emp.exitDate && d > ymdOf(emp.exitDate))) continue
+        if (!workDays.has((normaliseDateInput(d).getUTCDay() + 6) % 7)) continue
+        if (isHoliday(country, d) || recorded.has(`${emp.id}|${d}`) || onLeave(emp.id, d) || locked(d)) continue
+        const res = await prisma.attendanceRecord.createMany({
+          data: [{ employeeId: emp.id, date: normaliseDateInput(d), status: 'absent', source: 'system', overrideReason: 'No attendance or approved leave (nightly job)' }],
+          skipDuplicates: true,
+        })
+        if (res.count) marked.push(d)
+      }
+      if (marked.length) {
+        created.push(...marked.map((date) => ({ employeeId: emp.id, date })))
+        await eventBus.publish(tenantId, 'attendance.absent.marked', { employeeId: emp.id, date: marked.join(', ') })
+      }
+    }
+    return { dates, marked: created.length, records: created }
   },
 }

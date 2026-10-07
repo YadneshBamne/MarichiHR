@@ -5,6 +5,7 @@ import { createApp } from './app'
 import { prisma } from './infrastructure/database/prisma'
 import { createServer } from 'http'
 import { closePdfBrowser } from './modules/payroll/payslip.pdf'
+import { startJobs, stopJobs } from './infrastructure/jobs/jobs'
 
 const PORT = process.env.PORT || 4000
 
@@ -31,6 +32,9 @@ async function main() {
   const app = createApp()
   const httpServer = createServer(app)
 
+  // Workers + cron run in the API process unless JOBS_ENABLED=false (then run `npm run worker` separately)
+  if (process.env.JOBS_ENABLED !== 'false') await startJobs()
+
   httpServer.listen(PORT, () => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(`✓ API running at http://localhost:${PORT}`)
@@ -42,6 +46,7 @@ async function main() {
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, async () => {
     await closePdfBrowser()
+    await stopJobs()
     process.exit(0)
   })
 }

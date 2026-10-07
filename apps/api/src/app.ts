@@ -13,6 +13,7 @@ import { salaryRouter } from './modules/salary/salary.router'
 import { payrollRouter } from './modules/payroll/payroll.router'
 import { expensesRouter } from './modules/expenses/expenses.router'
 import { exitsRouter } from './modules/exits/exits.router'
+import { notificationsRouter, systemRouter } from './modules/notifications/notifications.router'
 
 export function createApp() {
   const app = express()
@@ -33,7 +34,7 @@ export function createApp() {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV,
       version: '1.0.0',
-      modules: ['auth', 'employees', 'leave', 'attendance', 'activities', 'salary', 'payroll', 'expenses', 'exits'],
+      modules: ['auth', 'employees', 'leave', 'attendance', 'activities', 'salary', 'payroll', 'expenses', 'exits', 'notifications'],
     })
   })
 
@@ -46,6 +47,8 @@ export function createApp() {
   app.use('/api/v1/payroll', payrollRouter)
   app.use('/api/v1/expenses', expensesRouter)
   app.use('/api/v1/exits', exitsRouter)
+  app.use('/api/v1/notifications', notificationsRouter)
+  app.use('/api/v1/system', systemRouter)
 
   app.use(errorMiddleware)
   return app

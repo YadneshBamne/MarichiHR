@@ -36,14 +36,14 @@ PASS  finance user approves claim 300
 PASS  finance user approves claim 450
 PASS  finance user approves claim 40
 PASS  finance approve twice is 400
-PASS  create 2027-05 cycle
+PASS  create 2027-06 cycle
 PASS  run cycle
 PASS  Jane (no contract) is skipped
-PASS  EMP0001: one REIMB line per finance-approved claim (1)
+PASS  EMP0001: one REIMB line per finance-approved claim (2)
 PASS  EMP0001: reimbursements not in gross (GROSS line 20000 = earnings 20000 = payslip gross)
 PASS  EMP0001: net = NET rule + reimbursements (added after NET)
 PASS  EMP0001: totalDeductions (5782) excludes reimbursements
-PASS  EMP0002: one REIMB line per finance-approved claim (2)
+PASS  EMP0002: one REIMB line per finance-approved claim (4)
 PASS  EMP0002: reimbursements not in gross (GROSS line 10000 = earnings 10000 = payslip gross)
 PASS  EMP0002: net = NET rule + reimbursements (added after NET)
 PASS  EMP0002: totalDeductions (1704) excludes reimbursements
@@ -51,8 +51,8 @@ PASS  payslip PDF downloads (application/pdf, %PDF header)
 PASS  HR approves cycle
 PASS  HR approver cannot finance-approve (403)
 PASS  finance approves cycle
-PASS  GL: account 5020 debit = reimbursements paid (790)
-PASS  GL balances (debit 33790 = credit 33790)
+PASS  GL: account 5020 debit = reimbursements paid (1580)
+PASS  GL balances (debit 34580 = credit 34580)
 PASS  claims are still finance_approved before disbursement
 PASS  disburse cycle
 PASS  paid claims: status paid + paidInCycleId + paidAt
@@ -70,5 +70,4 @@ PASS  pending leave: payroll_admin (no leave:approve) is 403
 PASS  John approves Jane leave
 PASS  leave approval chatter uses YYYY-MM-DD: "from 2027-01-05 to 2027-01-05"
 PASS  John cancels his test leave
-
 72/72 passed

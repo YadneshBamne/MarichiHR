@@ -62,6 +62,7 @@ export const activitiesRepository = {
 
   // ─── CHATTER ──────────────────────────────────────────────
   async createMessage(data: {
+    tenantId: string
     entityType: string
     entityId: string
     body: string
@@ -72,6 +73,7 @@ export const activitiesRepository = {
   }) {
     return prisma.chatterMessage.create({
       data: {
+        tenantId: data.tenantId,
         entityType: data.entityType,
         entityId: data.entityId,
         body: data.body,
@@ -86,9 +88,10 @@ export const activitiesRepository = {
     })
   },
 
-  async listMessages(entityType: string, entityId: string, includeInternal: boolean = false) {
+  async listMessages(tenantId: string, entityType: string, entityId: string, includeInternal: boolean = false) {
     return prisma.chatterMessage.findMany({
       where: {
+        tenantId,
         entityType,
         entityId,
         ...(includeInternal ? {} : { isInternal: false }),
@@ -117,12 +120,14 @@ export const activitiesRepository = {
 
 // ─── SYSTEM CHATTER LOGGER ────────────────────────────────────
 export async function logSystemChatter(
+  tenantId: string,
   entityType: string,
   entityId: string,
   message: string
 ) {
   return prisma.chatterMessage.create({
     data: {
+      tenantId,
       entityType,
       entityId,
       body: message,

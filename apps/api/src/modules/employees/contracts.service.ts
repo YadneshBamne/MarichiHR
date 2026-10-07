@@ -60,8 +60,8 @@ export const contractService = {
     return updated
   },
 
-  async runAutoActivateCron() {
-    const contracts = await contractRepository.findConfirmedReadyToActivate()
+  async runAutoActivateCron(tenantId?: string) {
+    const contracts = await contractRepository.findConfirmedReadyToActivate(tenantId)
     let activated = 0
 
     for (const contract of contracts) {
@@ -82,8 +82,8 @@ export const contractService = {
     return activated
   },
 
-  async runAutoExpireCron() {
-    const contracts = await contractRepository.findRunningReadyToExpire()
+  async runAutoExpireCron(tenantId?: string) {
+    const contracts = await contractRepository.findRunningReadyToExpire(tenantId)
     let expired = 0
 
     for (const contract of contracts) {
@@ -104,8 +104,8 @@ export const contractService = {
     return expired
   },
 
-  async runExpiryAlertCron() {
-    const contracts = await contractRepository.findExpiringSoon(30)
+  async runExpiryAlertCron(tenantId?: string) {
+    const contracts = await contractRepository.findExpiringSoon(30, tenantId)
     let alerted = 0
 
     for (const contract of contracts) {

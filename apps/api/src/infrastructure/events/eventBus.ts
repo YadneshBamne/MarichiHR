@@ -12,6 +12,13 @@ function getEventQueue(): Queue {
   return eventQueue
 }
 
+// jobId = eventId, so a sweep never queues an event that is already waiting
+export async function enqueueEvent(eventId: string) {
+  await getEventQueue().add('dispatch', { eventId }, {
+    jobId: eventId, attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: true,
+  })
+}
+
 // Date-only values are shown as YYYY-MM-DD in UTC, never via Date.toString()
 const ymd = (d: unknown) => (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10)
 
@@ -75,7 +82,7 @@ export const eventBus = {
       try {
         const chatterData = chatterFn(payload)
         if (chatterData) {
-          await logSystemChatter(chatterData.entityType, chatterData.entityId, chatterData.message)
+          await logSystemChatter(tenantId, chatterData.entityType, chatterData.entityId, chatterData.message)
         }
       } catch (err) {
         console.error(`Failed to log chatter for event ${eventType}:`, err)
@@ -83,12 +90,9 @@ export const eventBus = {
     }
 
     try {
-      await getEventQueue().add(
-        'dispatch',
-        { eventId: event.id },
-        { attempts: 5, backoff: { type: 'exponential', delay: 2000 } }
-      )
+      await enqueueEvent(event.id)
     } catch (err) {
+      // The events-sweep job re-enqueues pending events, so a Redis hiccup only delays delivery
       console.error('Failed to enqueue event:', err)
     }
 

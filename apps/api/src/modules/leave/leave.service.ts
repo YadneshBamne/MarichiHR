@@ -3,8 +3,23 @@ import { ApplyLeaveDto, ApproveLeaveDto, RejectLeaveDto, LeaveAllocationRequestD
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
-import { normaliseDateInput } from '../../shared/utils/businessDate'
+import { normaliseDateInput, businessToday } from '../../shared/utils/businessDate'
+
+export const LEAVE_APPROVAL_SLA_HOURS = 24
+
+// Explicit whitelist of configurable leave-type columns (never spread a request body into Prisma)
+const LEAVE_TYPE_FIELDS = [
+  'name', 'category', 'isPaid', 'isStatutory', 'statutoryCountry', 'accrualType', 'accrualAmount', 'accrualDayOfMonth',
+  'carryForward', 'carryForwardMax', 'carryForwardExpiryMonths', 'allowNegative', 'encashable', 'halfDayAllowed',
+  'hourlyAllowed', 'leaveUnit', 'approvalLevels', 'requiresHrForStatutory', 'attachmentRequiredAfterDays', 'sandwichRule',
+] as const
+function pickLeaveTypeFields(body: Record<string, unknown>) {
+  const out: Record<string, unknown> = {}
+  for (const k of LEAVE_TYPE_FIELDS) if (body[k] !== undefined) out[k] = body[k]
+  return out
+}
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
+import { consistent } from './leave.schema'
 
 function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string): number {
   let days = 0
@@ -33,6 +48,32 @@ function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, 
 export const leaveService = {
   async listTypes(tenantId: string) {
     return leaveRepository.listTypes(tenantId)
+  },
+
+  // ─── Leave-type configuration (HR) ──────────────────────────
+  async listAllTypes(tenantId: string) {
+    return prisma.leaveType.findMany({ where: { tenantId }, orderBy: [{ active: 'desc' }, { name: 'asc' }] })
+  },
+
+  async createType(tenantId: string, userId: string, body: any) {
+    const dup = await prisma.leaveType.findFirst({ where: { tenantId, code: body.code }, select: { id: true } })
+    if (dup) throw new AppError(`Leave type code ${body.code} already exists`, 409)
+    const created = await prisma.leaveType.create({ data: { ...pickLeaveTypeFields(body), code: body.code, name: body.name, category: body.category, tenantId } })
+    await prisma.auditLog.create({ data: { tenantId, userId, action: 'LEAVE_TYPE_CREATED', entityType: 'leave_type', entityId: created.id, newValue: created as any } })
+    return created
+  },
+
+  async updateType(tenantId: string, userId: string, id: string, body: any) {
+    const existing = await prisma.leaveType.findFirst({ where: { id, tenantId } })
+    if (!existing) throw new AppError('Leave type not found', 404)
+    const data = pickLeaveTypeFields(body)
+    if (!consistent({ ...existing, ...data } as any)) throw new AppError('Accruing leave types need an accrual amount above 0', 400)
+    if (body.active !== undefined) Object.assign(data, { active: body.active, archivedAt: body.active ? null : new Date() })
+    const updated = await prisma.leaveType.update({ where: { id: existing.id }, data })
+    await prisma.auditLog.create({
+      data: { tenantId, userId, action: body.active === false ? 'LEAVE_TYPE_ARCHIVED' : 'LEAVE_TYPE_UPDATED', entityType: 'leave_type', entityId: id, oldValue: existing as any, newValue: updated as any },
+    })
+    return updated
   },
 
   async getBalances(employeeId: string) {
@@ -84,8 +125,7 @@ export const leaveService = {
 
     await leaveRepository.updateBalance(employeeId, data.leaveTypeId, { pendingDays: totalDays })
 
-    const slaDeadline = new Date()
-    slaDeadline.setHours(slaDeadline.getHours() + 24)
+    const slaDeadline = new Date(Date.now() + LEAVE_APPROVAL_SLA_HOURS * 3_600_000)
 
     await leaveRepository.createApproval(
       request.id,
@@ -280,8 +320,12 @@ export const leaveService = {
     return leaveRepository.listAllocations(employeeId)
   },
 
+  // Monthly accrual, safe to re-run: one 'accrual' allocation per employee, leave type and tenant-local month
   async runMonthlyAccrual(tenantId: string) {
-    const now = new Date()
+    const today = await businessToday(tenantId)
+    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
+    const nextMonthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1))
+    const monthLabel = monthStart.toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
     let credited = 0
 
     const leaveTypes = await prisma.leaveType.findMany({
@@ -289,43 +333,70 @@ export const leaveService = {
     })
 
     const employees = await prisma.employee.findMany({
-      where: { tenantId, active: true, employmentStatus: { not: 'terminated' } },
+      where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, hireDate: { lte: today } },
     })
 
     for (const employee of employees) {
       for (const leaveType of leaveTypes) {
         if (!leaveType.accrualAmount) continue
 
-        const monthsWorked = Math.floor(
-          (now.getTime() - new Date(employee.hireDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
-        )
-
-        if (monthsWorked < 0) continue
-
-        const daysToCredit = leaveType.accrualAmount
+        const already = await prisma.leaveAllocation.findFirst({
+          where: { employeeId: employee.id, leaveTypeId: leaveType.id, allocationType: 'accrual', validFrom: { gte: monthStart, lt: nextMonthStart } },
+          select: { id: true },
+        })
+        if (already) continue
 
         await prisma.leaveAllocation.create({
           data: {
             employeeId: employee.id,
             leaveTypeId: leaveType.id,
             allocationType: 'accrual',
-            daysAllocated: daysToCredit,
-            validFrom: now,
-            reason: `Monthly accrual — ${now.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+            daysAllocated: leaveType.accrualAmount,
+            validFrom: monthStart,
+            reason: `Monthly accrual — ${monthLabel}`,
             approvedBy: 'system',
             status: 'approved',
           },
         })
 
         await leaveRepository.updateBalance(employee.id, leaveType.id, {
-          balanceDays: daysToCredit,
+          balanceDays: leaveType.accrualAmount,
         })
 
         credited++
       }
     }
 
-    console.log(`Leave accrual cron: ${credited} balance entries credited for tenant ${tenantId}`)
+    console.log(`Leave accrual: ${credited} balance entries credited for tenant ${tenantId} (${monthLabel})`)
     return credited
+  },
+
+  // Hourly job: a pending level-1 approval past its deadline is escalated once to HR and the skip-level manager
+  async runSlaEscalation(tenantId: string) {
+    const overdue = await prisma.leaveApproval.findMany({
+      where: {
+        action: 'pending', escalatedAt: null, deadlineAt: { lt: new Date() },
+        leaveRequest: { status: 'pending', employee: { tenantId } },
+      },
+      include: {
+        leaveRequest: {
+          include: { employee: { select: { id: true, firstName: true, lastName: true, manager: { select: { managerId: true } } } } },
+        },
+      },
+    })
+    for (const a of overdue) {
+      const claimed = await prisma.leaveApproval.updateMany({ where: { id: a.id, escalatedAt: null }, data: { escalatedAt: new Date() } })
+      if (!claimed.count) continue
+      const emp = a.leaveRequest.employee
+      await eventBus.publish(tenantId, 'leave.approval.escalated', {
+        leaveRequestId: a.leaveRequestId,
+        employeeId: emp.id,
+        employeeName: `${emp.firstName} ${emp.lastName}`,
+        approverId: a.approverId,
+        skipLevelManagerId: emp.manager?.managerId ?? null,
+        slaHours: LEAVE_APPROVAL_SLA_HOURS,
+      })
+    }
+    return overdue.length
   },
 }

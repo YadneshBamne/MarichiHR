@@ -106,8 +106,10 @@ const TAG = `p20-${Date.now()}`
   const fnf = r.body
   check('HR computes: status computed', r.status === 200 && fnf.status === 'computed' && fnf.computedBy === admin.userId, r.data)
   const L = (code) => fnf.lines.find((l) => l.code === code)
-  // Feb 2027: 20 weekdays, 1–12 Feb = 10 → factor 0.5. BASIC = 20000 × 0.40 = 8000/month → 4000 prorated; 8000/30 = 266.67/day
-  check('salary prorated by the payroll engine: BASIC 4000 (half of 8000)', L('BASIC')?.amount === 4000 && L('BASIC').section === 'salary', L('BASIC'))
+  // BASIC = 20000 × 0.40 = 8000/month, prorated by weekdays 1–12 over weekdays in the month (Feb 2027: 10/20 → 4000); 8000/30 = 266.67/day
+  const wd = (from, to) => { let n = 0; for (let d = new Date(`${FNF_MONTH}-${from}T00:00:00Z`); d.getUTCMonth() === m - 1 && d.getUTCDate() <= to; d.setUTCDate(d.getUTCDate() + 1)) if (d.getUTCDay() % 6) n++; return n }
+  const basicExpected = round2((8000 * wd('01', 12)) / wd('01', 31))
+  check(`salary prorated by the payroll engine: BASIC ${basicExpected} (8000 × ${wd('01', 12)}/${wd('01', 31)} weekdays)`, L('BASIC')?.amount === basicExpected && L('BASIC').section === 'salary', L('BASIC'))
   check('salary carries PAYE and NAPSA from the engine', !!L('PAYE_ZM') && L('PAYE_ZM').kind === 'deduction' && !!L('NAPSA_EMP'), fnf.lines.map((l) => l.code))
   check('leave encashment: 10 days × 266.67 = 2666.7', L('ENCASH_ANNUAL')?.amount === 2666.7 && L('ENCASH_ANNUAL').quantity === 10, L('ENCASH_ANNUAL'))
   check('notice shortfall recovery: 7 × 266.67 = 1866.69 (deduction)', L('NOTICE_RECOVERY')?.amount === 1866.69 && L('NOTICE_RECOVERY').kind === 'deduction', L('NOTICE_RECOVERY'))

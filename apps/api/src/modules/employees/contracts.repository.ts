@@ -83,29 +83,32 @@ export const contractRepository = {
     return updated
   },
 
-  async findConfirmedReadyToActivate() {
+  async findConfirmedReadyToActivate(tenantId?: string) {
     return prisma.employeeContract.findMany({
       where: {
         status: 'confirmed',
         active: true,
+        ...(tenantId && { employee: { tenantId } }),
         effectiveFrom: { lte: new Date() },
       },
       include: { employee: { select: { id: true, tenantId: true, firstName: true, lastName: true } } },
     })
   },
 
-  async findRunningReadyToExpire() {
+  async findRunningReadyToExpire(tenantId?: string) {
     return prisma.employeeContract.findMany({
       where: {
         status: 'running',
         active: true,
-        effectiveUntil: { lte: new Date() },
+        ...(tenantId && { employee: { tenantId } }),
+        // effectiveUntil is the last day covered (UTC-midnight date): expire from the following day
+        effectiveUntil: { lt: new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z') },
       },
       include: { employee: { select: { id: true, tenantId: true, firstName: true, lastName: true } } },
     })
   },
 
-  async findExpiringSoon(daysAhead: number) {
+  async findExpiringSoon(daysAhead: number, tenantId?: string) {
     const futureDate = new Date()
     futureDate.setDate(futureDate.getDate() + daysAhead)
 
@@ -113,6 +116,7 @@ export const contractRepository = {
       where: {
         status: 'running',
         active: true,
+        ...(tenantId && { employee: { tenantId } }),
         expiryAlertSent: false,
         effectiveUntil: {
           not: null,

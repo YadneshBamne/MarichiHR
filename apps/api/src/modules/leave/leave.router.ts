@@ -5,6 +5,7 @@ import { leaveController } from './leave.controller'
 import { contractController } from '../employees/contracts.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { CreateContractSchema, ContractTransitionSchema } from '../employees/employees.schema'
+import { CreateLeaveTypeSchema, UpdateLeaveTypeSchema } from './leave.schema'
 
 export const leaveRouter = Router()
 
@@ -12,6 +13,9 @@ leaveRouter.use(authenticate)
 
 // ─── LEAVE TYPES ──────────────────────────────────────────────
 leaveRouter.get('/types', requirePermission('leave:read'), leaveController.listTypes)
+leaveRouter.get('/types/all', requirePermission('leave:configure'), leaveController.listAllTypes)
+leaveRouter.post('/types', requirePermission('leave:configure'), validate(CreateLeaveTypeSchema), leaveController.createType)
+leaveRouter.patch('/types/:id', requirePermission('leave:configure'), validate(UpdateLeaveTypeSchema), leaveController.updateType)
 
 // ─── BALANCES ─────────────────────────────────────────────────
 leaveRouter.get('/balances/me', requirePermission('leave:read'), leaveController.getMyBalances)

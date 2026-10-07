@@ -99,7 +99,7 @@ export async function assertCanApprove(
   if (isSelf(user, requestEmployeeId)) {
     if (!owner.managerId && isHR) {
       const target = entity ?? { entityType: 'employee', entityId: requestEmployeeId }
-      await logSystemChatter(target.entityType, target.entityId, 'Self-approved: no manager on record')
+      await logSystemChatter(tenantId, target.entityType, target.entityId, 'Self-approved: no manager on record')
       await prisma.auditLog.create({
         data: { tenantId, userId: user.userId, action: 'SELF_APPROVAL', entityType: target.entityType, entityId: target.entityId },
       })

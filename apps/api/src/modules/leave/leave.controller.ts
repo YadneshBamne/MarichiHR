@@ -9,6 +9,18 @@ export const leaveController = {
     res.json({ success: true, data: types })
   }),
 
+  listAllTypes: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await leaveService.listAllTypes(req.user!.tenantId) })
+  }),
+
+  createType: asyncHandler(async (req: Request, res: Response) => {
+    res.status(201).json({ success: true, data: await leaveService.createType(req.user!.tenantId, req.user!.userId, req.body) })
+  }),
+
+  updateType: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await leaveService.updateType(req.user!.tenantId, req.user!.userId, req.params['id'] as string, req.body) })
+  }),
+
   getMyBalances: asyncHandler(async (req: Request, res: Response) => {
     const { employeeId } = req.user!
     const balances = await leaveService.getBalances(employeeId!)

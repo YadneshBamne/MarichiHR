@@ -1,0 +1,79 @@
+PASS  5 cron jobs registered with BullMQ, each with a next run time
+PASS  manager cannot list or run jobs (403)
+PASS  unknown job is 404
+PASS  setup: worker applies for 2027-03-02
+PASS  worker consumes the domain event: status delivered, deliveredAt set
+PASS  manager gets an in-app "awaiting approval" notification linked to the request
+PASS  email delivery recorded through the log transport
+PASS  events-sweep re-enqueues failed events
+PASS  re-dispatched event does not duplicate the notification
+PASS  SLA job escalates the overdue approval
+PASS  approval stamped escalatedAt
+PASS  HR admin notified of the overdue approval
+PASS  SLA job is idempotent: no second escalation
+PASS  manager approves
+PASS  employee notified of the approval
+PASS  leave accrual credits a new employee once for this month
+PASS  second accrual run in the same month credits nothing
+PASS  contract ending today is still running after the job
+PASS  contract that ended yesterday is expired by the job
+PASS  HR notified of the expired contract
+PASS  GET /notifications lists my notifications with an unread count
+PASS  notification payload never exposes delivery internals
+PASS  someone else's notification is 404
+PASS  mark one read
+PASS  read-all clears the unread count
+PASS  WhatsApp adapter refuses to send without WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID
+PASS  absent-marking job runs for the tenant
+PASS  real run marks exactly the unlocked working days (none: those days are in a locked payroll cycle)
+PASS  no locked payroll cycle covers the March 2030 test window
+PASS  working days without attendance are marked absent, source system (03-05, 03-06)
+PASS  the employee's public holiday (03-04, country XT) is skipped
+PASS  days with attendance are left alone
+PASS  days before the hire date are not marked (late hire: only 03-06)
+PASS  run reports 3 records marked
+PASS  second run marks nothing new
+PASS  weekend (03-16, 03-17) skipped; Monday 03-18 marked
+PASS  employee notified that they were marked absent (via the event worker)
+PASS  leave for a marked day is approved
+PASS  approved leave removes the system absence for that day
+PASS  a day covered by approved leave is not re-marked
+PASS  every chatter row has a tenantId after the backfill
+PASS  posted chatter stores the author tenant
+PASS  system chatter from events stores the tenant
+PASS  chatter list never shows another tenant's rows on the same entity id
+PASS  HR creates a leave type
+PASS  duplicate code is 409
+PASS  strict body: unknown field rejected 400
+PASS  invalid code format rejected 400
+PASS  accruing type without an amount rejected 400
+PASS  manager cannot configure leave types (403)
+PASS  HR updates a leave type
+PASS  code is immutable (400)
+PASS  update that leaves an accruing type without an amount is 400
+PASS  unknown or other-tenant id is 404
+PASS  archive (active=false) sets archivedAt
+PASS  archived type hidden from employees, kept in the HR list
+PASS  cannot apply for an archived type (404)
+PASS  employee cannot read the HR list (403)
+PASS  leave-type changes are audit-logged
+PASS  MFA setup returns a base32 secret and an otpauth:// URI
+PASS  secret is stored AES-GCM encrypted, not in clear
+PASS  enable with a wrong code is 401
+PASS  enable with the current code
+PASS  password login now stops at the MFA step (no tokens)
+PASS  the MFA step token is not an access token (401)
+PASS  replaying the code already used is refused (401)
+PASS  a fresh code completes sign-in with tokens
+PASS  /auth/me shows mfaEnabled and never the secret
+PASS  forged MFA token is 401
+PASS  disable needs a fresh code and clears the secret
+PASS  login returns tokens directly again
+PASS  MFA enable/disable audit-logged
+PASS  5 wrong codes lock MFA attempts (6th, even correct, is 429)
+PASS  providers endpoint reports Google as not configured (no client id/secret)
+PASS  Google start is 501 until GOOGLE_CLIENT_ID/SECRET are set
+PASS  Google callback redirects to the login page with an error, never 500
+PASS  SSO exchange with an unknown one-time code is 401
+PASS  throwaway employees archived
+78/78 passed

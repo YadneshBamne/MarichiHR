@@ -86,6 +86,7 @@ export const activitiesService = {
     const completed = await activitiesRepository.complete(id, data.doneNote)
 
     await logSystemChatter(
+      tenantId,
       activity.entityType,
       activity.entityId,
       `Activity "${activity.title}" marked as done. Note: ${data.doneNote}`
@@ -113,6 +114,7 @@ export const activitiesService = {
     }
 
     return activitiesRepository.createMessage({
+      tenantId: user.tenantId,
       entityType: data.entityType,
       entityId: data.entityId,
       body: data.body,
@@ -125,7 +127,7 @@ export const activitiesService = {
 
   async listMessages(entityType: string, entityId: string, isHR: boolean, user: AccessUser) {
     await assertEntityAccess(user, entityType, entityId)
-    return activitiesRepository.listMessages(entityType, entityId, isHR)
+    return activitiesRepository.listMessages(user.tenantId, entityType, entityId, isHR)
   },
 
   async getDashboardSummary(employeeId: string, tenantId: string, roleIds: string[]) {
