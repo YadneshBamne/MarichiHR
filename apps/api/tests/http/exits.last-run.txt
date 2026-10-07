@@ -1,0 +1,54 @@
+PASS  setup: contract with 30-day notice
+PASS  setup: 10 days ANNUAL (encashable) allocated
+PASS  setup: leaver has a finance-approved 300 ZMW claim
+PASS  same user on two clearances is 400
+PASS  exiting employee as a signer is 400
+PASS  strict body: extra key is 400
+PASS  last working day before notice date is 400
+PASS  payroll_admin cannot initiate (403)
+PASS  HR initiates resignation: 201
+PASS  notice from contract: 30 days, served 23, shortfall 7, action recover
+PASS  MANAGER clearance defaults to the direct manager (John)
+PASS  second open exit for the same employee is 409
+PASS  John (manager) cannot list exits (403)
+PASS  John sees the exit he must sign (200)
+PASS  Jane (unrelated) gets 404
+PASS  John's pending sign-offs include MANAGER for this exit
+PASS  compute before clearance is blocked (400, lists pending)
+PASS  John cannot sign the IT clearance (403)
+PASS  unrelated user signing gets 404
+PASS  IT signed off by its responsible user
+PASS  FINANCE signed off by its responsible user
+PASS  ADMIN signed off by its responsible user
+PASS  MANAGER signed off by its responsible user
+PASS  signing twice is 400
+PASS  2027-02 payroll run skips the leaver ("full & final")
+PASS  payroll_admin cannot compute (403)
+PASS  HR computes: status computed
+PASS  salary prorated by the payroll engine: BASIC 4000 (half of 8000)
+PASS  salary carries PAYE and NAPSA from the engine
+PASS  leave encashment: 10 days × 266.67 = 2666.7
+PASS  notice shortfall recovery: 7 × 266.67 = 1866.69 (deduction)
+PASS  pending approved reimbursement included (300)
+PASS  manual recovery line (500)
+PASS  gratuity is a labelled 0 placeholder
+PASS  totals: earnings 12966.7 − deductions 4070.69 = net 8896.01
+PASS  HR who computed cannot approve (403)
+PASS  manager without payroll:disburse cannot approve (403)
+PASS  pay before approval is 400
+PASS  finance approves (different user)
+PASS  recompute after approval is 400
+PASS  cancel after approval is refused (409)
+PASS  final settlement PDF (%PDF)
+PASS  finance pays: status paid
+PASS  employee archived (active=false, terminated) and login deactivated
+PASS  contract closed via state machine: running → expired, effectiveUntil = LWD
+PASS  reimbursement marked paid by the settlement
+PASS  encashed days recorded on the leave balance (10)
+PASS  domain events recorded
+PASS  paying twice is 400 (immutable)
+PASS  recompute after payment is 400
+PASS  termination defaults to buyout; no contract → notice 0
+PASS  HR cancels: status cancelled, exitDate cleared
+
+52/52 passed

@@ -41,12 +41,13 @@ async function getCycleOrThrow(cycleId: string, tenantId: string) {
   return cycle
 }
 
-async function computeEmployeePayslip(
+// Also used by the F&F settlement (exits module) for the prorated last month
+export async function computeEmployeePayslip(
   emp: any,
   cycle: any,
   cycleInputs: any[],
   inputCodes: string[]
-): Promise<{ skip?: string; payslip?: any; warnings: string[] }> {
+): Promise<{ skip?: string; payslip?: any; warnings: string[]; basicMonthly?: number }> {
   const warnings: string[] = []
   const periodStart = dstr(cycle.payPeriodStart)
   const periodEnd = dstr(cycle.payPeriodEnd)
@@ -207,6 +208,18 @@ async function computeEmployeePayslip(
 
   warnings.push(...result.warnings)
 
+  // Unprorated monthly BASIC (per-day rates for leave encashment / notice pay)
+  const fullMonth = runPayrollEngine({
+    rules: contract.salaryStructure.rules.map((r: any) => ({ ...r, categoryCode: r.category.code })),
+    contract: { wageMonthly: fullWage, fullWageMonthly: fullWage, ctcAnnual: contract.ctcAnnual, variablePayPercent: contract.variablePayPercent },
+    factor: 1,
+    workingDays: periodWorking.length,
+    paidDays: periodWorking.length,
+    lwpDays: 0,
+    extraLines: [],
+    inputsByCode,
+  })
+
   const workDays = Math.max(0, round2(windowWorking.length - lwpDays - paidLeaveDays))
   const hoursPerDay = PAYROLL_CONFIG.STANDARD_HOURS_PER_DAY
 
@@ -249,7 +262,7 @@ async function computeEmployeePayslip(
     },
   }
 
-  return { payslip, warnings }
+  return { payslip, warnings, basicMonthly: fullMonth.categories.BASIC }
 }
 
 export const payrollService = {
@@ -356,8 +369,20 @@ export const payrollService = {
       const inputTypes = await repo.listInputTypes(tenantId)
       const inputCodes = inputTypes.map((t) => t.code)
 
+      // Leavers whose last working day is on or before this period's end are paid through their F&F settlement
+      const exits = await prisma.employeeExit.findMany({
+        where: { tenantId, status: { not: 'cancelled' }, lastWorkingDate: { lte: cycle.payPeriodEnd } },
+        select: { employeeId: true, lastWorkingDate: true },
+      })
+      const exitByEmployee = new Map(exits.map((x) => [x.employeeId, dstr(x.lastWorkingDate)]))
+
       for (const emp of employees) {
         const name = `${emp.firstName} ${emp.lastName}`
+        const exitDay = exitByEmployee.get(emp.id)
+        if (exitDay) {
+          skipped.push({ employeeId: emp.id, employeeCode: emp.employeeCode, name, reason: `Exiting on ${exitDay}: paid through the full & final settlement` })
+          continue
+        }
         try {
           const out = await computeEmployeePayslip(emp, cycle, cycleInputs, inputCodes)
           if (out.skip) {

@@ -3,6 +3,8 @@ import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission } from '../../middleware/rbac.middleware'
 import { leaveController } from './leave.controller'
 import { contractController } from '../employees/contracts.controller'
+import { validate } from '../../middleware/validate.middleware'
+import { CreateContractSchema, ContractTransitionSchema } from '../employees/employees.schema'
 
 export const leaveRouter = Router()
 
@@ -37,12 +39,12 @@ leaveRouter.post('/allocations/manual', requirePermission('leave:configure'), le
 leaveRouter.post('/accrual/run', requirePermission('leave:configure'), leaveController.triggerAccrual)
 
 // ─── CONTRACTS ────────────────────────────────────────────────
-leaveRouter.post('/contracts', requirePermission('salary:write'), contractController.create)
+leaveRouter.post('/contracts', requirePermission('salary:write'), validate(CreateContractSchema), contractController.create)
 leaveRouter.get('/contracts/employee/:employeeId', requirePermission('salary:read'), contractController.getByEmployee)
 leaveRouter.get('/contracts/:id', requirePermission('salary:read'), contractController.getById)
-leaveRouter.post('/contracts/:id/draft', requirePermission('salary:write'), contractController.draft)
-leaveRouter.post('/contracts/:id/confirm', requirePermission('salary:write'), contractController.confirm)
-leaveRouter.post('/contracts/:id/activate', requirePermission('salary:write'), contractController.activate)
-leaveRouter.post('/contracts/:id/cancel', requirePermission('salary:write'), contractController.cancel)
+leaveRouter.post('/contracts/:id/draft', requirePermission('salary:write'), validate(ContractTransitionSchema), contractController.draft)
+leaveRouter.post('/contracts/:id/confirm', requirePermission('salary:write'), validate(ContractTransitionSchema), contractController.confirm)
+leaveRouter.post('/contracts/:id/activate', requirePermission('salary:write'), validate(ContractTransitionSchema), contractController.activate)
+leaveRouter.post('/contracts/:id/cancel', requirePermission('salary:write'), validate(ContractTransitionSchema), contractController.cancel)
 leaveRouter.post('/contracts/cron/auto-activate', requirePermission('system:configure'), contractController.triggerAutoActivate)
 leaveRouter.post('/contracts/cron/auto-expire', requirePermission('system:configure'), contractController.triggerAutoExpire)

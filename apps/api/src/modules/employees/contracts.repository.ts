@@ -1,3 +1,4 @@
+import { dateOnly } from '../../shared/utils/businessDate'
 import { prisma } from '../../infrastructure/database/prisma'
 import { CreateContractDto } from './contracts.types'
 
@@ -10,8 +11,9 @@ export const contractRepository = {
         wageMonthly: data.wageMonthly,
         currency: data.currency,
         variablePayPercent: data.variablePayPercent ?? 0,
-        effectiveFrom: new Date(data.effectiveFrom),
-        effectiveUntil: data.effectiveUntil ? new Date(data.effectiveUntil) : undefined,
+        noticePeriodDays: data.noticePeriodDays ?? 30,
+        effectiveFrom: dateOnly(data.effectiveFrom),
+        effectiveUntil: data.effectiveUntil ? dateOnly(data.effectiveUntil) : undefined,
         salaryStructureId: data.salaryStructureId,
         gradeBandId: data.gradeBandId,
         revisionReason: data.revisionReason,

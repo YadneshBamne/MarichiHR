@@ -4,6 +4,7 @@ export interface CreateContractDto {
   wageMonthly: number
   currency: string
   variablePayPercent?: number
+  noticePeriodDays?: number
   effectiveFrom: string
   effectiveUntil?: string
   salaryStructureId?: string

@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { label: 'Expenses', path: '/expenses', icon: '🧾', roles: [] },
   { label: 'Approvals', path: '/approvals', icon: '✓', roles: ['manager', 'hr_admin', 'system_admin'] },
   { label: 'Activities', path: '/activities', icon: '📋', roles: [] },
+  { label: 'Exits', path: '/exits', icon: '🚪', roles: [] },
 ]
 
 export default function AppShell() {

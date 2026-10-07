@@ -51,6 +51,16 @@ const CHATTER_EVENTS: Record<string, (payload: any) => { entityType: string; ent
     entityId: p.contractId,
     message: `Contract expiring in ${p.daysRemaining} days for ${p.name}. Please initiate renewal.`,
   }),
+  'exit.initiated': (p) => ({
+    entityType: 'employee',
+    entityId: p.employeeId,
+    message: `Exit initiated (${p.exitType}). Last working day ${ymd(p.lastWorkingDate)}.`,
+  }),
+  'fnf.paid': (p) => ({
+    entityType: 'employee',
+    entityId: p.employeeId,
+    message: `Full & final settlement paid: ${p.netPayable} ${p.currency}.`,
+  }),
   'attendance.locked': (_p) => null,
 }
 

@@ -68,7 +68,7 @@ export const authService = {
         email: user.email,
         fullName: user.fullName,
         avatarUrl: user.avatarUrl,
-        roles: roleIds,
+        roles: user.userRoles.map((ur) => ({ id: ur.role.id, name: ur.role.name })),
         employee: user.employee
           ? {
               id: user.employee.id,

@@ -151,3 +151,26 @@ export const UpdateResumeLineSchema = z.object({
   params: z.object({ id: z.string().uuid(), lineId: z.string().uuid() }),
   body: AddResumeLineSchema.shape.body.partial().strict(),
 })
+
+const ymdDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+
+export const CreateContractSchema = z.object({
+  body: z.object({
+    employeeId: z.string().uuid(),
+    ctcAnnual: z.number().nonnegative(),
+    wageMonthly: z.number().positive(),
+    currency: z.string().regex(/^[A-Z]{3}$/, 'Use a 3-letter currency code'),
+    variablePayPercent: z.number().min(0).max(100).optional(),
+    noticePeriodDays: z.number().int().min(0).max(365).optional(),
+    effectiveFrom: ymdDate,
+    effectiveUntil: ymdDate.optional(),
+    salaryStructureId: z.string().uuid().optional(),
+    gradeBandId: z.string().uuid().optional(),
+    revisionReason: z.string().trim().max(500).optional(),
+  }).strict().refine((b) => !b.effectiveUntil || b.effectiveUntil >= b.effectiveFrom, 'effectiveUntil must be on or after effectiveFrom'),
+})
+
+export const ContractTransitionSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({ reason: z.string().trim().max(500).optional() }).strict().default({}),
+})

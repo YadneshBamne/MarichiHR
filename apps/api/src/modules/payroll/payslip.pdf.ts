@@ -10,7 +10,7 @@ export function escapeHtml(s: unknown): string {
     .replace(/'/g, '&#39;')
 }
 
-function money(amount: unknown, currency: string): string {
+export function money(amount: unknown, currency: string): string {
   const n = Number(amount ?? 0)
   try {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(n)
@@ -19,7 +19,7 @@ function money(amount: unknown, currency: string): string {
   }
 }
 
-function fmtDate(d: unknown): string {
+export function fmtDate(d: unknown): string {
   return new Date(d as any).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 

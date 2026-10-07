@@ -45,6 +45,7 @@ model Tenant {
   perDiemRates          PerDiemRate[]
   fxRates               FxRate[]
   reimbursementClaims   ReimbursementClaim[]
+  employeeExits         EmployeeExit[]
 
   @@map("tenants")
 }
@@ -324,6 +325,7 @@ model Employee {
   chatterMessages         ChatterMessage[]
   payslips                Payslip[]
   reimbursementClaims     ReimbursementClaim[]
+  exits                   EmployeeExit[]
 
   @@unique([tenantId, employeeCode])
   @@map("employees")
@@ -411,6 +413,7 @@ model EmployeeContract {
   wageMonthly         Float
   currency            String    @default("USD")
   variablePayPercent  Float     @default(0)
+  noticePeriodDays    Int       @default(30)
   effectiveFrom       DateTime
   effectiveUntil      DateTime?
 
@@ -1114,4 +1117,65 @@ model ReimbursementClaim {
   @@index([tenantId, status])
   @@index([employeeId])
   @@map("reimbursement_claims")
+}
+
+// ─── EXIT & FULL-AND-FINAL SETTLEMENT ─────────────────────────
+
+model EmployeeExit {
+  id                String    @id @default(uuid())
+  tenantId          String
+  employeeId        String
+  contractId        String?
+  exitType          String
+  reason            String
+  noticeDate        DateTime  @db.Date
+  lastWorkingDate   DateTime  @db.Date
+  noticePeriodDays  Int
+  noticeServedDays  Int
+  shortfallDays     Int
+  shortfallAction   String
+  status            String    @default("initiated")
+  initiatedBy       String
+
+  currency          String?
+  lines             Json?
+  warnings          Json?
+  totalEarnings     Float?
+  totalDeductions   Float?
+  netPayable        Float?
+  computedBy        String?
+  computedAt        DateTime?
+  approvedBy        String?
+  approvedAt        DateTime?
+  paidBy            String?
+  paidAt            DateTime?
+  cancelledBy       String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  employee          Employee        @relation(fields: [employeeId], references: [id])
+  clearances        ExitClearance[]
+
+  @@index([tenantId, status])
+  @@index([employeeId])
+  @@map("employee_exits")
+}
+
+model ExitClearance {
+  id                 String    @id @default(uuid())
+  exitId             String
+  department         String
+  responsibleUserId  String
+  status             String    @default("pending")
+  note               String?
+  clearedAt          DateTime?
+
+  exit               EmployeeExit @relation(fields: [exitId], references: [id])
+
+  @@unique([exitId, department])
+  @@index([responsibleUserId, status])
+  @@map("exit_clearances")
 }
