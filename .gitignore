@@ -16,3 +16,7 @@ apps/*/.env
 skills-lock.json
 apps/api/tmp/
 CLAUDE.md
+
+# uploads and local artefacts
+uploads/
+*.local
