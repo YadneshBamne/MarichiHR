@@ -72,7 +72,7 @@ export default function ChatterPanel({ entityType, entityId }: Props) {
                 checked={isInternal}
                 onChange={(e) => setIsInternal(e.target.checked)}
               />
-              <span style={{ marginLeft: '6px', fontSize: '12px', color: '#5c5c58' }}>Internal note</span>
+              <span style={{ marginLeft: '6px', fontSize: '12px', color: 'var(--dim)' }}>Internal note</span>
             </label>
           )}
           <button
@@ -90,20 +90,20 @@ export default function ChatterPanel({ entityType, entityId }: Props) {
 
 const s: Record<string, React.CSSProperties> = {
   root: { display: 'flex', flexDirection: 'column', gap: '12px' },
-  title: { fontSize: '13px', fontWeight: '500', color: '#1a1a18' },
-  empty: { fontSize: '13px', color: '#8c8c88', padding: '12px 0' },
+  title: { fontSize: '13px', fontWeight: '500', color: 'var(--ink)' },
+  empty: { fontSize: '13px', color: 'var(--faint)', padding: '12px 0' },
   messages: { display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' },
-  message: { backgroundColor: '#f9f8f6', borderRadius: '8px', padding: '10px 12px', border: '0.5px solid #e2e0da' },
-  systemMessage: { backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da' },
-  internalMessage: { backgroundColor: '#faeeda', border: '0.5px solid #f0d890' },
+  message: { backgroundColor: 'var(--solid)', borderRadius: '14px', padding: '10px 12px', border: '1px solid var(--line)' },
+  systemMessage: { backgroundColor: 'var(--well)', border: '1px solid var(--line)' },
+  internalMessage: { backgroundColor: 'var(--warn-bg)', border: '1px solid var(--honey-2)' },
   msgHeader: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' },
-  author: { fontSize: '12px', fontWeight: '500', color: '#1a1a18' },
-  internalBadge: { fontSize: '10px', backgroundColor: '#BA7517', color: '#fff', padding: '1px 6px', borderRadius: '8px' },
-  time: { fontSize: '11px', color: '#8c8c88', marginLeft: 'auto' },
-  msgBody: { fontSize: '13px', color: '#5c5c58', lineHeight: 1.5 },
-  compose: { borderTop: '0.5px solid #e2e0da', paddingTop: '12px' },
-  textarea: { width: '100%', padding: '10px 12px', borderRadius: '6px', border: '0.5px solid #ccc9c1', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' },
+  author: { fontSize: '12px', fontWeight: '500', color: 'var(--ink)' },
+  internalBadge: { fontSize: '10px', backgroundColor: 'var(--warn)', color: 'var(--night-ink)', padding: '1px 6px', borderRadius: '14px' },
+  time: { fontSize: '11px', color: 'var(--faint)', marginLeft: 'auto' },
+  msgBody: { fontSize: '13px', color: 'var(--dim)', lineHeight: 1.5 },
+  compose: { borderTop: '1px solid var(--line)', paddingTop: '12px' },
+  textarea: { width: '100%', padding: '10px 12px', borderRadius: '12px', border: '1px solid var(--line-2)', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' },
   composeFooter: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' },
   internalToggle: { display: 'flex', alignItems: 'center', cursor: 'pointer' },
-  postBtn: { padding: '7px 16px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
+  postBtn: { padding: '7px 16px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 999, fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
 }

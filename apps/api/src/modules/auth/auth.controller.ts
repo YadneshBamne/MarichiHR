@@ -39,6 +39,10 @@ export const authController = {
     res.json({ success: true, data: await authService.verifyMfaLogin(req.body.mfaToken, req.body.code) })
   }),
 
+  setTour: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await authService.setTour(req.user!.userId, req.body.status) })
+  }),
+
   mfaSetup: asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await authService.mfaSetup(req.user!.userId) })
   }),

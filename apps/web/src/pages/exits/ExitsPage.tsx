@@ -21,20 +21,20 @@ export default function ExitsPage() {
   const tabs: [Tab, string][] = [...(isStaff ? [['exits', 'Exits & settlements'] as [Tab, string]] : []), ['signoffs', `My sign-offs${mine.length ? ` (${mine.length})` : ''}`]]
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Exits</h2>
-          <p style={{ fontSize: 13, color: '#8c8c88', marginTop: 2 }}>Resignations, terminations and full &amp; final settlements</p>
+          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Exits</h2>
+          <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Resignations, terminations and full &amp; final settlements</p>
         </div>
         {hasRole('hr_admin') && tab === 'exits' && (
           <button onClick={() => setShowInitiate(true)} style={primaryBtn}>+ Initiate exit</button>
         )}
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '0.5px solid #e2e0da', marginBottom: 20 }}>
+      <div className="chips" style={{ marginBottom: 20 }}>
         {tabs.map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ padding: '10px 18px', background: 'none', border: 'none', fontSize: 13, cursor: 'pointer', color: tab === k ? '#534AB7' : '#5c5c58', fontWeight: tab === k ? 500 : 400, borderBottom: `2px solid ${tab === k ? '#534AB7' : 'transparent'}`, marginBottom: -0.5 }}>{label}</button>
+          <button key={k} onClick={() => setTab(k)} className={`chip${tab === k ? ' is-on' : ''}`}>{label}</button>
         ))}
       </div>
 
@@ -47,14 +47,14 @@ export default function ExitsPage() {
                 {exits.map((x: any) => {
                   const cleared = x.clearances.filter((c: any) => c.status === 'cleared').length
                   return (
-                    <tr key={x.id} onClick={() => navigate(`/exits/${x.id}`)} style={{ borderBottom: '0.5px solid #f5f4f0', cursor: 'pointer' }}>
-                      <td style={td}><strong>{x.employee.firstName} {x.employee.lastName}</strong><div style={{ fontSize: 11, color: '#8c8c88' }}>{x.employee.employeeCode}</div></td>
+                    <tr key={x.id} onClick={() => navigate(`/exits/${x.id}`)} style={{ borderBottom: '1px solid var(--well)', cursor: 'pointer' }}>
+                      <td style={td}><strong>{x.employee.firstName} {x.employee.lastName}</strong><div style={{ fontSize: 11, color: 'var(--faint)' }}>{x.employee.employeeCode}</div></td>
                       <td style={{ ...td, textTransform: 'capitalize' }}>{x.exitType}</td>
                       <td style={td}>{fmtDate(x.lastWorkingDate)}</td>
                       <td style={td}>{cleared}/{x.clearances.length}</td>
                       <td style={td}>{x.netPayable == null ? '—' : money(x.netPayable, x.currency)}</td>
                       <td style={td}><Badge label={x.status} /></td>
-                      <td style={{ ...td, color: '#534AB7', fontSize: 12 }}>Open →</td>
+                      <td style={{ ...td, color: 'var(--brand)', fontSize: 12 }}>Open →</td>
                     </tr>
                   )
                 })}
@@ -71,11 +71,11 @@ export default function ExitsPage() {
               <thead><tr>{['Employee', 'Your clearance', 'Last working day', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
                 {mine.map((c: any) => (
-                  <tr key={c.id} onClick={() => navigate(`/exits/${c.exitId}`)} style={{ borderBottom: '0.5px solid #f5f4f0', cursor: 'pointer' }}>
+                  <tr key={c.id} onClick={() => navigate(`/exits/${c.exitId}`)} style={{ borderBottom: '1px solid var(--well)', cursor: 'pointer' }}>
                     <td style={td}><strong>{c.exit.employee.firstName} {c.exit.employee.lastName}</strong></td>
                     <td style={td}>{c.department}</td>
                     <td style={td}>{fmtDate(c.exit.lastWorkingDate)}</td>
-                    <td style={{ ...td, color: '#534AB7', fontSize: 12 }}>Review &amp; sign →</td>
+                    <td style={{ ...td, color: 'var(--brand)', fontSize: 12 }}>Review &amp; sign →</td>
                   </tr>
                 ))}
               </tbody>
@@ -89,8 +89,8 @@ export default function ExitsPage() {
   )
 }
 
-export const primaryBtn: React.CSSProperties = { padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: 'pointer' }
-const card: React.CSSProperties = { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: 10, overflow: 'hidden' }
-const empty: React.CSSProperties = { padding: 40, textAlign: 'center', color: '#8c8c88', fontSize: 13 }
-export const th: React.CSSProperties = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '0.5px solid #e2e0da', backgroundColor: '#f9f8f6' }
-export const td: React.CSSProperties = { padding: '12px 16px', fontSize: 13, color: '#1a1a18' }
+export const primaryBtn: React.CSSProperties = { padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer' }
+const card: React.CSSProperties = { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' }
+const empty: React.CSSProperties = { padding: 40, textAlign: 'center', color: 'var(--faint)', fontSize: 13 }
+export const th: React.CSSProperties = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
+export const td: React.CSSProperties = { padding: '12px 16px', fontSize: 13, color: 'var(--ink)' }

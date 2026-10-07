@@ -24,14 +24,14 @@ export default function LeaveApprovalsPanel() {
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
 
-  if (isLoading) return <div style={{ color: '#8c8c88', fontSize: '13px' }}>Loading...</div>
+  if (isLoading) return <div style={{ color: 'var(--faint)', fontSize: '13px' }}>Loading...</div>
 
   if (requests.length === 0) {
     return (
       <div style={s.emptyState}>
         <div style={{ fontSize: '28px', marginBottom: '8px' }}>✓</div>
-        <div style={{ fontSize: '14px', fontWeight: '500', color: '#1a1a18' }}>All caught up</div>
-        <div style={{ fontSize: '13px', color: '#8c8c88', marginTop: '4px' }}>No pending leave requests</div>
+        <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--ink)' }}>All caught up</div>
+        <div style={{ fontSize: '13px', color: 'var(--faint)', marginTop: '4px' }}>No pending leave requests</div>
       </div>
     )
   }
@@ -78,11 +78,11 @@ export default function LeaveApprovalsPanel() {
 
       <Modal open={!!rejectModal} onClose={() => setRejectModal(null)} title="Reject Leave Request" width={420}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <p style={{ fontSize: '13px', color: '#5c5c58', margin: 0 }}>
+          <p style={{ fontSize: '13px', color: 'var(--dim)', margin: 0 }}>
             Rejecting {rejectModal?.name}'s leave request. Please provide a reason.
           </p>
           <textarea
-            style={{ padding: '10px 12px', borderRadius: '6px', border: '0.5px solid #ccc9c1', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+            style={{ padding: '10px 12px', borderRadius: '12px', border: '1px solid var(--line-2)', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
             rows={3}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
@@ -90,11 +90,11 @@ export default function LeaveApprovalsPanel() {
             autoFocus
           />
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button onClick={() => setRejectModal(null)} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => setRejectModal(null)} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
             <button
               onClick={handleReject}
               disabled={!rejectReason.trim() || rejectLeave.isPending}
-              style={{ padding: '9px 18px', backgroundColor: '#993C1D', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', opacity: !rejectReason.trim() ? 0.5 : 1 }}
+              style={{ padding: '9px 18px', backgroundColor: 'var(--danger)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer', opacity: !rejectReason.trim() ? 0.5 : 1 }}
             >
               {rejectLeave.isPending ? 'Rejecting...' : 'Confirm Reject'}
             </button>
@@ -107,19 +107,19 @@ export default function LeaveApprovalsPanel() {
 
 const s: Record<string, React.CSSProperties> = {
   list: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  card: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', padding: '16px' },
+  card: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '16px' },
   cardTop: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' },
-  avatar: { width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#eeedfe', color: '#534AB7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '600', flexShrink: 0 },
+  avatar: { width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '600', flexShrink: 0 },
   info: { flex: 1 },
-  name: { fontSize: '13px', fontWeight: '500', color: '#1a1a18' },
-  sub: { fontSize: '12px', color: '#8c8c88' },
+  name: { fontSize: '13px', fontWeight: '500', color: 'var(--ink)' },
+  sub: { fontSize: '12px', color: 'var(--faint)' },
   dateRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' },
-  dates: { fontSize: '13px', color: '#1a1a18' },
-  days: { fontSize: '13px', fontWeight: '500', color: '#534AB7' },
-  reason: { fontSize: '12px', color: '#5c5c58', fontStyle: 'italic', marginBottom: '6px' },
-  appliedAt: { fontSize: '11px', color: '#8c8c88', marginBottom: '12px' },
+  dates: { fontSize: '13px', color: 'var(--ink)' },
+  days: { fontSize: '13px', fontWeight: '500', color: 'var(--brand)' },
+  reason: { fontSize: '12px', color: 'var(--dim)', fontStyle: 'italic', marginBottom: '6px' },
+  appliedAt: { fontSize: '11px', color: 'var(--faint)', marginBottom: '12px' },
   actions: { display: 'flex', gap: '8px' },
-  approveBtn: { flex: 1, padding: '8px', backgroundColor: '#e1f5ee', color: '#0F6E56', border: '0.5px solid #b8e8d4', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
-  rejectBtn: { flex: 1, padding: '8px', backgroundColor: '#faece7', color: '#993C1D', border: '0.5px solid #f5c6b8', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
-  emptyState: { textAlign: 'center', padding: '40px 20px', color: '#5c5c58' },
+  approveBtn: { flex: 1, padding: '8px', backgroundColor: 'var(--ok-bg)', color: 'var(--ok)', border: '1px solid var(--ok-line)', borderRadius: 999, fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
+  rejectBtn: { flex: 1, padding: '8px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: 999, fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
+  emptyState: { textAlign: 'center', padding: '40px 20px', color: 'var(--dim)' },
 }

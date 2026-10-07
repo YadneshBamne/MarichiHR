@@ -25,6 +25,10 @@ export const MfaCodeSchema = z.object({
   body: z.object({ code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code') }).strict(),
 })
 
+export const TourSchema = z.object({
+  body: z.object({ status: z.enum(['done', 'reset']) }).strict(),
+})
+
 export const SsoExchangeSchema = z.object({
   body: z.object({ code: z.string().min(1) }).strict(),
 })

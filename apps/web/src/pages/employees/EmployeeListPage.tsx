@@ -1,144 +1,126 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useEmployees } from '../../lib/hooks/useEmployees'
+import { useEmployees, useOrgTree } from '../../lib/hooks/useEmployees'
 import { useAuth } from '../../contexts/AuthContext'
-import Badge from '../../components/ui/Badge'
+import { useReveal, useRowsIn } from '../../lib/motion'
+import PageHeader, { SearchField, EmptyState } from '../../components/ui/PageHeader'
+import Avatar from '../../components/ui/Avatar'
+import Icon from '../../components/ui/Icon'
 import CreateEmployeeModal from './CreateEmployeeModal'
+
+const STATUS_PILL: Record<string, string> = { active: 'ok', probation: 'honey', notice: 'warn', on_leave: 'info', terminated: 'mute', resigned: 'mute' }
+const since = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
+
+function flatten(nodes: any[] = [], out: any[] = []): any[] {
+  for (const n of nodes) { out.push(n); flatten(n.children, out) }
+  return out
+}
 
 export default function EmployeeListPage() {
   const { isHR } = useAuth()
   const navigate = useNavigate()
+  const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
+  const [unit, setUnit] = useState<string>('')
+  const [archived, setArchived] = useState(false)
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<string[]>([])
   const [showCreate, setShowCreate] = useState(false)
-  const [searchInput, setSearchInput] = useState('')
 
-  const { data, isLoading } = useEmployees({ page, limit: 25, search })
+  // Search as you type, without a request per keystroke
+  useEffect(() => { const t = setTimeout(() => { setSearch(q.trim()); setPage(1) }, 300); return () => clearTimeout(t) }, [q])
 
-  const employees = data?.data || []
+  const { data, isLoading } = useEmployees({ page, limit: 25, search: search || undefined, orgUnitId: unit || undefined, showArchived: archived || undefined })
+  const { data: tree } = useOrgTree()
+  const units = useMemo(() => flatten(Array.isArray(tree) ? tree : tree ? [tree] : []), [tree])
+  const employees: any[] = data?.data || []
   const meta = data?.meta
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setSearch(searchInput)
-    setPage(1)
-  }
+  const page$ = useReveal<HTMLDivElement>()
+  const rows = useRowsIn<HTMLTableSectionElement>(`${search}|${unit}|${page}|${archived}|${employees.length}`)
+  const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
 
   return (
-    <div style={s.page}>
-      {/* Header */}
-      <div style={s.header}>
-        <div>
-          <h2 style={s.title}>Employees</h2>
-          <p style={s.sub}>{meta?.total ?? 0} total</p>
+    <div ref={page$}>
+      <PageHeader
+        title="People"
+        sub={meta ? `${meta.total} ${archived ? 'including archived' : 'active'} ${meta.total === 1 ? 'person' : 'people'}` : ' '}
+        actions={<>
+          <SearchField value={q} onChange={setQ} placeholder="Search by name, email or code" width={280} />
+          {isHR && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add member</button>}
+        </>}
+      >
+        <div className="chips">
+          <button className={`chip${!unit ? ' is-on' : ''}`} onClick={() => { setUnit(''); setPage(1) }}>All {!unit && meta && <span className="n">{meta.total}</span>}</button>
+          {units.map((u) => (
+            <button key={u.id} className={`chip${unit === u.id ? ' is-on' : ''}`} onClick={() => { setUnit(u.id); setPage(1) }}>
+              {u.name} {unit === u.id && meta && <span className="n">{meta.total}</span>}
+            </button>
+          ))}
+          <button className={`chip${archived ? ' is-on' : ''}`} onClick={() => { setArchived(!archived); setPage(1) }} style={{ marginLeft: 'auto' }}>
+            <Icon name="door" size={13} /> Show archived
+          </button>
         </div>
-        {isHR && (
-          <button style={s.addBtn} onClick={() => setShowCreate(true)}>
-            + Add Employee
-          </button>
-        )}
-      </div>
+      </PageHeader>
 
-      {/* Search bar */}
-      <form onSubmit={handleSearch} style={s.searchRow}>
-        <input
-          style={s.searchInput}
-          placeholder="Search by name, email or code..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-        />
-        <button type="submit" style={s.searchBtn}>Search</button>
-        {search && (
-          <button type="button" style={s.clearBtn} onClick={() => { setSearch(''); setSearchInput(''); setPage(1) }}>
-            Clear
-          </button>
-        )}
-      </form>
-
-      {/* Table */}
-      <div style={s.tableWrap}>
+      <section data-card className="card" style={{ padding: '6px 10px', overflowX: 'auto' }}>
         {isLoading ? (
-          <div style={s.loading}>Loading employees...</div>
+          <div style={{ padding: 14 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton" style={{ height: 38, marginBottom: 10 }} />)}</div>
         ) : employees.length === 0 ? (
-          <div style={s.empty}>No employees found.</div>
+          <EmptyState icon={<Icon name="users" size={24} />} title={search || unit ? 'No one matches' : 'No people yet'} body={search || unit ? 'Try a different search or team.' : 'Add your first team member to get started.'}
+            action={isHR && !search && !unit ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add member</button> : undefined} />
         ) : (
-          <table style={s.table}>
+          <table className="tbl" style={{ minWidth: 860 }}>
             <thead>
               <tr>
-                {['Code', 'Name', 'Email', 'Department', 'Position', 'Type', 'Status', ''].map((h) => (
-                  <th key={h} style={s.th}>{h}</th>
-                ))}
+                <th style={{ width: 36 }}><span className="sr-only">Select</span></th>
+                <th>Name</th><th>Role</th><th>Team</th><th>Location</th><th>Started</th><th>Status</th>
               </tr>
             </thead>
-            <tbody>
-              {employees.map((emp: any) => (
-                <tr
-                  key={emp.id}
-                  style={s.tr}
-                  onClick={() => navigate(`/employees/${emp.id}`)}
-                >
-                  <td style={s.td}><span style={s.code}>{emp.employeeCode}</span></td>
-                  <td style={s.td}>
-                    <div style={s.nameCell}>
-                      <div style={s.avatar}>{emp.firstName?.charAt(0)}</div>
-                      <div>
-                        <div style={s.name}>{emp.firstName} {emp.lastName}</div>
-                        {emp.manager && <div style={s.manager}>Reports to {emp.manager.user.fullName}</div>}
-                      </div>
-                    </div>
-                  </td>
-                  <td style={s.td}><span style={s.email}>{emp.workEmail || emp.user?.email}</span></td>
-                  <td style={s.td}>{emp.orgUnit?.name || '—'}</td>
-                  <td style={s.td}>{emp.jobPosition?.title || '—'}</td>
-                  <td style={s.td}><Badge label={emp.employmentType} /></td>
-                  <td style={s.td}><Badge label={emp.employmentStatus} /></td>
-                  <td style={s.td}><span style={s.viewLink}>View →</span></td>
-                </tr>
-              ))}
+            <tbody ref={rows}>
+              {employees.map((e) => {
+                const sel = selected.includes(e.id)
+                const name = `${e.firstName} ${e.lastName}`
+                return (
+                  <tr key={e.id} data-row className={sel ? 'is-sel' : ''} onClick={() => navigate(`/employees/${e.id}`)} style={{ cursor: 'pointer' }}>
+                    <td onClick={(ev) => ev.stopPropagation()} style={{ width: 36 }}>
+                      <input type="checkbox" checked={sel} onChange={() => toggle(e.id)} aria-label={`Select ${name}`} />
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar name={name} src={e.user?.avatarUrl} size={30} />
+                        <span>
+                          <span style={{ display: 'block', fontWeight: 500 }}>{name}</span>
+                          <span className="muted" style={{ fontSize: 11 }}>{e.employeeCode}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td>{e.jobPosition?.title || <span className="muted">—</span>}</td>
+                    <td>{e.orgUnit?.name || '—'}</td>
+                    <td>{e.workLocation?.city || e.workLocation?.name || <span className="muted">—</span>}</td>
+                    <td className="num">{since(e.hireDate)}</td>
+                    <td><span className={`pill ${sel ? 'night' : STATUS_PILL[e.employmentStatus] || 'mute'}`}>{(e.employmentStatus || '').replace(/_/g, ' ')}</span></td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
-      </div>
+      </section>
 
-      {/* Pagination */}
-      {meta && meta.totalPages > 1 && (
-        <div style={s.pagination}>
-          <button style={s.pageBtn} disabled={!meta.hasPrev} onClick={() => setPage(p => p - 1)}>← Prev</button>
-          <span style={s.pageInfo}>Page {meta.page} of {meta.totalPages}</span>
-          <button style={s.pageBtn} disabled={!meta.hasNext} onClick={() => setPage(p => p + 1)}>Next →</button>
+      {(selected.length > 0 || (meta && meta.totalPages > 1)) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+          {selected.length > 0 && <span className="pill night" style={{ height: 30, padding: '0 14px' }}>{selected.length} selected <button className="link" style={{ color: 'var(--honey)' }} onClick={() => setSelected([])}>Clear</button></span>}
+          {meta && meta.totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+              <button className="btn btn-ghost btn-sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}><Icon name="chevronLeft" size={14} /> Prev</button>
+              <span className="dim num" style={{ fontSize: 13 }}>Page {meta.page} of {meta.totalPages}</span>
+              <button className="btn btn-ghost btn-sm" disabled={!meta.hasNext} onClick={() => setPage((p) => p + 1)}>Next <Icon name="chevronRight" size={14} /></button>
+            </div>
+          )}
         </div>
       )}
 
       <CreateEmployeeModal open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   )
-}
-
-const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: '1200px' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' },
-  title: { fontSize: '20px', fontWeight: '500', color: '#1a1a18', margin: 0 },
-  sub: { fontSize: '13px', color: '#8c8c88', marginTop: '2px' },
-  addBtn: { padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
-  searchRow: { display: 'flex', gap: '8px', marginBottom: '16px' },
-  searchInput: { flex: 1, padding: '9px 12px', borderRadius: '6px', border: '0.5px solid #ccc9c1', fontSize: '13px', outline: 'none' },
-  searchBtn: { padding: '9px 16px', backgroundColor: '#1a1a18', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' },
-  clearBtn: { padding: '9px 16px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', color: '#5c5c58' },
-  tableWrap: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', overflow: 'hidden' },
-  loading: { padding: '40px', textAlign: 'center', color: '#8c8c88', fontSize: '13px' },
-  empty: { padding: '40px', textAlign: 'center', color: '#8c8c88', fontSize: '13px' },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  th: { padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '0.5px solid #e2e0da', backgroundColor: '#f9f8f6' },
-  tr: { cursor: 'pointer', borderBottom: '0.5px solid #f5f4f0', transition: 'background 0.1s' },
-  td: { padding: '12px 16px', fontSize: '13px', color: '#1a1a18' },
-  code: { fontFamily: 'monospace', fontSize: '12px', color: '#5c5c58' },
-  nameCell: { display: 'flex', alignItems: 'center', gap: '10px' },
-  avatar: { width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#eeedfe', color: '#534AB7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600', flexShrink: 0 },
-  name: { fontWeight: '500', fontSize: '13px' },
-  manager: { fontSize: '11px', color: '#8c8c88', marginTop: '1px' },
-  email: { color: '#5c5c58', fontSize: '12px' },
-  viewLink: { color: '#534AB7', fontSize: '12px' },
-  pagination: { display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px', justifyContent: 'center' },
-  pageBtn: { padding: '7px 14px', border: '0.5px solid #e2e0da', borderRadius: '6px', backgroundColor: '#fff', fontSize: '13px', cursor: 'pointer', color: '#1a1a18' },
-  pageInfo: { fontSize: '13px', color: '#5c5c58' },
 }

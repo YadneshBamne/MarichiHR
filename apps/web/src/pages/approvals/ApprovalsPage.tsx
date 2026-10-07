@@ -24,9 +24,9 @@ export default function ApprovalsPage() {
 
   if (!isManager) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px 20px', color: '#5c5c58', fontFamily: '-apple-system, sans-serif' }}>
+      <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--dim)', fontFamily: 'var(--font-body)' }}>
         <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔒</div>
-        <div style={{ fontSize: '16px', fontWeight: '500', color: '#1a1a18', marginBottom: '8px' }}>Access restricted</div>
+        <div style={{ fontSize: '16px', fontWeight: '500', color: 'var(--ink)', marginBottom: '8px' }}>Access restricted</div>
         <div style={{ fontSize: '13px' }}>Approvals are only available to managers and HR administrators.</div>
       </div>
     )
@@ -72,12 +72,12 @@ export default function ApprovalsPage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: '800px' },
+  page: {},
   header: { marginBottom: '20px' },
-  title: { fontSize: '20px', fontWeight: '500', color: '#1a1a18', margin: 0 },
-  sub: { fontSize: '13px', color: '#8c8c88', marginTop: '2px' },
-  tabs: { display: 'flex', borderBottom: '0.5px solid #e2e0da', marginBottom: '20px', gap: '0' },
-  tab: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', background: 'none', border: 'none', fontSize: '13px', color: '#5c5c58', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: '-0.5px' },
-  tabActive: { color: '#534AB7', fontWeight: '500', borderBottomColor: '#534AB7' },
-  badge: { backgroundColor: '#993C1D', color: '#fff', fontSize: '10px', fontWeight: '600', padding: '1px 6px', borderRadius: '10px', minWidth: '16px', textAlign: 'center' },
+  title: { fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', fontWeight: 400, color: 'var(--ink)', margin: 0 },
+  sub: { fontSize: '13px', color: 'var(--faint)', marginTop: '2px' },
+  tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
+  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
+  badge: { backgroundColor: 'var(--danger)', color: 'var(--night-ink)', fontSize: '10px', fontWeight: '600', padding: '1px 6px', borderRadius: 'var(--r-card)', minWidth: '16px', textAlign: 'center' },
 }

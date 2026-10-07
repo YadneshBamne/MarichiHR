@@ -85,11 +85,11 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
       <Modal open={open} onClose={handleClose} title="Leave Applied">
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
-          <div style={{ fontSize: '16px', fontWeight: '500', color: '#1a1a18', marginBottom: '6px' }}>Leave request submitted</div>
-          <div style={{ fontSize: '13px', color: '#5c5c58', marginBottom: '20px' }}>
+          <div style={{ fontSize: '16px', fontWeight: '500', color: 'var(--ink)', marginBottom: '6px' }}>Leave request submitted</div>
+          <div style={{ fontSize: '13px', color: 'var(--dim)', marginBottom: '20px' }}>
             Your manager has been notified and will action it within 24 hours.
           </div>
-          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>
+          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>
             Done
           </button>
         </div>
@@ -111,11 +111,11 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
 
         {form.leaveTypeId && available !== null && (
           <div style={{
-            padding: '10px 12px', borderRadius: '6px',
-            backgroundColor: insufficient ? '#faece7' : '#e1f5ee',
-            border: `0.5px solid ${insufficient ? '#f5c6b8' : '#b8e8d4'}`,
+            padding: '10px 12px', borderRadius: '12px',
+            backgroundColor: insufficient ? 'var(--danger-bg)' : 'var(--ok-bg)',
+            border: `1px solid ${insufficient ? 'var(--danger-line)' : 'var(--ok-line)'}`,
             fontSize: '13px',
-            color: insufficient ? '#993C1D' : '#0F6E56',
+            color: insufficient ? 'var(--danger)' : 'var(--ok)',
           }}>
             Balance available: <strong>{available.toFixed(1)} days</strong>
             {workingDays > 0 && ` · Requesting: ${workingDays} working day${workingDays !== 1 ? 's' : ''}`}
@@ -161,16 +161,16 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
         </FormField>
 
         {error && (
-          <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: '6px', padding: '10px 12px', fontSize: '13px', border: '0.5px solid #f5c6b8' }}>
+          <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: '12px', padding: '10px 12px', fontSize: '13px', border: '1px solid var(--danger-line)' }}>
             {error}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>
+          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>
             Cancel
           </button>
-          <button type="submit" disabled={applyLeave.isPending || !!insufficient} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: applyLeave.isPending || insufficient ? 0.6 : 1 }}>
+          <button type="submit" disabled={applyLeave.isPending || !!insufficient} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: applyLeave.isPending || insufficient ? 0.6 : 1 }}>
             {applyLeave.isPending ? 'Submitting...' : 'Submit Request'}
           </button>
         </div>

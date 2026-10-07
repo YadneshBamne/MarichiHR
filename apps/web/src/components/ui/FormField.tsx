@@ -11,19 +11,19 @@ interface FormFieldProps {
 export function FormField({ label, error, required, children, style }: FormFieldProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', ...style }}>
-      <label style={{ fontSize: '13px', fontWeight: '500', color: '#1a1a18' }}>
-        {label} {required && <span style={{ color: '#993C1D' }}>*</span>}
+      <label style={{ fontSize: '12px', fontWeight: '500', color: 'var(--dim)' }}>
+        {label} {required && <span style={{ color: 'var(--danger)' }}>*</span>}
       </label>
       {children}
-      {error && <span style={{ fontSize: '12px', color: '#993C1D' }}>{error}</span>}
+      {error && <span style={{ fontSize: '12px', color: 'var(--danger)' }}>{error}</span>}
     </div>
   )
 }
 
 export const inputStyle: CSSProperties = {
-  padding: '9px 12px', borderRadius: '6px',
-  border: '0.5px solid #ccc9c1', fontSize: '13px',
-  outline: 'none', color: '#1a1a18', backgroundColor: '#fff',
+  height: 40, padding: '0 14px', borderRadius: 14,
+  border: '1px solid var(--line)', fontSize: 13,
+  outline: 'none', color: 'var(--ink)', backgroundColor: 'var(--card-2)',
   width: '100%',
 }
 

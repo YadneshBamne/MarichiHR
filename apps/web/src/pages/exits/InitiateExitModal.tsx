@@ -79,8 +79,8 @@ export default function InitiateExitModal({ open, onClose, onCreated }: Props) {
         </FormField>
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 500, color: '#534AB7', textTransform: 'uppercase', letterSpacing: '.04em', margin: '20px 0 10px' }}>Clearance sign-offs</div>
-      <p style={{ fontSize: 12, color: '#8c8c88', margin: '0 0 10px' }}>Each item is signed off by a different user. The settlement cannot be computed until all four are cleared.</p>
+      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '20px 0 10px' }}>Clearance sign-offs</div>
+      <p style={{ fontSize: 12, color: 'var(--faint)', margin: '0 0 10px' }}>Each item is signed off by a different user. The settlement cannot be computed until all four are cleared.</p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {DEPTS.map((d) => (
           <FormField key={d.key} label={d.label} required={d.key !== 'MANAGER'}>
@@ -94,9 +94,9 @@ export default function InitiateExitModal({ open, onClose, onCreated }: Props) {
         ))}
       </div>
 
-      {error && <div style={{ marginTop: 14, backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
+      {error && <div style={{ marginTop: 14, backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-        <button onClick={onClose} style={{ padding: '9px 18px', background: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={onClose} style={{ padding: '9px 18px', background: 'var(--well)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
         <button onClick={submit} disabled={!ready || initiate.isPending} style={{ ...primaryBtn, opacity: !ready || initiate.isPending ? 0.5 : 1 }}>{initiate.isPending ? 'Saving...' : 'Initiate exit'}</button>
       </div>
     </Modal>

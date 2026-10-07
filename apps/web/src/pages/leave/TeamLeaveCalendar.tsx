@@ -83,7 +83,7 @@ export default function TeamLeaveCalendar() {
         })}
       </div>
 
-      {isLoading && <div style={{ textAlign: 'center', color: '#8c8c88', fontSize: '13px', padding: '12px' }}>Loading...</div>}
+      {isLoading && <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: '13px', padding: '12px' }}>Loading...</div>}
 
       {leaves.length > 0 && (
         <div style={s.legend}>
@@ -98,22 +98,22 @@ export default function TeamLeaveCalendar() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  root: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', overflow: 'hidden' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #e2e0da' },
-  navBtn: { background: 'none', border: '0.5px solid #e2e0da', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', color: '#1a1a18' },
-  monthLabel: { fontSize: '14px', fontWeight: '500', color: '#1a1a18' },
-  dayHeaders: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#f9f8f6', borderBottom: '0.5px solid #e2e0da' },
-  dayHeader: { padding: '8px 4px', textAlign: 'center', fontSize: '11px', fontWeight: '500', color: '#8c8c88' },
+  root: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--line)' },
+  navBtn: { background: 'none', border: '1px solid var(--line)', borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontSize: '14px', color: 'var(--ink)' },
+  monthLabel: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)' },
+  dayHeaders: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: 'var(--solid)', borderBottom: '1px solid var(--line)' },
+  dayHeader: { padding: '8px 4px', textAlign: 'center', fontSize: '11px', fontWeight: '500', color: 'var(--faint)' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' },
-  cell: { minHeight: '72px', padding: '6px', borderRight: '0.5px solid #f5f4f0', borderBottom: '0.5px solid #f5f4f0', overflow: 'hidden' },
-  emptyCell: { minHeight: '72px', backgroundColor: '#fafaf9' },
-  todayCell: { backgroundColor: '#f0effe' },
-  weekendCell: { backgroundColor: '#fafaf9' },
-  dayNum: { fontSize: '12px', color: '#5c5c58', marginBottom: '4px', fontWeight: '400' },
-  todayNum: { fontWeight: '600', color: '#534AB7' },
-  leaveChip: { fontSize: '10px', backgroundColor: '#eeedfe', color: '#534AB7', borderRadius: '3px', padding: '1px 4px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' },
-  moreChip: { fontSize: '10px', color: '#8c8c88', padding: '1px 4px' },
-  legend: { padding: '12px 16px', borderTop: '0.5px solid #e2e0da', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
-  legendTitle: { fontSize: '11px', color: '#8c8c88', fontWeight: '500' },
-  legendItem: { fontSize: '12px', backgroundColor: '#eeedfe', color: '#534AB7', padding: '2px 10px', borderRadius: '12px' },
+  cell: { minHeight: '72px', padding: '6px', borderRight: '1px solid var(--well)', borderBottom: '1px solid var(--well)', overflow: 'hidden' },
+  emptyCell: { minHeight: '72px', backgroundColor: 'var(--solid)' },
+  todayCell: { backgroundColor: 'var(--honey-soft)' },
+  weekendCell: { backgroundColor: 'var(--solid)' },
+  dayNum: { fontSize: '12px', color: 'var(--dim)', marginBottom: '4px', fontWeight: '400' },
+  todayNum: { fontWeight: '600', color: 'var(--brand)' },
+  leaveChip: { fontSize: '10px', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', borderRadius: '3px', padding: '1px 4px', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' },
+  moreChip: { fontSize: '10px', color: 'var(--faint)', padding: '1px 4px' },
+  legend: { padding: '12px 16px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
+  legendTitle: { fontSize: '11px', color: 'var(--faint)', fontWeight: '500' },
+  legendItem: { fontSize: '12px', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', padding: '2px 10px', borderRadius: 'var(--r-card)' },
 }

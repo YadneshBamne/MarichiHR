@@ -42,9 +42,9 @@ export default function AllocationRequestModal({ open, onClose }: Props) {
       <Modal open={open} onClose={handleClose} title="Request Submitted">
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
-          <div style={{ fontSize: '15px', fontWeight: '500', marginBottom: '6px', color: '#1a1a18' }}>Allocation request submitted</div>
-          <div style={{ fontSize: '13px', color: '#5c5c58', marginBottom: '20px' }}>Your manager will review and credit the days to your balance.</div>
-          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Done</button>
+          <div style={{ fontSize: '15px', fontWeight: '500', marginBottom: '6px', color: 'var(--ink)' }}>Allocation request submitted</div>
+          <div style={{ fontSize: '13px', color: 'var(--dim)', marginBottom: '20px' }}>Your manager will review and credit the days to your balance.</div>
+          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Done</button>
         </div>
       </Modal>
     )
@@ -53,7 +53,7 @@ export default function AllocationRequestModal({ open, onClose }: Props) {
   return (
     <Modal open={open} onClose={handleClose} title="Request Leave Allocation" width={460}>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <p style={{ fontSize: '13px', color: '#5c5c58', margin: 0 }}>
+        <p style={{ fontSize: '13px', color: 'var(--dim)', margin: 0 }}>
           Use this to request comp-off credits, carry-forward exceptions, or any leave allocation that needs manager approval.
         </p>
 
@@ -72,11 +72,11 @@ export default function AllocationRequestModal({ open, onClose }: Props) {
           <textarea style={{ ...inputStyle, resize: 'vertical' }} rows={3} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required placeholder="Explain why you need this allocation..." />
         </FormField>
 
-        {error && <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: '6px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
+        {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: '12px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-          <button type="submit" disabled={requestAllocation.isPending} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: requestAllocation.isPending ? 0.7 : 1 }}>
+          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+          <button type="submit" disabled={requestAllocation.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: requestAllocation.isPending ? 0.7 : 1 }}>
             {requestAllocation.isPending ? 'Submitting...' : 'Submit Request'}
           </button>
         </div>

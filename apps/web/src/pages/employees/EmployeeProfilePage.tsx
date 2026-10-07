@@ -18,8 +18,8 @@ export default function EmployeeProfilePage() {
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [archiveReason, setArchiveReason] = useState('')
 
-  if (isLoading) return <div style={{ padding: '40px', color: '#8c8c88', fontSize: '13px' }}>Loading employee...</div>
-  if (!employee) return <div style={{ padding: '40px', color: '#993C1D', fontSize: '13px' }}>Employee not found.</div>
+  if (isLoading) return <div style={{ padding: '40px', color: 'var(--faint)', fontSize: '13px' }}>Loading employee...</div>
+  if (!employee) return <div style={{ padding: '40px', color: 'var(--danger)', fontSize: '13px' }}>Employee not found.</div>
 
   const fullName = `${employee.firstName} ${employee.lastName}`
 
@@ -119,13 +119,13 @@ export default function EmployeeProfilePage() {
                       <span style={{ fontWeight: '500', fontSize: '15px' }}>
                         {employee.contracts[0].currency} {employee.contracts[0].wageMonthly?.toLocaleString()}/month
                       </span>
-                      <span style={{ color: '#5c5c58', fontSize: '13px', marginLeft: '8px' }}>
+                      <span style={{ color: 'var(--dim)', fontSize: '13px', marginLeft: '8px' }}>
                         ({employee.contracts[0].currency} {employee.contracts[0].ctcAnnual?.toLocaleString()} CTC)
                       </span>
                     </div>
                     <Badge label={employee.contracts[0].status} />
                   </div>
-                  <div style={{ fontSize: '12px', color: '#8c8c88', marginTop: '6px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--faint)', marginTop: '6px' }}>
                     Effective from {new Date(employee.contracts[0].effectiveFrom).toLocaleDateString()}
                     {employee.contracts[0].effectiveUntil && ` · Until ${new Date(employee.contracts[0].effectiveUntil).toLocaleDateString()}`}
                   </div>
@@ -235,50 +235,50 @@ export default function EmployeeProfilePage() {
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-      <span style={{ fontSize: '11px', color: '#8c8c88', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</span>
-      <span style={{ fontSize: '13px', color: value ? '#1a1a18' : '#ccc9c1' }}>{value || '—'}</span>
+      <span style={{ fontSize: '11px', color: 'var(--faint)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</span>
+      <span style={{ fontSize: '13px', color: value ? 'var(--ink)' : 'var(--line-2)' }}>{value || '—'}</span>
     </div>
   )
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: '1000px' },
-  back: { background: 'none', border: 'none', color: '#5c5c58', fontSize: '13px', cursor: 'pointer', padding: '0 0 16px', display: 'block' },
-  profileHeader: { display: 'flex', alignItems: 'flex-start', gap: '16px', backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', padding: '24px', marginBottom: '16px' },
-  headerAvatar: { width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#eeedfe', color: '#534AB7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '600', flexShrink: 0 },
+  page: {},
+  back: { background: 'none', border: 'none', color: 'var(--dim)', fontSize: '13px', cursor: 'pointer', padding: '0 0 16px', display: 'block' },
+  profileHeader: { display: 'flex', alignItems: 'flex-start', gap: '16px', backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '24px', marginBottom: '16px' },
+  headerAvatar: { width: '52px', height: '52px', borderRadius: '50%', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '600', flexShrink: 0 },
   headerInfo: { flex: 1 },
-  headerName: { fontSize: '20px', fontWeight: '500', color: '#1a1a18' },
-  headerSub: { fontSize: '13px', color: '#5c5c58', marginTop: '2px' },
-  statButtons: { display: 'flex', gap: '1px', borderRadius: '8px', overflow: 'hidden', border: '0.5px solid #e2e0da', flexShrink: 0 },
-  statBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 20px', backgroundColor: '#f9f8f6', gap: '2px', cursor: 'default' },
-  statNum: { fontSize: '20px', fontWeight: '500', color: '#1a1a18', lineHeight: 1 },
-  statLabel: { fontSize: '10px', color: '#8c8c88', whiteSpace: 'nowrap' },
-  tabs: { display: 'flex', gap: '0', borderBottom: '0.5px solid #e2e0da', marginBottom: '20px' },
-  tab: { padding: '10px 18px', background: 'none', border: 'none', fontSize: '13px', color: '#5c5c58', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: '-0.5px' },
-  tabActive: { color: '#534AB7', fontWeight: '500', borderBottomColor: '#534AB7' },
-  tabContent: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', padding: '24px' },
+  headerName: { fontSize: '20px', fontWeight: '500', color: 'var(--ink)' },
+  headerSub: { fontSize: '13px', color: 'var(--dim)', marginTop: '2px' },
+  statButtons: { display: 'flex', gap: '1px', borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--line)', flexShrink: 0 },
+  statBtn: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 20px', backgroundColor: 'var(--solid)', gap: '2px', cursor: 'default' },
+  statNum: { fontSize: '20px', fontWeight: '500', color: 'var(--ink)', lineHeight: 1 },
+  statLabel: { fontSize: '10px', color: 'var(--faint)', whiteSpace: 'nowrap' },
+  tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
+  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
+  tabContent: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '24px' },
   infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
-  sectionLabel: { fontSize: '11px', color: '#8c8c88', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '8px' },
-  contractCard: { backgroundColor: '#f9f8f6', border: '0.5px solid #e2e0da', borderRadius: '8px', padding: '14px' },
-  empty: { color: '#8c8c88', fontSize: '13px', padding: '20px 0' },
+  sectionLabel: { fontSize: '11px', color: 'var(--faint)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '8px' },
+  contractCard: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '14px' },
+  empty: { color: 'var(--faint)', fontSize: '13px', padding: '20px 0' },
   skillGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' },
-  skillCard: { backgroundColor: '#f9f8f6', border: '0.5px solid #e2e0da', borderRadius: '8px', padding: '12px' },
-  skillType: { fontSize: '10px', color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '4px' },
-  skillName: { fontSize: '13px', fontWeight: '500', color: '#1a1a18', marginBottom: '8px' },
+  skillCard: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '12px' },
+  skillType: { fontSize: '10px', color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '4px' },
+  skillName: { fontSize: '13px', fontWeight: '500', color: 'var(--ink)', marginBottom: '8px' },
   skillLevel: { display: 'flex', alignItems: 'center', gap: '8px' },
-  progressBar: { flex: 1, height: '4px', backgroundColor: '#e2e0da', borderRadius: '2px', overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: '#534AB7', borderRadius: '2px' },
-  skillLevelLabel: { fontSize: '11px', color: '#5c5c58', whiteSpace: 'nowrap' },
-  resumeLine: { backgroundColor: '#f9f8f6', border: '0.5px solid #e2e0da', borderRadius: '8px', padding: '14px' },
-  resumeType: { fontSize: '10px', color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '4px' },
-  resumeName: { fontSize: '14px', fontWeight: '500', color: '#1a1a18' },
-  resumeOrg: { fontSize: '13px', color: '#5c5c58', marginTop: '2px' },
-  resumeDates: { fontSize: '12px', color: '#8c8c88', marginTop: '4px' },
-  resumeDesc: { fontSize: '12px', color: '#5c5c58', marginTop: '6px', lineHeight: 1.5 },
-  dangerZone: { marginTop: '24px', backgroundColor: '#fff', border: '0.5px solid #f5c6b8', borderRadius: '10px', padding: '20px' },
-  dangerTitle: { fontSize: '13px', fontWeight: '500', color: '#993C1D', marginBottom: '4px' },
-  dangerSub: { fontSize: '12px', color: '#5c5c58', marginBottom: '12px' },
-  archiveBtn: { padding: '8px 16px', backgroundColor: '#faece7', color: '#993C1D', border: '0.5px solid #f5c6b8', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: '500' },
-  archiveInput: { padding: '8px 12px', borderRadius: '6px', border: '0.5px solid #ccc9c1', fontSize: '13px', outline: 'none' },
-  cancelBtn: { padding: '8px 14px', background: 'none', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', color: '#5c5c58' },
+  progressBar: { flex: 1, height: '4px', backgroundColor: 'var(--line)', borderRadius: '2px', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: 'var(--brand)', borderRadius: '2px' },
+  skillLevelLabel: { fontSize: '11px', color: 'var(--dim)', whiteSpace: 'nowrap' },
+  resumeLine: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '14px' },
+  resumeType: { fontSize: '10px', color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: '4px' },
+  resumeName: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)' },
+  resumeOrg: { fontSize: '13px', color: 'var(--dim)', marginTop: '2px' },
+  resumeDates: { fontSize: '12px', color: 'var(--faint)', marginTop: '4px' },
+  resumeDesc: { fontSize: '12px', color: 'var(--dim)', marginTop: '6px', lineHeight: 1.5 },
+  dangerZone: { marginTop: '24px', backgroundColor: 'var(--card-2)', border: '1px solid var(--danger-line)', borderRadius: 'var(--r-card)', padding: '20px' },
+  dangerTitle: { fontSize: '13px', fontWeight: '500', color: 'var(--danger)', marginBottom: '4px' },
+  dangerSub: { fontSize: '12px', color: 'var(--dim)', marginBottom: '12px' },
+  archiveBtn: { padding: '8px 16px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: 999, fontSize: '13px', cursor: 'pointer', fontWeight: '500' },
+  archiveInput: { padding: '8px 12px', borderRadius: '12px', border: '1px solid var(--line-2)', fontSize: '13px', outline: 'none' },
+  cancelBtn: { padding: '8px 14px', background: 'none', border: '1px solid var(--line)', borderRadius: 999, fontSize: '13px', cursor: 'pointer', color: 'var(--dim)' },
 }

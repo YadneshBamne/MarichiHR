@@ -37,10 +37,10 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
           <FormField label="Period start" required><input style={inputStyle} type="date" value={start} onChange={(e) => setStart(e.target.value)} required /></FormField>
           <FormField label="Period end" required><input style={inputStyle} type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} required /></FormField>
         </div>
-        {error && <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
+        {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-          <button type="submit" disabled={create.isPending} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: create.isPending ? 0.7 : 1 }}>
+          <button type="button" onClick={onClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          <button type="submit" disabled={create.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: create.isPending ? 0.7 : 1 }}>
             {create.isPending ? 'Creating...' : 'Create Cycle'}
           </button>
         </div>

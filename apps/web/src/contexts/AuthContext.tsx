@@ -11,6 +11,7 @@ interface AuthContextType {
   verifyMfa: (mfaToken: string, code: string) => Promise<void>
   exchangeSso: (code: string) => Promise<string | null>
   logout: () => Promise<void>
+  updateUser: (patch: Partial<User>) => void
   hasRole: (role: string) => boolean
   isHR: boolean
   isManager: boolean
@@ -76,13 +77,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  const updateUser = useCallback((patch: Partial<User>) => setUser((u) => (u ? { ...u, ...patch } : u)), [])
+
   const hasRole = (role: string) => user?.roles?.some((r) => r.name === role) ?? false
 
   const isHR = hasRole('hr_admin') || hasRole('system_admin') || hasRole('payroll_admin')
   const isManager = hasRole('manager') || isHR
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, verifyMfa, exchangeSso, logout, hasRole, isHR, isManager }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, verifyMfa, exchangeSso, logout, updateUser, hasRole, isHR, isManager }}>
       {children}
     </AuthContext.Provider>
   )

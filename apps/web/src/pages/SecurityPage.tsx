@@ -45,17 +45,17 @@ export default function SecurityPage() {
   )
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Security</h2>
-      <p style={{ fontSize: 13, color: '#8c8c88', marginTop: 2, marginBottom: 20 }}>Protect your account with a second step at sign-in.</p>
+    <div>
+      <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Security</h2>
+      <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2, marginBottom: 20 }}>Protect your account with a second step at sign-in.</p>
       <div style={{ ...card, padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <strong style={{ fontSize: 14, fontWeight: 500 }}>Two-factor authentication</strong>
-          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, backgroundColor: me?.mfaEnabled ? '#e6f4ea' : '#f5f4f0', color: me?.mfaEnabled ? '#1e6b34' : '#5c5c58' }}>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 'var(--r-card)', backgroundColor: me?.mfaEnabled ? 'var(--ok-bg)' : 'var(--well)', color: me?.mfaEnabled ? 'var(--ok)' : 'var(--dim)' }}>
             {me?.mfaEnabled ? 'On' : 'Off'}
           </span>
         </div>
-        <p style={{ fontSize: 13, color: '#5c5c58', margin: '0 0 16px' }}>Use an authenticator app to generate a 6-digit code that changes every 30 seconds.</p>
+        <p style={{ fontSize: 13, color: 'var(--dim)', margin: '0 0 16px' }}>Use an authenticator app to generate a 6-digit code that changes every 30 seconds.</p>
 
         {me?.mfaEnabled ? (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -66,12 +66,12 @@ export default function SecurityPage() {
           <button style={primaryBtn} disabled={busy} onClick={start}>Set up two-factor authentication</button>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <ol style={{ fontSize: 13, color: '#1a1a18', margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+            <ol style={{ fontSize: 13, color: 'var(--ink)', margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
               <li>In your authenticator app, add an account and choose to enter a setup key.</li>
-              <li>Enter this key (time-based): <code style={{ fontSize: 13, backgroundColor: '#f5f4f0', padding: '2px 6px', borderRadius: 4, wordBreak: 'break-all' }}>{setup.secret.match(/.{1,4}/g)!.join(' ')}</code></li>
+              <li>Enter this key (time-based): <code style={{ fontSize: 13, backgroundColor: 'var(--well)', padding: '2px 6px', borderRadius: 4, wordBreak: 'break-all' }}>{setup.secret.match(/.{1,4}/g)!.join(' ')}</code></li>
               <li>Type the 6-digit code the app shows.</li>
             </ol>
-            <a href={setup.otpauthUrl} style={{ fontSize: 12, color: '#534AB7' }}>On this phone? Open in authenticator app</a>
+            <a href={setup.otpauthUrl} style={{ fontSize: 12, color: 'var(--brand)' }}>On this phone? Open in authenticator app</a>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               {codeInput}
               <button style={primaryBtn} disabled={code.length !== 6 || busy} onClick={enable}>Verify and turn on</button>
@@ -79,7 +79,7 @@ export default function SecurityPage() {
             </div>
           </div>
         )}
-        {message && <div style={{ marginTop: 12, fontSize: 13, color: '#1e6b34' }}>{message}</div>}
+        {message && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ok)' }}>{message}</div>}
         {error && <div style={errorBox}>{error}</div>}
       </div>
     </div>

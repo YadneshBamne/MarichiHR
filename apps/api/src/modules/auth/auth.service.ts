@@ -62,6 +62,8 @@ async function issueSession(user: LoginUser, tenant: LoginTenant): Promise<AuthT
       email: user.email,
       fullName: user.fullName,
       avatarUrl: user.avatarUrl,
+      mfaEnabled: user.mfaEnabled,
+      tourDoneAt: user.tourDoneAt,
       roles: user.userRoles.map((ur) => ({ id: ur.role.id, name: ur.role.name })),
       employee: user.employee
         ? {
@@ -143,6 +145,13 @@ export const authService = {
   },
 
   // Enrolment: setup stores a fresh (encrypted) secret, enable proves the app has it, disable needs a current code
+  // First-login product tour: done/skipped stamps the time, reset clears it so the tour shows again
+  async setTour(userId: string, status: 'done' | 'reset') {
+    const r = await prisma.user.updateMany({ where: { id: userId, active: true }, data: { tourDoneAt: status === 'done' ? new Date() : null } })
+    if (!r.count) throw new AppError('User not found', 404)
+    return { tourDoneAt: status === 'done' ? new Date().toISOString() : null }
+  },
+
   async mfaSetup(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || !user.active) throw new AppError('User not found', 404)
@@ -233,6 +242,7 @@ export const authService = {
       fullName: user.fullName,
       avatarUrl: user.avatarUrl,
       mfaEnabled: user.mfaEnabled,
+      tourDoneAt: user.tourDoneAt,
       lastLoginAt: user.lastLoginAt,
       roles: user.userRoles.map((ur) => ({
         id: ur.role.id,

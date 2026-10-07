@@ -17,14 +17,14 @@ export default function SalarySetupPage() {
   const tabs: [Tab, string][] = [['structures', 'Structures & rules'], ['types', 'Structure types'], ['bands', 'Grade bands'], ['contracts', 'Contracts']]
 
   return (
-    <div style={{ maxWidth: 1150 }}>
+    <div>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Compensation setup</h2>
-        <p style={{ fontSize: 13, color: '#8c8c88', marginTop: 2 }}>Salary structures, formula rules, grade bands and employee contracts{canEdit ? '' : ' (read only)'}</p>
+        <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Compensation setup</h2>
+        <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Salary structures, formula rules, grade bands and employee contracts{canEdit ? '' : ' (read only)'}</p>
       </div>
-      <div style={{ display: 'flex', borderBottom: '0.5px solid #e2e0da', marginBottom: 20 }}>
+      <div className="chips" style={{ marginBottom: 20 }}>
         {tabs.map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ padding: '10px 18px', background: 'none', border: 'none', fontSize: 13, cursor: 'pointer', color: tab === k ? '#534AB7' : '#5c5c58', fontWeight: tab === k ? 500 : 400, borderBottom: `2px solid ${tab === k ? '#534AB7' : 'transparent'}`, marginBottom: -0.5 }}>{label}</button>
+          <button key={k} onClick={() => setTab(k)} className={`chip${tab === k ? ' is-on' : ''}`}>{label}</button>
         ))}
       </div>
       {tab === 'structures' && <StructuresTab canEdit={canEdit} />}
@@ -68,7 +68,7 @@ function StructureTypesTab({ canEdit }: { canEdit: boolean }) {
                   <td style={{ ...td, textTransform: 'capitalize' }}>{t.wageType}</td>
                   <td style={td}>{t.structures.map((s: any) => s.code).join(', ') || '—'}</td>
                   <td style={{ ...td, textAlign: 'right' }}>
-                    {canEdit && <><button style={linkBtn} onClick={() => setEditing({ id: t.id, name: t.name, wageType: t.wageType })}>Edit</button><button style={{ ...linkBtn, color: '#993C1D' }} onClick={() => archive(t.id)}>Archive</button></>}
+                    {canEdit && <><button style={linkBtn} onClick={() => setEditing({ id: t.id, name: t.name, wageType: t.wageType })}>Edit</button><button style={{ ...linkBtn, color: 'var(--danger)' }} onClick={() => archive(t.id)}>Archive</button></>}
                   </td>
                 </tr>
               ))}

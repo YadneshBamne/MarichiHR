@@ -1,141 +1,89 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useMyAttendanceCalendar } from '../../lib/hooks/useAttendance'
+import { gsap, reduced, useCountUp } from '../../lib/motion'
+import Icon from '../../components/ui/Icon'
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  present:    { bg: '#e1f5ee', color: '#0F6E56', label: 'Present' },
-  half_day:   { bg: '#faeeda', color: '#BA7517', label: 'Half Day' },
-  absent:     { bg: '#faece7', color: '#993C1D', label: 'Absent' },
-  lwp:        { bg: '#faece7', color: '#993C1D', label: 'LWP' },
-  on_leave:   { bg: '#eeedfe', color: '#534AB7', label: 'On Leave' },
-  holiday:    { bg: '#e6f1fb', color: '#185FA5', label: 'Holiday' },
-  week_off:   { bg: '#f5f4f0', color: '#8c8c88', label: 'Week Off' },
-  no_record:  { bg: '#fff', color: '#ccc9c1', label: '—' },
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const CHIP: Record<string, { cls: string; label?: string }> = {
+  present: { cls: 'honey' }, half_day: { cls: 'warn', label: 'Half day' }, absent: { cls: 'danger', label: 'Absent' }, lwp: { cls: 'danger', label: 'LWP' },
+  on_leave: { cls: 'mute', label: 'Leave' }, holiday: { cls: 'info', label: 'Holiday' },
 }
 
+// Month of attendance as day tiles (hours chip per day), like a timesheet
 export default function AttendanceCalendarView() {
   const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() + 1 })
+  const dir = useRef(0)
+  const { data, isLoading } = useMyAttendanceCalendar(ym.y, ym.m)
+  const calendar: any[] = data?.calendar || []
+  const sum = data?.summary
+  const hours = useCountUp(sum?.totalWorkedHours ?? 0, (v) => v.toFixed(1))
+  const offset = (new Date(Date.UTC(ym.y, ym.m - 1, 1)).getUTCDay() + 6) % 7
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const working = calendar.filter((d) => !d.isWeekend).length || 1
+  const share = (n: number) => `${Math.round(((n || 0) / working) * 100)}%`
+  const grid = useRef<HTMLDivElement>(null)
 
-  const { data, isLoading } = useMyAttendanceCalendar(year, month)
-  const calendar = data?.calendar || []
-  const summary = data?.summary
+  useLayoutEffect(() => {
+    if (!grid.current || reduced() || isLoading) return
+    gsap.fromTo(grid.current.querySelectorAll('[data-day]'), { opacity: 0, scale: 0.9, x: dir.current * 18 }, { opacity: 1, scale: 1, x: 0, duration: 0.45, ease: 'power3.out', stagger: { each: 0.012 }, clearProps: 'opacity,transform' })
+    gsap.fromTo(grid.current.querySelectorAll('[data-chip]'), { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, delay: 0.25, ease: 'back.out(2.4)', stagger: 0.015, clearProps: 'opacity,transform' })
+  }, [ym.y, ym.m, isLoading])
 
-  const daysInMonth = new Date(year, month, 0).getDate()
-  const firstDay = new Date(year, month - 1, 1).getDay()
-  const offset = firstDay === 0 ? 6 : firstDay - 1
-
-  const prevMonth = () => {
-    if (month === 1) { setMonth(12); setYear(y => y - 1) } else setMonth(m => m - 1)
+  const shift = (n: number) => {
+    dir.current = n
+    setYm(({ y, m }) => { const d = new Date(Date.UTC(y, m - 1 + n, 1)); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 } })
   }
-  const nextMonth = () => {
-    if (month === 12) { setMonth(1); setYear(y => y + 1) } else setMonth(m => m + 1)
-  }
-
-  const getDay = (day: number) => calendar.find((d: any) => {
-    return Number(d.date.slice(8, 10)) === day
-  })
+  const monthLabel = new Date(Date.UTC(ym.y, ym.m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
   return (
-    <div>
-      {summary && (
-        <div style={s.summaryRow}>
-          {[
-            { label: 'Present', value: summary.present, color: '#0F6E56' },
-            { label: 'Absent', value: summary.absent, color: '#993C1D' },
-            { label: 'Half Day', value: summary.halfDay, color: '#BA7517' },
-            { label: 'On Leave', value: summary.onLeave, color: '#534AB7' },
-            { label: 'Hours Worked', value: `${(summary.totalWorkedHours || 0).toFixed(1)}h`, color: '#1a1a18' },
-            { label: 'Overtime', value: `${(summary.totalOvertimeHours || 0).toFixed(1)}h`, color: '#185FA5' },
-          ].map((item) => (
-            <div key={item.label} style={s.summaryCard}>
-              <div style={{ ...s.summaryNum, color: item.color }}>{item.value}</div>
-              <div style={s.summaryLabel}>{item.label}</div>
-            </div>
-          ))}
+    <section data-card className="card" style={{ padding: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <span className="display num" style={{ fontSize: 40 }}><span ref={hours}>0</span><span className="dim" style={{ fontSize: 16 }}> hrs</span></span>
+        <span className="dim" style={{ fontSize: 13 }}>{sum ? `${sum.present} present · ${(sum.totalOvertimeHours || 0).toFixed(1)} h overtime` : ''}</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button className="btn btn-ghost btn-icon btn-sm" style={{ width: 30 }} onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chevronLeft" size={14} /></button>
+          <span className="btn btn-ghost btn-sm" style={{ pointerEvents: 'none', minWidth: 130 }}>{monthLabel}</span>
+          <button className="btn btn-ghost btn-icon btn-sm" style={{ width: 30 }} onClick={() => shift(1)} aria-label="Next month"><Icon name="chevronRight" size={14} /></button>
+        </div>
+      </div>
+
+      {sum && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
+          <Bar label="Present" w={sum.present} cls="honey" text={share(sum.present)} grow={Math.max(sum.present, 3)} />
+          <Bar label="Half day" w={sum.halfDay} cls="night" text={String(sum.halfDay)} grow={Math.max(sum.halfDay, 1.2)} />
+          <Bar label="Absent" w={sum.absent} cls="outline" text={String(sum.absent)} grow={Math.max(sum.absent, 1.2)} />
+          <Bar label="Leave" w={sum.onLeave} cls="stripes" text={String(sum.onLeave)} grow={Math.max(sum.onLeave, 1.2)} />
         </div>
       )}
 
-      <div style={s.calCard}>
-        <div style={s.calHeader}>
-          <button style={s.navBtn} onClick={prevMonth}>←</button>
-          <span style={s.monthLabel}>{MONTHS[month - 1]} {year}</span>
-          <button style={s.navBtn} onClick={nextMonth}>→</button>
-        </div>
-
-        <div style={s.dayHeaders}>
-          {DAYS.map(d => <div key={d} style={s.dayHeader}>{d}</div>)}
-        </div>
-
-        {isLoading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#8c8c88', fontSize: '13px' }}>Loading...</div>
-        ) : (
-          <div style={s.grid}>
-            {Array.from({ length: offset }).map((_, i) => (
-              <div key={`e${i}`} style={s.emptyCell} />
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1
-              const entry = getDay(day)
-              const status = entry?.status || 'no_record'
-              const ss = STATUS_STYLE[status] || STATUS_STYLE.no_record
-              const isToday = day === now.getDate() && month === now.getMonth() + 1 && year === now.getFullYear()
-              const record = entry?.record
-
-              return (
-                <div key={day} style={{
-                  ...s.cell,
-                  backgroundColor: ss.bg,
-                  ...(isToday ? s.todayCell : {}),
-                }}>
-                  <div style={{ ...s.dayNum, ...(isToday ? s.todayNum : {}), color: isToday ? '#534AB7' : ss.color }}>
-                    {day}
-                  </div>
-                  <div style={{ ...s.statusLabel, color: ss.color }}>{ss.label}</div>
-                  {record?.workedHours != null && record.workedHours > 0 && (
-                    <div style={s.hours}>{record.workedHours.toFixed(1)}h</div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        <div style={s.legend}>
-          {Object.entries(STATUS_STYLE).filter(([k]) => k !== 'no_record').map(([key, val]) => (
-            <div key={key} style={s.legendItem}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: val.bg, border: `0.5px solid ${val.color}`, flexShrink: 0 }} />
-              <span style={{ fontSize: '11px', color: '#5c5c58' }}>{val.label}</span>
-            </div>
-          ))}
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 18 }}>
+        {DAYS.map((d) => <div key={d} className="dim" style={{ fontSize: 12, textAlign: 'center' }}>{d}</div>)}
       </div>
-    </div>
+      <div ref={grid} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
+        {Array.from({ length: offset }, (_, i) => <div key={`pad${i}`} />)}
+        {isLoading && Array.from({ length: 28 }, (_, i) => <div key={i} className="skeleton" style={{ height: 64, borderRadius: 14 }} />)}
+        {!isLoading && calendar.map((d) => {
+          const h = d.record?.workedHours
+          const chip = CHIP[d.status]
+          const isToday = d.date === todayStr
+          return (
+            <div key={d.date} data-day style={{ minHeight: 64, borderRadius: 14, padding: '7px 9px', border: isToday ? '1.5px solid var(--night)' : '1px solid var(--line)', background: d.isWeekend ? 'transparent' : 'var(--card-2)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <span className="dim num" style={{ fontSize: 12 }}>{Number(d.date.slice(8))}</span>
+              {chip && (h ? <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{h.toFixed(1)}h</span> : <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{chip.label ?? d.status}</span>)}
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
-const s: Record<string, React.CSSProperties> = {
-  summaryRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px', marginBottom: '16px' },
-  summaryCard: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '8px', padding: '12px', textAlign: 'center' },
-  summaryNum: { fontSize: '22px', fontWeight: '500', lineHeight: 1, marginBottom: '4px' },
-  summaryLabel: { fontSize: '11px', color: '#8c8c88' },
-  calCard: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', overflow: 'hidden' },
-  calHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #e2e0da' },
-  navBtn: { background: 'none', border: '0.5px solid #e2e0da', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', color: '#1a1a18' },
-  monthLabel: { fontSize: '14px', fontWeight: '500', color: '#1a1a18' },
-  dayHeaders: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', backgroundColor: '#f9f8f6', borderBottom: '0.5px solid #e2e0da' },
-  dayHeader: { padding: '8px 4px', textAlign: 'center', fontSize: '11px', fontWeight: '500', color: '#8c8c88' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' },
-  emptyCell: { minHeight: '64px', backgroundColor: '#fafaf9', borderRight: '0.5px solid #f5f4f0', borderBottom: '0.5px solid #f5f4f0' },
-  cell: { minHeight: '64px', padding: '6px 8px', borderRight: '0.5px solid rgba(0,0,0,0.04)', borderBottom: '0.5px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '2px' },
-  todayCell: { outline: '2px solid #534AB7', outlineOffset: '-2px', zIndex: 1, position: 'relative' },
-  dayNum: { fontSize: '12px', fontWeight: '400' },
-  todayNum: { fontWeight: '700' },
-  statusLabel: { fontSize: '10px', fontWeight: '500' },
-  hours: { fontSize: '10px', color: '#8c8c88' },
-  legend: { display: 'flex', flexWrap: 'wrap', gap: '10px', padding: '10px 14px', borderTop: '0.5px solid #e2e0da', backgroundColor: '#f9f8f6' },
-  legendItem: { display: 'flex', alignItems: 'center', gap: '5px' },
+function Bar({ label, cls, text, grow }: { label: string; w: number; cls: string; text: string; grow: number }) {
+  return (
+    <div style={{ flex: grow, minWidth: 64 }}>
+      <div className="dim" style={{ fontSize: 11, marginBottom: 5 }}>{label}</div>
+      <div className={`seg ${cls}`} style={cls === 'stripes' ? { animation: 'stripes 3.2s linear infinite', backgroundSize: '22px 22px' } : undefined}>{text}</div>
+    </div>
+  )
 }

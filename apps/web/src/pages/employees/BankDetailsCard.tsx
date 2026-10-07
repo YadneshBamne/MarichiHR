@@ -48,30 +48,30 @@ export default function BankDetailsCard({ employee }: { employee: any }) {
 
   return (
     <div style={{ gridColumn: '1 / -1', marginTop: '16px' }}>
-      <div style={{ fontSize: 11, color: '#8c8c88', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Bank details</div>
-      <div style={{ backgroundColor: '#f9f8f6', border: '0.5px solid #e2e0da', borderRadius: 8, padding: 14 }}>
+      <div style={{ fontSize: 11, color: 'var(--faint)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Bank details</div>
+      <div style={{ backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: 14, padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           {hasDetails ? (
             <div>
-              <div style={{ fontSize: 15, fontWeight: 500 }}>{employee.bankName} <span style={{ color: '#5c5c58', fontWeight: 400 }}>•••• {employee.bankAccountLast4}</span></div>
-              {employee.bankIfscSwift && <div style={{ fontSize: 12, color: '#8c8c88', marginTop: 2 }}>{employee.bankIfscSwift}</div>}
+              <div style={{ fontSize: 15, fontWeight: 500 }}>{employee.bankName} <span style={{ color: 'var(--dim)', fontWeight: 400 }}>•••• {employee.bankAccountLast4}</span></div>
+              {employee.bankIfscSwift && <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 2 }}>{employee.bankIfscSwift}</div>}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: '#8c8c88' }}>No bank details on file.</div>
+            <div style={{ fontSize: 13, color: 'var(--faint)' }}>No bank details on file.</div>
           )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {hasDetails && <Badge label={employee.bankVerified ? 'Verified' : 'Unverified'} variant={employee.bankVerified ? 'approved' : 'pending'} />}
             {hasDetails && !employee.bankVerified && (
-              <button onClick={doVerify} disabled={verify.isPending} style={{ padding: '6px 14px', backgroundColor: '#e1f5ee', color: '#0F6E56', border: '0.5px solid #b8e8d4', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>
+              <button onClick={doVerify} disabled={verify.isPending} style={{ padding: '6px 14px', backgroundColor: 'var(--ok-bg)', color: 'var(--ok)', border: '1px solid var(--ok-line)', borderRadius: 12, fontSize: 12, cursor: 'pointer' }}>
                 {verify.isPending ? 'Verifying...' : 'Verify'}
               </button>
             )}
-            <button onClick={openEdit} style={{ padding: '6px 14px', backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>{hasDetails ? 'Edit' : 'Add'}</button>
+            <button onClick={openEdit} style={{ padding: '6px 14px', backgroundColor: 'var(--card-2)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 12, cursor: 'pointer' }}>{hasDetails ? 'Edit' : 'Add'}</button>
           </div>
         </div>
-        {verifyError && <div style={{ marginTop: 10, backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '8px 10px', fontSize: 12 }}>{verifyError}</div>}
+        {verifyError && <div style={{ marginTop: 10, backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '8px 10px', fontSize: 12 }}>{verifyError}</div>}
         {hasDetails && !employee.bankVerified && !verifyError && (
-          <div style={{ marginTop: 8, fontSize: 11, color: '#8c8c88' }}>Must be verified by a different user than the one who entered the details.</div>
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--faint)' }}>Must be verified by a different user than the one who entered the details.</div>
         )}
       </div>
 
@@ -82,11 +82,11 @@ export default function BankDetailsCard({ employee }: { employee: any }) {
             <input style={inputStyle} inputMode="numeric" autoComplete="off" pattern="\d{6,34}" title="6 to 34 digits" placeholder={hasDetails ? 'Enter the full number to replace' : ''} value={form.bankAccountNo} onChange={(e) => setForm({ ...form, bankAccountNo: e.target.value })} required />
           </FormField>
           <FormField label="SWIFT / branch code"><input style={inputStyle} value={form.bankIfscSwift} onChange={(e) => setForm({ ...form, bankIfscSwift: e.target.value })} /></FormField>
-          <div style={{ fontSize: 12, color: '#8c8c88' }}>The account number is write-only and is never shown again. Saving resets verification.</div>
-          {error && <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
+          <div style={{ fontSize: 12, color: 'var(--faint)' }}>The account number is write-only and is never shown again. Saving resets verification.</div>
+          {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => setEditing(false)} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" disabled={update.isPending} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: update.isPending ? 0.7 : 1 }}>{update.isPending ? 'Saving...' : 'Save'}</button>
+            <button type="button" onClick={() => setEditing(false)} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+            <button type="submit" disabled={update.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: update.isPending ? 0.7 : 1 }}>{update.isPending ? 'Saving...' : 'Save'}</button>
           </div>
         </form>
       </Modal>

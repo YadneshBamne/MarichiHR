@@ -51,21 +51,21 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
       <Modal open={open} onClose={handleClose} title="Employee Created">
         <div style={{ textAlign: 'center', padding: '16px 0' }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
-          <div style={{ fontSize: '16px', fontWeight: '500', color: '#1a1a18', marginBottom: '4px' }}>
+          <div style={{ fontSize: '16px', fontWeight: '500', color: 'var(--ink)', marginBottom: '4px' }}>
             {form.firstName} {form.lastName} added
           </div>
-          <div style={{ fontSize: '13px', color: '#5c5c58', marginBottom: '20px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--dim)', marginBottom: '20px' }}>
             Employee code: <strong>{result.employeeCode}</strong>
           </div>
-          <div style={{ backgroundColor: '#faeeda', border: '0.5px solid #f0d890', borderRadius: '8px', padding: '14px', textAlign: 'left', marginBottom: '20px' }}>
-            <div style={{ fontSize: '12px', fontWeight: '500', color: '#BA7517', marginBottom: '6px' }}>
+          <div style={{ backgroundColor: 'var(--warn-bg)', border: '1px solid var(--honey-2)', borderRadius: '14px', padding: '14px', textAlign: 'left', marginBottom: '20px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--warn)', marginBottom: '6px' }}>
               🔐 Temporary Password — share securely
             </div>
-            <div style={{ fontFamily: 'monospace', fontSize: '15px', color: '#1a1a18', letterSpacing: '0.05em' }}>
+            <div style={{ fontFamily: 'monospace', fontSize: '15px', color: 'var(--ink)', letterSpacing: '0.05em' }}>
               {result.tempPassword}
             </div>
           </div>
-          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>
+          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>
             Done
           </button>
         </div>
@@ -144,16 +144,16 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
         </div>
 
         {error && (
-          <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: '6px', padding: '10px 12px', fontSize: '13px', border: '0.5px solid #f5c6b8' }}>
+          <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: '12px', padding: '10px 12px', fontSize: '13px', border: '1px solid var(--danger-line)' }}>
             {error}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', color: '#1a1a18' }}>
+          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer', color: 'var(--ink)' }}>
             Cancel
           </button>
-          <button type="submit" disabled={createEmployee.isPending} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: createEmployee.isPending ? 0.7 : 1 }}>
+          <button type="submit" disabled={createEmployee.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: createEmployee.isPending ? 0.7 : 1 }}>
             {createEmployee.isPending ? 'Creating...' : 'Create Employee'}
           </button>
         </div>

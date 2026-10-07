@@ -36,14 +36,14 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '0.5px solid #e2e0da', backgroundColor: '#f9f8f6' }}>
-          <span style={{ fontSize: 11, fontWeight: 500, color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em' }}>Structures</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }}>
+          <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Structures</span>
           {canEdit && <button style={linkBtn} onClick={() => setStructureForm({ structureTypeId: '', name: '', code: '', countryCode: '', description: '' })}>+ New</button>}
         </div>
         {structures.length === 0 ? <div style={empty}>None yet.</div> : structures.map((s: any) => (
-          <button key={s.id} onClick={() => setSelectedId(s.id)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '0.5px solid #f5f4f0', borderLeft: `2px solid ${selected?.id === s.id ? '#534AB7' : 'transparent'}`, backgroundColor: selected?.id === s.id ? '#f0effe' : '#fff', cursor: 'pointer' }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a18' }}>{s.name}</div>
-            <div style={{ fontSize: 11, color: '#8c8c88' }}>{s.code} · {s.structureType?.name}{s.countryCode ? ` · ${s.countryCode}` : ''} · {s._count?.contracts ?? 0} contract(s)</div>
+          <button key={s.id} onClick={() => setSelectedId(s.id)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid var(--well)', borderLeft: `2px solid ${selected?.id === s.id ? 'var(--brand)' : 'transparent'}`, backgroundColor: selected?.id === s.id ? 'var(--honey-soft)' : 'var(--card-2)', cursor: 'pointer' }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{s.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--faint)' }}>{s.code} · {s.structureType?.name}{s.countryCode ? ` · ${s.countryCode}` : ''} · {s._count?.contracts ?? 0} contract(s)</div>
           </button>
         ))}
       </div>
@@ -51,15 +51,15 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
       <div>
         {selected && (
           <div style={{ ...card, overflowX: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 16px', borderBottom: '0.5px solid #e2e0da' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 500 }}>{selected.name} <span style={{ fontSize: 12, color: '#8c8c88', fontWeight: 400 }}>{selected.code}</span></div>
-                {selected.description && <div style={{ fontSize: 12, color: '#8c8c88', marginTop: 2 }}>{selected.description}</div>}
+                <div style={{ fontSize: 15, fontWeight: 500 }}>{selected.name} <span style={{ fontSize: 12, color: 'var(--faint)', fontWeight: 400 }}>{selected.code}</span></div>
+                {selected.description && <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 2 }}>{selected.description}</div>}
               </div>
               {canEdit && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button style={linkBtn} onClick={() => setStructureForm({ id: selected.id, structureTypeId: selected.structureType?.id, name: selected.name, code: selected.code, countryCode: selected.countryCode || '', description: selected.description || '' })}>Edit</button>
-                  <button style={{ ...linkBtn, color: '#993C1D' }} onClick={() => archiveStructure(selected.id)}>Archive</button>
+                  <button style={{ ...linkBtn, color: 'var(--danger)' }} onClick={() => archiveStructure(selected.id)}>Archive</button>
                   <button style={{ ...primaryBtn, padding: '7px 14px' }} onClick={() => setRuleForm({ salaryStructureId: selected.id, categoryId: '', name: '', code: '', sequence: (Math.max(0, ...selected.rules.map((r: any) => r.sequence)) + 10), amountType: 'python_code', amountFixed: '', amountPercentage: '', amountPercentageBase: '', pythonCode: 'result = ', conditionSelect: 'always', conditionExpr: '', appearsOnPayslip: true })}>+ Rule</button>
                 </div>
               )}
@@ -70,15 +70,15 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
                 <tbody>
                   {selected.rules.map((r: any) => (
                     <tr key={r.id}>
-                      <td style={{ ...td, color: '#8c8c88' }}>{r.sequence}</td>
+                      <td style={{ ...td, color: 'var(--faint)' }}>{r.sequence}</td>
                       <td style={{ ...td, fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 12 }}>{r.code}</td>
-                      <td style={td}>{r.name}{!r.appearsOnPayslip && <span style={{ fontSize: 11, color: '#8c8c88' }}> (hidden)</span>}</td>
+                      <td style={td}>{r.name}{!r.appearsOnPayslip && <span style={{ fontSize: 11, color: 'var(--faint)' }}> (hidden)</span>}</td>
                       <td style={td}>{r.category?.code}</td>
                       <td style={{ ...td, fontFamily: r.amountType === 'python_code' ? 'ui-monospace, Consolas, monospace' : undefined, fontSize: 12, minWidth: 200, overflowWrap: 'anywhere' }}>
-                        {describe(r)}{r.conditionSelect === 'python_expression' && <div style={{ color: '#BA7517' }}>if {r.conditionExpr}</div>}
+                        {describe(r)}{r.conditionSelect === 'python_expression' && <div style={{ color: 'var(--warn)' }}>if {r.conditionExpr}</div>}
                       </td>
                       <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {canEdit && <><button style={linkBtn} onClick={() => setRuleForm({ ...r, id: r.id, salaryStructureId: selected.id, amountFixed: r.amountFixed ?? '', amountPercentage: r.amountPercentage ?? '', amountPercentageBase: r.amountPercentageBase ?? '', pythonCode: r.pythonCode ?? '', conditionExpr: r.conditionExpr ?? '' })}>Edit</button><button style={{ ...linkBtn, color: '#993C1D' }} onClick={() => removeRule(r.id)}>Remove</button></>}
+                        {canEdit && <><button style={linkBtn} onClick={() => setRuleForm({ ...r, id: r.id, salaryStructureId: selected.id, amountFixed: r.amountFixed ?? '', amountPercentage: r.amountPercentage ?? '', amountPercentageBase: r.amountPercentageBase ?? '', pythonCode: r.pythonCode ?? '', conditionExpr: r.conditionExpr ?? '' })}>Edit</button><button style={{ ...linkBtn, color: 'var(--danger)' }} onClick={() => removeRule(r.id)}>Remove</button></>}
                       </td>
                     </tr>
                   ))}
@@ -191,7 +191,7 @@ function RuleModal({ form: initial, onClose }: { form: any; onClose: () => void 
 
       <div style={{ display: 'flex', gap: 6, margin: '16px 0 10px' }}>
         {[['python_code', 'Formula'], ['percentage', 'Percentage'], ['fixed', 'Fixed']].map(([k, label]) => (
-          <button key={k} onClick={() => set('amountType', k)} style={{ padding: '6px 14px', borderRadius: 14, fontSize: 12, cursor: 'pointer', border: `0.5px solid ${f.amountType === k ? '#534AB7' : '#e2e0da'}`, backgroundColor: f.amountType === k ? '#f0effe' : '#fff', color: f.amountType === k ? '#534AB7' : '#5c5c58' }}>{label}</button>
+          <button key={k} onClick={() => set('amountType', k)} style={{ padding: '6px 14px', borderRadius: 14, fontSize: 12, cursor: 'pointer', border: `1px solid ${f.amountType === k ? 'var(--brand)' : 'var(--line)'}`, backgroundColor: f.amountType === k ? 'var(--honey-soft)' : 'var(--card-2)', color: f.amountType === k ? 'var(--brand)' : 'var(--dim)' }}>{label}</button>
         ))}
       </div>
 
@@ -225,24 +225,24 @@ function RuleModal({ form: initial, onClose }: { form: any; onClose: () => void 
         </FormField>
       )}
 
-      <div style={{ marginTop: 12, fontSize: 11, color: '#8c8c88', lineHeight: 1.6, backgroundColor: '#f9f8f6', borderRadius: 6, padding: '8px 10px' }}>
+      <div style={{ marginTop: 12, fontSize: 11, color: 'var(--faint)', lineHeight: 1.6, backgroundColor: 'var(--solid)', borderRadius: 12, padding: '8px 10px' }}>
         Available: <code>contract.wageMonthly</code> (prorated), <code>contract.fullWageMonthly</code>, <code>contract.ctcAnnual</code>, <code>categories.BASIC|ALW|GROSS|DED|TAX</code>, <code>rules.CODE</code> (earlier rules only), <code>inputs.CODE</code>, <code>payslip.paidDays|workingDays|lwpDays|factor</code>, <code>compute_zra_paye(x)</code>, <code>min</code>, <code>max</code>, <code>round</code>. Formulas run in a sandbox, never as code.
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-        <span style={{ fontSize: 12, color: '#5c5c58' }}>Test on monthly wage</span>
+        <span style={{ fontSize: 12, color: 'var(--dim)' }}>Test on monthly wage</span>
         <input type="number" style={{ ...inputStyle, width: 120 }} value={sampleWage} onChange={(e) => { setSampleWage(e.target.value); setTest(null) }} />
         <button style={ghostBtn} disabled={!ready} onClick={runTest}>Test formula</button>
       </div>
       {test && (
-        <div style={{ marginTop: 10, border: '0.5px solid #d9d6f5', backgroundColor: '#f0effe', borderRadius: 6, padding: '10px 12px', fontSize: 12 }}>
-          <div style={{ fontWeight: 500, color: '#534AB7', marginBottom: 6 }}>
+        <div style={{ marginTop: 10, border: '1px solid var(--honey-2)', backgroundColor: 'var(--honey-soft)', borderRadius: 12, padding: '10px 12px', fontSize: 12 }}>
+          <div style={{ fontWeight: 500, color: 'var(--brand)', marginBottom: 6 }}>
             ✓ {f.code.toUpperCase()} = {test.skippedByCondition ? 'skipped (condition false)' : test.amount} · gross {test.gross} · net {test.netPay}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px 16px', color: '#5c5c58' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px 16px', color: 'var(--dim)' }}>
             {test.lines.map((l: any) => <div key={l.code}><span style={{ fontFamily: 'ui-monospace, Consolas, monospace' }}>{l.code}</span> {l.amount}</div>)}
           </div>
-          {test.warnings?.map((w: string) => <div key={w} style={{ color: '#BA7517', marginTop: 4 }}>{w}</div>)}
+          {test.warnings?.map((w: string) => <div key={w} style={{ color: 'var(--warn)', marginTop: 4 }}>{w}</div>)}
         </div>
       )}
 

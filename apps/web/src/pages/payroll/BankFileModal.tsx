@@ -29,21 +29,21 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
   return (
     <Modal open={open} onClose={onClose} title="Bank payment file" width={640}>
       {isLoading ? (
-        <div style={{ color: '#8c8c88', fontSize: 13 }}>Loading preview...</div>
+        <div style={{ color: 'var(--faint)', fontSize: 13 }}>Loading preview...</div>
       ) : previewError ? (
-        <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{previewError}</div>
+        <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{previewError}</div>
       ) : data ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ border: '0.5px solid #e2e0da', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden' }}>
             {included.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', color: '#8c8c88', fontSize: 13 }}>No employees are payable yet.</div>
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--faint)', fontSize: 13 }}>No employees are payable yet.</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>{['Employee', 'Bank', 'Account', 'Amount'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {included.map((r) => (
-                    <tr key={r.employeeCode} style={{ borderBottom: '0.5px solid #f5f4f0' }}>
-                      <td style={td}>{r.name} <span style={{ color: '#8c8c88', fontSize: 11 }}>{r.employeeCode}</span></td>
+                    <tr key={r.employeeCode} style={{ borderBottom: '1px solid var(--well)' }}>
+                      <td style={td}>{r.name} <span style={{ color: 'var(--faint)', fontSize: 11 }}>{r.employeeCode}</span></td>
                       <td style={td}>{r.bankName}</td>
                       <td style={td}>•••• {r.accountLast4}</td>
                       <td style={{ ...td, textAlign: 'right' }}>{money(r.amount, r.currency)}</td>
@@ -56,26 +56,26 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
           </div>
 
           {excluded.length > 0 && (
-            <div style={{ backgroundColor: '#faece7', border: '0.5px solid #f5c6b8', borderRadius: 8, padding: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#993C1D', marginBottom: 6 }}>{excluded.length} employee(s) excluded</div>
+            <div style={{ backgroundColor: 'var(--danger-bg)', border: '1px solid var(--danger-line)', borderRadius: 14, padding: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--danger)', marginBottom: 6 }}>{excluded.length} employee(s) excluded</div>
               {excluded.map((e) => (
-                <div key={e.employeeCode} style={{ fontSize: 12, color: '#993C1D' }}>• {e.name} ({e.employeeCode}) — {e.reason}</div>
+                <div key={e.employeeCode} style={{ fontSize: 12, color: 'var(--danger)' }}>• {e.name} ({e.employeeCode}) — {e.reason}</div>
               ))}
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13, color: '#1a1a18', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={partial} onChange={(e) => setPartial(e.target.checked)} />
                 Download without the excluded employees
               </label>
             </div>
           )}
 
-          {error && <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
+          {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={onClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Close</button>
+            <button onClick={onClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 13, cursor: 'pointer' }}>Close</button>
             <button
               onClick={download}
               disabled={blocked || busy || included.length === 0}
-              style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked || busy || included.length === 0 ? 0.5 : 1 }}
+              style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked || busy || included.length === 0 ? 0.5 : 1 }}
             >{busy ? 'Preparing...' : 'Download CSV'}</button>
           </div>
         </div>
@@ -83,5 +83,5 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
     </Modal>
   )
 }
-const th: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '0.5px solid #e2e0da', backgroundColor: '#f9f8f6' }
-const td: React.CSSProperties = { padding: '10px 12px', fontSize: 13, color: '#1a1a18' }
+const th: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
+const td: React.CSSProperties = { padding: '10px 12px', fontSize: 13, color: 'var(--ink)' }

@@ -28,10 +28,10 @@ export default function ActivitiesPage() {
     const now = new Date()
     const diff = d.getTime() - now.getTime()
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-    if (days < 0) return { label: `${Math.abs(days)}d overdue`, color: '#993C1D', bg: '#faece7' }
-    if (days === 0) return { label: 'Due today', color: '#BA7517', bg: '#faeeda' }
-    if (days === 1) return { label: 'Due tomorrow', color: '#BA7517', bg: '#faeeda' }
-    return { label: `Due ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`, color: '#5c5c58', bg: '#f5f4f0' }
+    if (days < 0) return { label: `${Math.abs(days)}d overdue`, color: 'var(--danger)', bg: 'var(--danger-bg)' }
+    if (days === 0) return { label: 'Due today', color: 'var(--warn)', bg: 'var(--warn-bg)' }
+    if (days === 1) return { label: 'Due tomorrow', color: 'var(--warn)', bg: 'var(--warn-bg)' }
+    return { label: `Due ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`, color: 'var(--dim)', bg: 'var(--well)' }
   }
 
   const FILTERS: { key: Filter; label: string }[] = [
@@ -69,10 +69,10 @@ export default function ActivitiesPage() {
           <div style={{ fontSize: '28px', marginBottom: '8px' }}>
             {filter === 'planned' ? '✓' : '📋'}
           </div>
-          <div style={{ fontSize: '14px', fontWeight: '500', color: '#1a1a18', marginBottom: '4px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--ink)', marginBottom: '4px' }}>
             {filter === 'planned' ? 'No pending activities' : `No ${filter} activities`}
           </div>
-          <div style={{ fontSize: '13px', color: '#8c8c88' }}>
+          <div style={{ fontSize: '13px', color: 'var(--faint)' }}>
             {filter === 'planned' ? 'All your tasks are up to date.' : ''}
           </div>
         </div>
@@ -141,11 +141,11 @@ export default function ActivitiesPage() {
 
       <Modal open={!!completeModal} onClose={() => setCompleteModal(null)} title="Complete Activity" width={420}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <p style={{ fontSize: '13px', color: '#5c5c58', margin: 0 }}>
+          <p style={{ fontSize: '13px', color: 'var(--dim)', margin: 0 }}>
             Completing: <strong>{completeModal?.title}</strong>
           </p>
           <textarea
-            style={{ padding: '10px 12px', borderRadius: '6px', border: '0.5px solid #ccc9c1', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+            style={{ padding: '10px 12px', borderRadius: '12px', border: '1px solid var(--line-2)', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
             rows={3}
             value={doneNote}
             onChange={(e) => setDoneNote(e.target.value)}
@@ -153,11 +153,11 @@ export default function ActivitiesPage() {
             autoFocus
           />
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button onClick={() => setCompleteModal(null)} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => setCompleteModal(null)} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
             <button
               onClick={handleComplete}
               disabled={!doneNote.trim() || completeActivity.isPending}
-              style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: !doneNote.trim() ? 0.5 : 1 }}
+              style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: !doneNote.trim() ? 0.5 : 1 }}
             >
               {completeActivity.isPending ? 'Completing...' : 'Mark Done'}
             </button>
@@ -169,30 +169,30 @@ export default function ActivitiesPage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: '800px' },
+  page: {},
   header: { marginBottom: '16px' },
-  title: { fontSize: '20px', fontWeight: '500', color: '#1a1a18', margin: 0 },
-  sub: { fontSize: '13px', color: '#8c8c88', marginTop: '2px' },
+  title: { fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', fontWeight: 400, color: 'var(--ink)', margin: 0 },
+  sub: { fontSize: '13px', color: 'var(--faint)', marginTop: '2px' },
   filterRow: { display: 'flex', gap: '6px', marginBottom: '20px' },
-  filterBtn: { padding: '6px 16px', borderRadius: '16px', border: '0.5px solid #e2e0da', backgroundColor: '#fff', fontSize: '12px', cursor: 'pointer', color: '#5c5c58' },
-  filterActive: { backgroundColor: '#534AB7', color: '#fff', borderColor: '#534AB7' },
-  loading: { color: '#8c8c88', fontSize: '13px' },
-  empty: { textAlign: 'center', padding: '60px 20px', color: '#5c5c58' },
+  filterBtn: { padding: '6px 16px', borderRadius: '16px', border: '1px solid var(--line)', backgroundColor: 'var(--card-2)', fontSize: '12px', cursor: 'pointer', color: 'var(--dim)' },
+  filterActive: { backgroundColor: 'var(--brand)', color: 'var(--night-ink)', borderColor: 'var(--brand)' },
+  loading: { color: 'var(--faint)', fontSize: '13px' },
+  empty: { textAlign: 'center', padding: '60px 20px', color: 'var(--dim)' },
   list: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  card: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', padding: '16px' },
+  card: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '16px' },
   cardTop: { display: 'flex', gap: '12px', alignItems: 'flex-start' },
   activityIcon: { fontSize: '20px', flexShrink: 0, marginTop: '2px' },
   cardInfo: { flex: 1 },
-  actTitle: { fontSize: '14px', fontWeight: '500', color: '#1a1a18', marginBottom: '3px' },
-  actNote: { fontSize: '12px', color: '#5c5c58', marginBottom: '4px' },
-  actMeta: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', color: '#8c8c88' },
-  actType: { color: '#534AB7' },
-  dot: { color: '#ccc9c1' },
+  actTitle: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)', marginBottom: '3px' },
+  actNote: { fontSize: '12px', color: 'var(--dim)', marginBottom: '4px' },
+  actMeta: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', color: 'var(--faint)' },
+  actType: { color: 'var(--brand)' },
+  dot: { color: 'var(--line-2)' },
   actEntity: {},
   cardRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 },
-  duePill: { padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '500', whiteSpace: 'nowrap' },
-  doneNote: { marginTop: '10px', fontSize: '12px', color: '#0F6E56', backgroundColor: '#e1f5ee', padding: '8px 10px', borderRadius: '6px' },
-  cardActions: { display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '0.5px solid #f5f4f0' },
-  completeBtn: { padding: '7px 16px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '500', cursor: 'pointer' },
-  cancelBtn: { padding: '7px 14px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', color: '#5c5c58' },
+  duePill: { padding: '2px 8px', borderRadius: 'var(--r-card)', fontSize: '11px', fontWeight: '500', whiteSpace: 'nowrap' },
+  doneNote: { marginTop: '10px', fontSize: '12px', color: 'var(--ok)', backgroundColor: 'var(--ok-bg)', padding: '8px 10px', borderRadius: '12px' },
+  cardActions: { display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--well)' },
+  completeBtn: { padding: '7px 16px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 999, fontSize: '12px', fontWeight: '500', cursor: 'pointer' },
+  cancelBtn: { padding: '7px 14px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 999, fontSize: '12px', cursor: 'pointer', color: 'var(--dim)' },
 }

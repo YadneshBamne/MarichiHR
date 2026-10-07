@@ -80,7 +80,7 @@ export default function LeavePage() {
                     </div>
                     <div style={s.balanceFooter}>
                       <span>{b.usedDays.toFixed(1)} used</span>
-                      {b.pendingDays > 0 && <span style={{ color: '#BA7517' }}>{b.pendingDays.toFixed(1)} pending</span>}
+                      {b.pendingDays > 0 && <span style={{ color: 'var(--warn)' }}>{b.pendingDays.toFixed(1)} pending</span>}
                       <span style={{ marginLeft: 'auto' }}>{available.toFixed(1)} available</span>
                     </div>
                     {!b.leaveType?.isPaid && (
@@ -114,7 +114,7 @@ export default function LeavePage() {
                     <td style={s.td}>{formatDate(req.startDate)}</td>
                     <td style={s.td}>{formatDate(req.endDate)}</td>
                     <td style={s.td}>{req.totalDays}d</td>
-                    <td style={s.td}><span style={{ color: '#5c5c58' }}>{req.reason || '—'}</span></td>
+                    <td style={s.td}><span style={{ color: 'var(--dim)' }}>{req.reason || '—'}</span></td>
                     <td style={s.td}><Badge label={req.status} /></td>
                     <td style={s.td}>
                       {req.status === 'pending' && (
@@ -150,32 +150,32 @@ export default function LeavePage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: '1100px' },
+  page: {},
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' },
-  title: { fontSize: '20px', fontWeight: '500', color: '#1a1a18', margin: 0 },
-  sub: { fontSize: '13px', color: '#8c8c88', marginTop: '2px' },
+  title: { fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', fontWeight: 400, color: 'var(--ink)', margin: 0 },
+  sub: { fontSize: '13px', color: 'var(--faint)', marginTop: '2px' },
   headerActions: { display: 'flex', gap: '8px' },
-  primaryBtn: { padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
-  secondaryBtn: { padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', color: '#1a1a18' },
-  tabs: { display: 'flex', borderBottom: '0.5px solid #e2e0da', marginBottom: '20px' },
-  tab: { padding: '10px 18px', background: 'none', border: 'none', fontSize: '13px', color: '#5c5c58', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: '-0.5px' },
-  tabActive: { color: '#534AB7', fontWeight: '500', borderBottomColor: '#534AB7' },
-  loading: { color: '#8c8c88', fontSize: '13px' },
+  primaryBtn: { padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 999, fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
+  secondaryBtn: { padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 999, fontSize: '13px', cursor: 'pointer', color: 'var(--ink)' },
+  tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
+  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
+  loading: { color: 'var(--faint)', fontSize: '13px' },
   balanceGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' },
-  balanceCard: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', padding: '18px', position: 'relative' },
-  balanceName: { fontSize: '13px', fontWeight: '500', color: '#1a1a18', marginBottom: '10px' },
+  balanceCard: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '18px', position: 'relative' },
+  balanceName: { fontSize: '13px', fontWeight: '500', color: 'var(--ink)', marginBottom: '10px' },
   balanceNumbers: { display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '10px' },
-  availNum: { fontSize: '28px', fontWeight: '500', color: '#1a1a18', lineHeight: 1 },
-  totalNum: { fontSize: '13px', color: '#8c8c88' },
-  progressTrack: { height: '4px', backgroundColor: '#e2e0da', borderRadius: '2px', overflow: 'hidden', marginBottom: '8px' },
-  progressFill: { height: '100%', backgroundColor: '#534AB7', borderRadius: '2px' },
-  balanceFooter: { display: 'flex', gap: '12px', fontSize: '11px', color: '#8c8c88' },
-  unpaidTag: { position: 'absolute', top: '12px', right: '12px', fontSize: '10px', backgroundColor: '#f5f4f0', color: '#8c8c88', padding: '2px 8px', borderRadius: '10px', border: '0.5px solid #e2e0da' },
-  tableWrap: { backgroundColor: '#fff', border: '0.5px solid #e2e0da', borderRadius: '10px', overflow: 'hidden' },
-  empty: { padding: '40px', textAlign: 'center', color: '#8c8c88', fontSize: '13px' },
+  availNum: { fontSize: '28px', fontWeight: '500', color: 'var(--ink)', lineHeight: 1 },
+  totalNum: { fontSize: '13px', color: 'var(--faint)' },
+  progressTrack: { height: '4px', backgroundColor: 'var(--line)', borderRadius: '2px', overflow: 'hidden', marginBottom: '8px' },
+  progressFill: { height: '100%', backgroundColor: 'var(--brand)', borderRadius: '2px' },
+  balanceFooter: { display: 'flex', gap: '12px', fontSize: '11px', color: 'var(--faint)' },
+  unpaidTag: { position: 'absolute', top: '12px', right: '12px', fontSize: '10px', backgroundColor: 'var(--well)', color: 'var(--faint)', padding: '2px 8px', borderRadius: 'var(--r-card)', border: '1px solid var(--line)' },
+  tableWrap: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' },
+  empty: { padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '13px' },
   table: { width: '100%', borderCollapse: 'collapse' },
-  th: { padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: '#8c8c88', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '0.5px solid #e2e0da', backgroundColor: '#f9f8f6' },
-  tr: { borderBottom: '0.5px solid #f5f4f0' },
-  td: { padding: '12px 16px', fontSize: '13px', color: '#1a1a18' },
-  cancelBtn: { padding: '5px 12px', backgroundColor: '#faece7', color: '#993C1D', border: '0.5px solid #f5c6b8', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' },
+  th: { padding: '10px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' },
+  tr: { borderBottom: '1px solid var(--well)' },
+  td: { padding: '12px 16px', fontSize: '13px', color: 'var(--ink)' },
+  cancelBtn: { padding: '5px 12px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' },
 }

@@ -42,7 +42,7 @@ export default function GradeBandsTab({ canEdit }: { canEdit: boolean }) {
                   <td style={td}>{money(b.salaryMid, b.currency)}</td>
                   <td style={td}>{money(b.salaryMax, b.currency)}</td>
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {canEdit && <><button style={linkBtn} onClick={() => setF({ ...b })}>Edit</button><button style={{ ...linkBtn, color: '#993C1D' }} onClick={() => archive(b.id)}>Archive</button></>}
+                    {canEdit && <><button style={linkBtn} onClick={() => setF({ ...b })}>Edit</button><button style={{ ...linkBtn, color: 'var(--danger)' }} onClick={() => archive(b.id)}>Archive</button></>}
                   </td>
                 </tr>
               ))}
@@ -50,7 +50,7 @@ export default function GradeBandsTab({ canEdit }: { canEdit: boolean }) {
           </table>
         )}
       </div>
-      <p style={{ fontSize: 12, color: '#8c8c88', marginTop: 8 }}>Bands are annual CTC ranges. Contracts outside their band are flagged on the Contracts tab.</p>
+      <p style={{ fontSize: 12, color: 'var(--faint)', marginTop: 8 }}>Bands are annual CTC ranges. Contracts outside their band are flagged on the Contracts tab.</p>
       {error && !f && <div style={errorBox}>{error}</div>}
 
       <Modal open={!!f} onClose={() => setF(null)} title={f?.id ? `Edit band ${f.code}` : 'New grade band'} width={520}>
@@ -64,7 +64,7 @@ export default function GradeBandsTab({ canEdit }: { canEdit: boolean }) {
             <FormField label="Currency" required><input style={inputStyle} maxLength={3} value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} /></FormField>
           </div>
         )}
-        {f && f.salaryMin !== '' && f.salaryMax !== '' && !valid && <div style={{ fontSize: 12, color: '#993C1D', marginTop: 8 }}>Minimum ≤ midpoint ≤ maximum</div>}
+        {f && f.salaryMin !== '' && f.salaryMax !== '' && !valid && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>Minimum ≤ midpoint ≤ maximum</div>}
         {error && <div style={errorBox}>{error}</div>}
         <div style={footer}><button style={ghostBtn} onClick={() => setF(null)}>Cancel</button><button style={{ ...primaryBtn, opacity: valid ? 1 : 0.5 }} disabled={!valid || write.isPending} onClick={save}>Save</button></div>
       </Modal>

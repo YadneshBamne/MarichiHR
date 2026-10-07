@@ -17,5 +17,5 @@ export default function SsoCallbackPage() {
       .catch(() => navigate('/login?sso_error=expired', { replace: true }))
   }, [exchangeSso, navigate, params])
 
-  return <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: '#5c5c58' }}>Signing you in...</div>
+  return <div style={{ padding: 40, textAlign: 'center', fontSize: 14, color: 'var(--dim)' }}>Signing you in...</div>
 }

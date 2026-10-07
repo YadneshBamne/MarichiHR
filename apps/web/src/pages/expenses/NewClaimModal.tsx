@@ -54,21 +54,21 @@ export default function NewClaimModal({ open, onClose }: { open: boolean; onClos
     if (type === 'actual') {
       if (!(amount > 0)) return null
       if (cur === home) return <span>{money(amount, home)}</span>
-      if (fx.isError) return <span style={{ color: '#993C1D' }}>{apiError(fx)}</span>
+      if (fx.isError) return <span style={{ color: 'var(--danger)' }}>{apiError(fx)}</span>
       if (fx.data) return <span>{money(amount, cur)} × {fx.data.fxRate} = <strong>{money(Math.round(amount * fx.data.fxRate * 100) / 100, home)}</strong></span>
-      return <span style={{ color: '#8c8c88' }}>Looking up rate...</span>
+      return <span style={{ color: 'var(--faint)' }}>Looking up rate...</span>
     }
     if (!perDiemReady) return null
-    if (quote.isError) return <span style={{ color: '#993C1D' }}>{apiError(quote)}</span>
+    if (quote.isError) return <span style={{ color: 'var(--danger)' }}>{apiError(quote)}</span>
     if (quote.data) {
       const q = quote.data
       return <span>{q.days} day(s) × {money(q.rate, q.currency)} = {money(q.expenseAmount, q.currency)}{q.currency !== q.homeCurrency && <> → <strong>{money(q.homeAmount, q.homeCurrency)}</strong> (rate {q.fxRate})</>}</span>
     }
-    return <span style={{ color: '#8c8c88' }}>Looking up rate...</span>
+    return <span style={{ color: 'var(--faint)' }}>Looking up rate...</span>
   })()
 
   const tabBtn = (key: 'actual' | 'per_diem', label: string) => (
-    <button type="button" onClick={() => setType(key)} style={{ flex: 1, padding: '8px 12px', border: '0.5px solid #e2e0da', backgroundColor: type === key ? '#534AB7' : '#fff', color: type === key ? '#fff' : '#5c5c58', fontSize: 13, cursor: 'pointer', borderRadius: key === 'actual' ? '6px 0 0 6px' : '0 6px 6px 0' }}>{label}</button>
+    <button type="button" onClick={() => setType(key)} style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--line)', backgroundColor: type === key ? 'var(--brand)' : 'var(--card-2)', color: type === key ? 'var(--card-2)' : 'var(--dim)', fontSize: 13, cursor: 'pointer', borderRadius: key === 'actual' ? '6px 0 0 6px' : '0 6px 6px 0' }}>{label}</button>
   )
 
   return (
@@ -106,12 +106,12 @@ export default function NewClaimModal({ open, onClose }: { open: boolean; onClos
 
         <FormField label="Description" required><input style={inputStyle} maxLength={500} value={f.description} onChange={(e) => set('description', e.target.value)} required /></FormField>
 
-        {preview && <div style={{ backgroundColor: '#f0effe', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{preview}</div>}
-        {error && <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
+        {preview && <div style={{ backgroundColor: 'var(--honey-soft)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{preview}</div>}
+        {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-          <button type="submit" disabled={create.isPending} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: create.isPending ? 0.7 : 1 }}>{create.isPending ? 'Submitting...' : 'Submit claim'}</button>
+          <button type="button" onClick={onClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          <button type="submit" disabled={create.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: create.isPending ? 0.7 : 1 }}>{create.isPending ? 'Submitting...' : 'Submit claim'}</button>
         </div>
       </form>
     </Modal>

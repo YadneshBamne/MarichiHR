@@ -42,9 +42,9 @@ export default function OvertimeModal({ open, onClose }: Props) {
       <Modal open={open} onClose={handleClose} title="Overtime Requested">
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
-          <div style={{ fontSize: '15px', fontWeight: '500', color: '#1a1a18', marginBottom: '6px' }}>Overtime request submitted</div>
-          <div style={{ fontSize: '13px', color: '#5c5c58', marginBottom: '20px' }}>Your manager will review and approve the hours.</div>
-          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Done</button>
+          <div style={{ fontSize: '15px', fontWeight: '500', color: 'var(--ink)', marginBottom: '6px' }}>Overtime request submitted</div>
+          <div style={{ fontSize: '13px', color: 'var(--dim)', marginBottom: '20px' }}>Your manager will review and approve the hours.</div>
+          <button onClick={handleClose} style={{ padding: '9px 24px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Done</button>
         </div>
       </Modal>
     )
@@ -72,11 +72,11 @@ export default function OvertimeModal({ open, onClose }: Props) {
             placeholder="e.g. Client deliverable due at midnight" />
         </FormField>
 
-        {error && <div style={{ backgroundColor: '#faece7', color: '#993C1D', borderRadius: '6px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
+        {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: '12px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-          <button type="submit" disabled={requestOT.isPending} style={{ padding: '9px 18px', backgroundColor: '#534AB7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: requestOT.isPending ? 0.7 : 1 }}>
+          <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+          <button type="submit" disabled={requestOT.isPending} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: requestOT.isPending ? 0.7 : 1 }}>
             {requestOT.isPending ? 'Submitting...' : 'Submit Request'}
           </button>
         </div>

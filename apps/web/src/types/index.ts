@@ -3,6 +3,8 @@ export interface User {
   email: string
   fullName: string
   avatarUrl?: string
+  mfaEnabled?: boolean
+  tourDoneAt?: string | null
   roles: { id: string; name: string }[]
   employee: {
     id: string

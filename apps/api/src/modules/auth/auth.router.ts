@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { authController } from './auth.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { authenticate } from '../../middleware/auth.middleware'
-import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema } from './auth.schema'
+import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema, TourSchema } from './auth.schema'
 import { googleSso } from './google.sso'
 
 export const authRouter = Router()
@@ -11,6 +11,7 @@ authRouter.post('/login', validate(LoginSchema), authController.login)
 authRouter.post('/refresh', validate(RefreshSchema), authController.refresh)
 authRouter.post('/logout', authController.logout)
 authRouter.get('/me', authenticate, authController.me)
+authRouter.post('/me/tour', authenticate, validate(TourSchema), authController.setTour)
 
 // ─── MFA (TOTP) ───────────────────────────────────────────────
 authRouter.post('/mfa/verify', validate(MfaVerifySchema), authController.mfaVerify)

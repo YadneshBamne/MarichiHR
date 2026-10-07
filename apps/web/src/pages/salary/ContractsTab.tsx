@@ -60,11 +60,11 @@ export default function ContractsTab({ canEdit }: { canEdit: boolean }) {
                 const flag = outOfBand(c)
                 return (
                   <tr key={c.id}>
-                    <td style={td}><strong>{c.employee.firstName} {c.employee.lastName}</strong><div style={{ fontSize: 11, color: '#8c8c88' }}>{c.employee.employeeCode}{!c.employee.active && ' · archived'}</div></td>
-                    <td style={td}>{money(c.wageMonthly, c.currency)}<div style={{ fontSize: 11, color: '#8c8c88' }}>CTC {money(c.ctcAnnual, c.currency)}</div></td>
-                    <td style={td}>{c.salaryStructure ? c.salaryStructure.code : <span style={{ color: '#993C1D' }}>none — payroll skips</span>}</td>
-                    <td style={td}>{c.gradeBand?.code ?? '—'}{flag && <div style={{ fontSize: 11, color: '#BA7517' }}>⚠ {flag}</div>}</td>
-                    <td style={td}>{fmtDate(c.effectiveFrom)}<div style={{ fontSize: 11, color: '#8c8c88' }}>{c.effectiveUntil ? `to ${fmtDate(c.effectiveUntil)}` : 'open-ended'}</div></td>
+                    <td style={td}><strong>{c.employee.firstName} {c.employee.lastName}</strong><div style={{ fontSize: 11, color: 'var(--faint)' }}>{c.employee.employeeCode}{!c.employee.active && ' · archived'}</div></td>
+                    <td style={td}>{money(c.wageMonthly, c.currency)}<div style={{ fontSize: 11, color: 'var(--faint)' }}>CTC {money(c.ctcAnnual, c.currency)}</div></td>
+                    <td style={td}>{c.salaryStructure ? c.salaryStructure.code : <span style={{ color: 'var(--danger)' }}>none — payroll skips</span>}</td>
+                    <td style={td}>{c.gradeBand?.code ?? '—'}{flag && <div style={{ fontSize: 11, color: 'var(--warn)' }}>⚠ {flag}</div>}</td>
+                    <td style={td}>{fmtDate(c.effectiveFrom)}<div style={{ fontSize: 11, color: 'var(--faint)' }}>{c.effectiveUntil ? `to ${fmtDate(c.effectiveUntil)}` : 'open-ended'}</div></td>
                     <td style={td}>{c.noticePeriodDays}d</td>
                     <td style={td}><Badge label={c.status} /></td>
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -72,7 +72,7 @@ export default function ContractsTab({ canEdit }: { canEdit: boolean }) {
                         <>
                           {(NEXT[c.status] || []).map(([label, step]) => <button key={step} style={linkBtn} disabled={write.isPending} onClick={() => act(c.id, step)}>{label}</button>)}
                           {LIVE.includes(c.status) && <button style={linkBtn} onClick={() => setLinking({ id: c.id, salaryStructureId: c.salaryStructureId || '', gradeBandId: c.gradeBandId || '' })}>Link</button>}
-                          {LIVE.includes(c.status) && <button style={{ ...linkBtn, color: '#993C1D' }} onClick={() => { setReason(''); setCancelling(c) }}>Cancel</button>}
+                          {LIVE.includes(c.status) && <button style={{ ...linkBtn, color: 'var(--danger)' }} onClick={() => { setReason(''); setCancelling(c) }}>Cancel</button>}
                         </>
                       )}
                     </td>
@@ -88,13 +88,13 @@ export default function ContractsTab({ canEdit }: { canEdit: boolean }) {
       {creating && <NewContractModal onClose={() => setCreating(false)} />}
       {linking && <LinkModal form={linking} onClose={() => setLinking(null)} />}
       <Modal open={!!cancelling} onClose={() => setCancelling(null)} title="Cancel contract" width={440}>
-        <p style={{ fontSize: 13, color: '#5c5c58', marginTop: 0 }}>
+        <p style={{ fontSize: 13, color: 'var(--dim)', marginTop: 0 }}>
           {cancelling?.status === 'running' ? 'This contract is running: cancelling stops payroll for this employee from the next cycle.' : 'The contract moves to cancelled and cannot be reopened.'}
         </p>
         <input style={inputStyle} placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
         <div style={footer}>
           <button style={ghostBtn} onClick={() => setCancelling(null)}>Back</button>
-          <button style={{ ...primaryBtn, backgroundColor: '#993C1D' }} onClick={() => { act(cancelling.id, 'cancel', reason.trim() ? { reason: reason.trim() } : {}); setCancelling(null) }}>Cancel contract</button>
+          <button style={{ ...primaryBtn, backgroundColor: 'var(--danger)' }} onClick={() => { act(cancelling.id, 'cancel', reason.trim() ? { reason: reason.trim() } : {}); setCancelling(null) }}>Cancel contract</button>
         </div>
       </Modal>
     </>
@@ -162,8 +162,8 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
         </FormField>
         <FormField label="Revision reason" style={{ gridColumn: '1 / -1' }}><input style={inputStyle} value={f.revisionReason} onChange={(e) => set('revisionReason', e.target.value)} /></FormField>
       </div>
-      {flag && <div style={{ fontSize: 12, color: '#BA7517', marginTop: 10 }}>⚠ Annual CTC {money(ctc, f.currency)} is {flag} ({band.code}: {money(band.salaryMin, band.currency)}–{money(band.salaryMax, band.currency)})</div>}
-      <p style={{ fontSize: 12, color: '#8c8c88', marginBottom: 0 }}>New contracts start in “new”. Move them through draft → confirmed → running from the list.</p>
+      {flag && <div style={{ fontSize: 12, color: 'var(--warn)', marginTop: 10 }}>⚠ Annual CTC {money(ctc, f.currency)} is {flag} ({band.code}: {money(band.salaryMin, band.currency)}–{money(band.salaryMax, band.currency)})</div>}
+      <p style={{ fontSize: 12, color: 'var(--faint)', marginBottom: 0 }}>New contracts start in “new”. Move them through draft → confirmed → running from the list.</p>
       {error && <div style={errorBox}>{error}</div>}
       <div style={footer}><button style={ghostBtn} onClick={onClose}>Cancel</button><button style={{ ...primaryBtn, opacity: ready ? 1 : 0.5 }} disabled={!ready || write.isPending} onClick={save}>Create contract</button></div>
     </Modal>

@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import ClockWidget from './ClockWidget'
+import { TimeTracker } from '../DashboardPage'
+import PageHeader from '../../components/ui/PageHeader'
+import Icon from '../../components/ui/Icon'
+import { useReveal } from '../../lib/motion'
 import AttendanceCalendarView from './AttendanceCalendarView'
 import RegularisationModal from './RegularisationModal'
 import OvertimeModal from './OvertimeModal'
@@ -14,6 +17,7 @@ export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState<Tab>('my')
   const [showReg, setShowReg] = useState(false)
   const [showOT, setShowOT] = useState(false)
+  const ref = useReveal<HTMLDivElement>(activeTab)
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'my', label: 'My Attendance' },
@@ -24,17 +28,11 @@ export default function AttendancePage() {
   ]
 
   return (
-    <div style={s.page}>
-      <div style={s.header}>
-        <div>
-          <h2 style={s.title}>Attendance</h2>
-          <p style={s.sub}>Track your time and manage your team</p>
-        </div>
-        <div style={s.headerActions}>
-          <button style={s.secondaryBtn} onClick={() => setShowOT(true)}>Request Overtime</button>
-          <button style={s.secondaryBtn} onClick={() => setShowReg(true)}>Raise Regularisation</button>
-        </div>
-      </div>
+    <div ref={ref}>
+      <PageHeader title="Attendance" sub="Clock in, check your month and fix missed punches." actions={<>
+        <button className="btn btn-ghost" onClick={() => setShowOT(true)}><Icon name="clock" size={15} /> Request overtime</button>
+        <button className="btn btn-primary" onClick={() => setShowReg(true)}><Icon name="refresh" size={15} /> Fix a missed punch</button>
+      </>} />
 
       <div style={s.tabs}>
         {TABS.map((tab) => (
@@ -49,8 +47,8 @@ export default function AttendancePage() {
       </div>
 
       {activeTab === 'my' && (
-        <div>
-          <ClockWidget />
+        <div className="att-grid">
+          <TimeTracker />
           <AttendanceCalendarView />
         </div>
       )}
@@ -66,13 +64,13 @@ export default function AttendancePage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { maxWidth: '1100px' },
+  page: {},
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' },
-  title: { fontSize: '20px', fontWeight: '500', color: '#1a1a18', margin: 0 },
-  sub: { fontSize: '13px', color: '#8c8c88', marginTop: '2px' },
+  title: { fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', fontWeight: 400, color: 'var(--ink)', margin: 0 },
+  sub: { fontSize: '13px', color: 'var(--faint)', marginTop: '2px' },
   headerActions: { display: 'flex', gap: '8px' },
-  secondaryBtn: { padding: '9px 16px', backgroundColor: '#f5f4f0', border: '0.5px solid #e2e0da', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', color: '#1a1a18' },
-  tabs: { display: 'flex', borderBottom: '0.5px solid #e2e0da', marginBottom: '20px' },
-  tab: { padding: '10px 18px', background: 'none', border: 'none', fontSize: '13px', color: '#5c5c58', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: '-0.5px' },
-  tabActive: { color: '#534AB7', fontWeight: '500', borderBottomColor: '#534AB7' },
+  secondaryBtn: { padding: '9px 16px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 999, fontSize: '13px', cursor: 'pointer', color: 'var(--ink)' },
+  tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
+  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
 }

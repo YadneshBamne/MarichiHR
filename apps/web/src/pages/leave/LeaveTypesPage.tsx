@@ -60,11 +60,11 @@ export default function LeaveTypesPage() {
   )
 
   return (
-    <div style={{ maxWidth: 1150 }}>
+    <div>
       <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Leave types</h2>
-          <p style={{ fontSize: 13, color: '#8c8c88', marginTop: 2 }}>Accrual, carry-forward and approval rules. Archived types can no longer be applied for.</p>
+          <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Leave types</h2>
+          <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2 }}>Accrual, carry-forward and approval rules. Archived types can no longer be applied for.</p>
         </div>
         <button style={primaryBtn} onClick={() => { setError(''); setForm({ ...BLANK }) }}>+ New leave type</button>
       </div>
@@ -75,7 +75,7 @@ export default function LeaveTypesPage() {
             <tbody>
               {types.map((t: any) => (
                 <tr key={t.id} style={{ opacity: t.active ? 1 : 0.55 }}>
-                  <td style={td}><strong>{t.name}</strong> <span style={{ color: '#8c8c88', fontSize: 12 }}>{t.code}</span>{!t.active && <span style={{ marginLeft: 8, fontSize: 11, color: '#993C1D' }}>Archived</span>}</td>
+                  <td style={td}><strong>{t.name}</strong> <span style={{ color: 'var(--faint)', fontSize: 12 }}>{t.code}</span>{!t.active && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--danger)' }}>Archived</span>}</td>
                   <td style={{ ...td, textTransform: 'capitalize' }}>{t.category}</td>
                   <td style={td}>{t.isPaid ? 'Paid' : 'Unpaid'}</td>
                   <td style={td}>{t.accrualType === 'monthly_prorate' ? `${t.accrualAmount}/month` : t.accrualType === 'annual_lumpsum' ? `${t.accrualAmount}/year` : 'Manual'}</td>
@@ -83,7 +83,7 @@ export default function LeaveTypesPage() {
                   <td style={td}>{t.approvalLevels} level{t.approvalLevels > 1 ? 's' : ''}</td>
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button style={linkBtn} onClick={() => { setError(''); edit(t) }}>Edit</button>
-                    <button style={{ ...linkBtn, color: t.active ? '#993C1D' : '#534AB7' }} onClick={() => toggleActive(t)}>{t.active ? 'Archive' : 'Restore'}</button>
+                    <button style={{ ...linkBtn, color: t.active ? 'var(--danger)' : 'var(--brand)' }} onClick={() => toggleActive(t)}>{t.active ? 'Archive' : 'Restore'}</button>
                   </td>
                 </tr>
               ))}
@@ -99,7 +99,7 @@ export default function LeaveTypesPage() {
             <div style={grid2}>
               <FormField label="Name" required><input style={inputStyle} value={form.name} onChange={(e) => set('name', e.target.value)} /></FormField>
               <FormField label="Code" required>
-                <input style={{ ...inputStyle, ...(form.id ? { backgroundColor: '#f5f4f0', color: '#8c8c88' } : {}) }} value={form.code} disabled={!!form.id} placeholder="e.g. STUDY" onChange={(e) => set('code', e.target.value.toUpperCase())} />
+                <input style={{ ...inputStyle, ...(form.id ? { backgroundColor: 'var(--well)', color: 'var(--faint)' } : {}) }} value={form.code} disabled={!!form.id} placeholder="e.g. STUDY" onChange={(e) => set('code', e.target.value.toUpperCase())} />
               </FormField>
               <FormField label="Category">
                 <select style={selectStyle} value={form.category} onChange={(e) => set('category', e.target.value)}>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
