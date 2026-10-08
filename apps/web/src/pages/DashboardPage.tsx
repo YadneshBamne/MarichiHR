@@ -138,13 +138,9 @@ function TeamRows({ d }: { d: any }) {
       <section data-card className="card span-8" style={{ padding: 22 }}>
         <CardHead title={`${scopeLabel} today`} to={t.scope === 'company' ? '/employees' : '/employees'} />
         {t.today && (
-          <div className="att-sum">
-            {([['In', t.today.in, 'honey'], ['On leave', t.today.onLeave, 'night'], ['Not in yet', t.today.notIn, 'mute'], ['Absent', t.today.absent, 'danger']] as [string, number, string][]).map(([l, v, k]) => (
-              // Each bar is that group's share of the team
-              <div key={l} style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6, marginBottom: 6 }}><span className="dim" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l}</span><span className="num" style={{ fontSize: 15, fontWeight: 600 }}>{v}</span></div>
-                <div className="att-track"><span className={`att-fill ${k}`} style={{ width: `${t.size ? Math.round((v / t.size) * 100) : 0}%` }} /></div>
-              </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 8, marginTop: 14 }}>
+            {([['In', t.today.in, 'honey'], ['On leave', t.today.onLeave, 'night'], ['Not in yet', t.today.notIn, 'outline'], ['Absent', t.today.absent, 'stripes']] as [string, number, string][]).map(([l, v, k]) => (
+              <div key={l}><div className="dim" style={{ fontSize: 12, marginBottom: 5 }}>{l}</div><div className={`seg ${k}`} style={k === 'stripes' ? { backgroundSize: '22px 22px' } : undefined}><span className="num">{v}</span></div></div>
             ))}
           </div>
         )}

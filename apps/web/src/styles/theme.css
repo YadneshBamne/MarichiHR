@@ -174,17 +174,6 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .seg.stripes { background: repeating-linear-gradient(-45deg, var(--line-2) 0 1px, transparent 1px 7px); color: var(--ink); }
 .seg.outline { border: 1px solid var(--line-2); color: var(--ink); }
 
-/* Attendance month summary: four equal tiles, each a slim track filled in proportion to its value */
-.att-sum { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
-.att-track { height: 8px; border-radius: 999px; background: var(--well); overflow: hidden; }
-.att-fill { display: block; height: 100%; border-radius: inherit; transition: width .8s cubic-bezier(.2, .8, .2, 1); }
-.att-fill.honey { background: var(--honey); }
-.att-fill.night { background: var(--night); }
-.att-fill.danger { background: var(--danger); }
-.att-fill.mute { background: var(--dim); }
-.att-fill.stripes { background: repeating-linear-gradient(-45deg, var(--dim) 0 2px, transparent 2px 6px); }
-@media (max-width: 480px) { .att-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; } }
-
 @keyframes stripes { to { background-position: 22px 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
