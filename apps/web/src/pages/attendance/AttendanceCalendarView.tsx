@@ -21,8 +21,11 @@ export default function AttendanceCalendarView() {
   const hours = useCountUp(sum?.totalWorkedHours ?? 0, fmtHours)
   const offset = (new Date(Date.UTC(ym.y, ym.m - 1, 1)).getUTCDay() + 6) % 7
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const working = calendar.filter((d) => !d.isWeekend).length || 1
-  const share = (n: number) => `${Math.round(((n || 0) / working) * 100)}%`
+  // Working days so far: weekdays up to today that aren't holidays (future days are neither present nor absent)
+  const working = calendar.filter((d) => !d.isWeekend && d.status !== 'holiday' && d.date <= todayStr).length
+  const pctOf = (n: number) => (working ? Math.min(100, Math.round(((n || 0) / working) * 100)) : 0)
+  // Attendance rate: present days + half days at 0.5, over working days so far
+  const rate = sum ? pctOf(sum.present + sum.halfDay * 0.5) : 0
   const grid = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
@@ -50,13 +53,14 @@ export default function AttendanceCalendarView() {
       </div>
 
       {sum && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
-          <Bar label="Present" w={sum.present} cls="honey" text={share(sum.present)} grow={Math.max(sum.present, 3)} />
-          <Bar label="Half day" w={sum.halfDay} cls="night" text={String(sum.halfDay)} grow={Math.max(sum.halfDay, 1.2)} />
-          <Bar label="Absent" w={sum.absent} cls="outline" text={String(sum.absent)} grow={Math.max(sum.absent, 1.2)} />
-          <Bar label="Leave" w={sum.onLeave} cls="stripes" text={String(sum.onLeave)} grow={Math.max(sum.onLeave, 1.2)} />
+        <div className="att-sum" title="Present = (present days + half days × 0.5) ÷ working days so far (weekdays up to today, holidays excluded)">
+          <Bar label="Present" value={working ? `${rate}%` : '—'} pct={rate} cls="honey" />
+          <Bar label="Half day" value={String(sum.halfDay)} pct={pctOf(sum.halfDay)} cls="night" />
+          <Bar label="Absent" value={String(sum.absent)} pct={pctOf(sum.absent)} cls="danger" />
+          <Bar label="Leave" value={String(sum.onLeave)} pct={pctOf(sum.onLeave)} cls="stripes" />
         </div>
       )}
+      {sum && <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>{working ? `Out of ${working} working day${working === 1 ? '' : 's'} so far · half days count as ½` : 'No working days yet this month'}</div>}
 
       <div className="cal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 18 }}>
         {DAYS.map((d) => <div key={d} className="dim" style={{ fontSize: 12, textAlign: 'center' }}>{d}</div>)}
@@ -85,11 +89,15 @@ export default function AttendanceCalendarView() {
   )
 }
 
-function Bar({ label, cls, text, grow }: { label: string; w: number; cls: string; text: string; grow: number }) {
+// Label and value on top, a slim track below whose fill is the value's share of working days so far
+function Bar({ label, value, pct, cls }: { label: string; value: string; pct: number; cls: string }) {
   return (
-    <div style={{ flex: grow, minWidth: 52 }}>
-      <div className="dim" style={{ fontSize: 11, marginBottom: 5 }}>{label}</div>
-      <div className={`seg ${cls}`} style={cls === 'stripes' ? { animation: 'stripes 3.2s linear infinite', backgroundSize: '22px 22px' } : undefined}>{text}</div>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', columnGap: 6, marginBottom: 6 }}>
+        <span className="dim" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{label}</span>
+        <span className="num" style={{ fontSize: 14, fontWeight: 600 }}>{value}</span>
+      </div>
+      <div className="att-track"><span className={`att-fill ${cls}`} style={{ width: `${pct}%` }} /></div>
     </div>
   )
 }
