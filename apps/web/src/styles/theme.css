@@ -173,6 +173,8 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .seg.honey { background: var(--honey); color: var(--ink); }
 .seg.stripes { background: repeating-linear-gradient(-45deg, var(--line-2) 0 1px, transparent 1px 7px); color: var(--ink); }
 .seg.outline { border: 1px solid var(--line-2); color: var(--ink); }
+.seg-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; transition: width .9s cubic-bezier(.2, .8, .2, 1); }
+.seg-fill.honey { background: var(--honey); }
 
 @keyframes stripes { to { background-position: 22px 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }

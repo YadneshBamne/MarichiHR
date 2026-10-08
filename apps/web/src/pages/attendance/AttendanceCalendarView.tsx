@@ -52,7 +52,7 @@ export default function AttendanceCalendarView() {
 
       {sum && (
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'flex-end' }}>
-          <Bar label="Present" w={sum.present} cls="honey" text={share(sum.present + sum.halfDay * 0.5)} grow={Math.max(sum.present, 3)} />
+          <Bar label="Present" w={sum.present} cls="honey" text={share(sum.present + sum.halfDay * 0.5)} grow={Math.max(sum.present, 3)} fill={working ? ((sum.present + sum.halfDay * 0.5) / working) * 100 : 0} />
           <Bar label="Half day" w={sum.halfDay} cls="night" text={String(sum.halfDay)} grow={Math.max(sum.halfDay, 1.2)} />
           <Bar label="Absent" w={sum.absent} cls="outline" text={String(sum.absent)} grow={Math.max(sum.absent, 1.2)} />
           <Bar label="Leave" w={sum.onLeave} cls="stripes" text={String(sum.onLeave)} grow={Math.max(sum.onLeave, 1.2)} />
@@ -86,11 +86,19 @@ export default function AttendanceCalendarView() {
   )
 }
 
-function Bar({ label, cls, text, grow }: { label: string; w: number; cls: string; text: string; grow: number }) {
+// `fill` (0-100) turns the pill into a progress track: outlined like Absent, coloured only up to that share
+function Bar({ label, cls, text, grow, fill }: { label: string; w: number; cls: string; text: string; grow: number; fill?: number }) {
   return (
     <div style={{ flex: grow, minWidth: 52 }}>
       <div className="dim" style={{ fontSize: 11, marginBottom: 5 }}>{label}</div>
-      <div className={`seg ${cls}`} style={cls === 'stripes' ? { animation: 'stripes 3.2s linear infinite', backgroundSize: '22px 22px' } : undefined}>{text}</div>
+      {fill === undefined ? (
+        <div className={`seg ${cls}`} style={cls === 'stripes' ? { animation: 'stripes 3.2s linear infinite', backgroundSize: '22px 22px' } : undefined}>{text}</div>
+      ) : (
+        <div className="seg outline">
+          <span className={`seg-fill ${cls}`} style={{ width: `${Math.max(0, Math.min(100, fill))}%` }} />
+          <span style={{ position: 'relative' }}>{text}</span>
+        </div>
+      )}
     </div>
   )
 }

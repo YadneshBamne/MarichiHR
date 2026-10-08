@@ -35,17 +35,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Signed-in state survives browser restarts: the refresh token lives in localStorage (no third-party cookies
   // needed between the web and API domains) and every refresh extends it, so only logout or 30 idle days end it
+  // While the API is unreachable (redeploying, waking up) the loading screen keeps retrying for about a minute
+  // instead of showing the sign-in page; the stored session is never dropped for a network error
   const loadUser = useCallback(async () => {
-    try {
-      if (await refreshSession()) {
-        const meRes = await api.get('/auth/me')
-        setUser(meRes.data.data)
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        if (await refreshSession()) {
+          const meRes = await api.get('/auth/me')
+          setUser(meRes.data.data)
+        }
+        break
+      } catch (err: any) {
+        if (err?.response && err.response.status < 500) break
+        await new Promise((r) => setTimeout(r, 3000))
       }
-    } catch {
-      // The API is unreachable or waking up: keep the stored session, the next load signs straight in
-    } finally {
-      setIsLoading(false)
     }
+    setIsLoading(false)
   }, [])
 
   useEffect(() => {
