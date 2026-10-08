@@ -1,8 +1,12 @@
 import { z } from 'zod'
 
+// Pasted credentials often carry invisible characters or a trailing space: they're stripped from the email here,
+// and the password is retried without surrounding spaces in authService.login
+const pastedEmail = z.preprocess((v) => (typeof v === 'string' ? v.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '').toLowerCase() : v), z.string().email('Invalid email address'))
+
 export const LoginSchema = z.object({
   body: z.object({
-    email: z.string().email('Invalid email address'),
+    email: pastedEmail,
     password: z.string().min(1, 'Password is required'),
     tenantSlug: z.string().trim().max(60).optional().or(z.literal('').transform(() => undefined)),
   }),

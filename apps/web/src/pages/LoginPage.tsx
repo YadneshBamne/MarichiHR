@@ -42,7 +42,9 @@ export default function LoginPage() {
   const [signupCode, setSignupCode] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   // The organisation is only needed when an email belongs to several companies (or for Google sign-in)
-  const [showOrg, setShowOrg] = useState(!!form.tenantSlug)
+  // The organisation is used only when the person opens that field this time (it is prefilled with the last one),
+  // so a slug saved from another company never silently scopes a new sign-in
+  const [showOrg, setShowOrg] = useState(false)
   const [brand, setBrand] = useState<{ name: string; logoUrl: string | null } | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
   const from = (location.state as any)?.from || '/dashboard'

@@ -140,7 +140,9 @@ export const authService = {
     }
 
     const user = await authRepository.findUserByEmail(email, tenant.id)
-    if (!user || !user.passwordHash || !(await bcrypt.compare(dto.password, user.passwordHash))) return failLogin(guardKey)
+    // A password pasted with a space at either end still works (spaces inside it still count)
+    const passwordOk = async (hash: string) => (await bcrypt.compare(dto.password, hash)) || (dto.password !== dto.password.trim() && (await bcrypt.compare(dto.password.trim(), hash)))
+    if (!user || !user.passwordHash || !(await passwordOk(user.passwordHash))) return failLogin(guardKey)
     await redis.del(guardKey)
     return completeLogin(user, tenant)
   },
