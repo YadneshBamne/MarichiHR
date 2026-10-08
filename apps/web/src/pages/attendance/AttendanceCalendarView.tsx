@@ -58,10 +58,10 @@ export default function AttendanceCalendarView() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 18 }}>
+      <div className="cal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 18 }}>
         {DAYS.map((d) => <div key={d} className="dim" style={{ fontSize: 12, textAlign: 'center' }}>{d}</div>)}
       </div>
-      <div ref={grid} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
+      <div ref={grid} className="cal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
         {Array.from({ length: offset }, (_, i) => <div key={`pad${i}`} />)}
         {isLoading && Array.from({ length: 28 }, (_, i) => <div key={i} className="skeleton" style={{ height: 64, borderRadius: 14 }} />)}
         {!isLoading && calendar.map((d) => {
@@ -69,9 +69,14 @@ export default function AttendanceCalendarView() {
           const chip = CHIP[d.status]
           const isToday = d.date === todayStr
           return (
-            <div key={d.date} data-day style={{ minHeight: 64, borderRadius: 14, padding: '7px 9px', border: isToday ? '1.5px solid var(--night)' : '1px solid var(--line)', background: d.isWeekend ? 'transparent' : 'var(--card-2)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div key={d.date} data-day className="cal-day" style={{ border: isToday ? '1.5px solid var(--night)' : '1px solid var(--line)', background: d.isWeekend ? 'transparent' : 'var(--card-2)' }}>
               <span className="dim num" style={{ fontSize: 12 }}>{Number(d.date.slice(8))}</span>
-              {chip && (h ? <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{fmtHours(h)}</span> : <span data-chip className={`pill ${chip.cls}`} style={{ alignSelf: 'flex-start' }}>{chip.label ?? d.status}</span>)}
+              {chip && (h ? (
+                // Phones get H:MM (full HH:MM:SS in the tooltip); a status without hours shrinks to its coloured dot
+                <span data-chip className={`pill ${chip.cls} cal-chip`} title={`Worked ${fmtHours(h)}`}><span className="cal-full">{fmtHours(h)}</span><span className="cal-short">{fmtHours(h).replace(/^0?(\d+:\d\d):\d\d$/, '$1')}</span></span>
+              ) : (
+                <span data-chip className={`pill ${chip.cls} cal-chip`} title={chip.label ?? d.status} aria-label={chip.label ?? d.status}><span className="cal-full">{chip.label ?? d.status}</span></span>
+              ))}
             </div>
           )
         })}
@@ -82,7 +87,7 @@ export default function AttendanceCalendarView() {
 
 function Bar({ label, cls, text, grow }: { label: string; w: number; cls: string; text: string; grow: number }) {
   return (
-    <div style={{ flex: grow, minWidth: 64 }}>
+    <div style={{ flex: grow, minWidth: 52 }}>
       <div className="dim" style={{ fontSize: 11, marginBottom: 5 }}>{label}</div>
       <div className={`seg ${cls}`} style={cls === 'stripes' ? { animation: 'stripes 3.2s linear infinite', backgroundSize: '22px 22px' } : undefined}>{text}</div>
     </div>

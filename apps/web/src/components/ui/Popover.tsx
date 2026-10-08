@@ -14,6 +14,16 @@ export default function Popover({ open, onClose, children, align = 'right', widt
     document.addEventListener('keydown', key)
     return () => { document.removeEventListener('mousedown', click); document.removeEventListener('keydown', key) }
   }, [open, onClose])
+  // Phones (or any screen too narrow for the panel): pin it under the trigger, full width with 12px gutters,
+  // scrolling inside if it's taller than the space left, so it never runs off either edge
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!open || !el?.parentElement) return
+    const vw = document.documentElement.clientWidth
+    if (vw >= 640 && vw >= width + 24) return
+    const top = el.parentElement.getBoundingClientRect().bottom + 8
+    Object.assign(el.style, { position: 'fixed', top: `${top}px`, left: '12px', right: '12px', width: 'auto', maxHeight: `${window.innerHeight - top - 12}px`, overflowY: 'auto' })
+  }, [open, width])
   useLayoutEffect(() => {
     if (open && ref.current && !reduced()) gsap.fromTo(ref.current, { opacity: 0, y: -10, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: 'back.out(1.6)', transformOrigin: align === 'right' ? '90% 0' : '10% 0' })
   }, [open, align])

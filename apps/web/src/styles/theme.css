@@ -140,6 +140,24 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .pill.honey { background: var(--honey); color: var(--honey-ink); }
 .pill.mute { background: var(--well); color: var(--dim); }
 
+/* Attendance month grid: day tiles with a worked-time / status chip that never spills out of the tile.
+   The tile is a size container: a tile too narrow for HH:MM:SS (phones, desktop with the sidebar open) shows H:MM,
+   scaled to fit, with the full time in the tooltip; status chips shrink to their coloured dot. */
+.cal-day { min-height: 64px; border-radius: 14px; padding: 7px 9px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; overflow: hidden; container-type: inline-size; }
+.cal-chip { align-self: flex-start; max-width: 100%; font-variant-numeric: tabular-nums; }
+.cal-chip .cal-short { display: none; }
+@container (max-width: 84px) {
+  .cal-chip { align-self: center; height: 18px; padding: 0 5px; gap: 3px; font-size: 10px; letter-spacing: -0.2px; }
+  .cal-chip .cal-full { display: none; }
+  .cal-chip .cal-short { display: inline; }
+  .cal-chip:has(.cal-short) { padding: 0 2px; font-size: min(10px, 30cqi); }
+  .cal-chip:has(.cal-short)::before { display: none; }
+}
+@media (max-width: 640px) {
+  .cal-grid { gap: 4px !important; }
+  .cal-day { min-height: 54px; padding: 6px 3px; border-radius: 10px; align-items: center; }
+}
+
 /* Tables */
 .tbl { width: 100%; }
 .tbl th { text-align: left; font-size: 11px; font-weight: 500; color: var(--faint); padding: 12px 14px; white-space: nowrap; }
