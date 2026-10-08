@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import QRCode from 'qrcode'
 import api from '../lib/api'
 import { errMsg } from '../lib/hooks/useSalary'
 import { inputStyle } from '../components/ui/FormField'
@@ -10,6 +11,11 @@ export default function SecurityPage() {
   const qc = useQueryClient()
   const { data: me } = useQuery({ queryKey: ['auth-me'], queryFn: async () => (await api.get('/auth/me')).data.data })
   const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null)
+  const [qr, setQr] = useState<string | null>(null)
+  useEffect(() => {
+    setQr(null)
+    if (setup) QRCode.toDataURL(setup.otpauthUrl, { margin: 1, width: 304, color: { dark: '#252523', light: '#ffffff' } }).then(setQr).catch(() => setQr(null))
+  }, [setup])
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -66,13 +72,17 @@ export default function SecurityPage() {
           <button style={primaryBtn} disabled={busy} onClick={start}>Set up two-factor authentication</button>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <ol style={{ fontSize: 13, color: 'var(--ink)', margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-              <li>In your authenticator app, add an account and choose to enter a setup key.</li>
-              <li>Enter this key (time-based): <code style={{ fontSize: 13, backgroundColor: 'var(--well)', padding: '2px 6px', borderRadius: 4, wordBreak: 'break-all' }}>{setup.secret.match(/.{1,4}/g)!.join(' ')}</code></li>
-              <li>Type the 6-digit code the app shows.</li>
-            </ol>
+            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              {/* QR of the otpauth:// link, drawn in the browser (the secret never leaves this page) */}
+              {qr && <img src={qr} alt="QR code to add MarichiHR to your authenticator app" width={168} height={168} style={{ borderRadius: 14, background: '#fff', padding: 8, border: '1px solid var(--line)', flexShrink: 0 }} />}
+              <ol style={{ fontSize: 13, color: 'var(--ink)', margin: 0, paddingLeft: 18, lineHeight: 1.7, flex: '1 1 220px', minWidth: 0 }}>
+                <li>Open your authenticator app (Google Authenticator, Microsoft Authenticator…) and scan this QR code.</li>
+                <li>Can't scan? Choose "Enter a setup key" and type: <code style={{ fontSize: 13, backgroundColor: 'var(--well)', padding: '2px 6px', borderRadius: 4, wordBreak: 'break-all' }}>{setup.secret.match(/.{1,4}/g)!.join(' ')}</code> (time-based)</li>
+                <li>Type the 6-digit code the app shows.</li>
+              </ol>
+            </div>
             <a href={setup.otpauthUrl} style={{ fontSize: 12, color: 'var(--brand)' }}>On this phone? Open in authenticator app</a>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               {codeInput}
               <button style={primaryBtn} disabled={code.length !== 6 || busy} onClick={enable}>Verify and turn on</button>
               <button style={ghostBtn} onClick={() => setSetup(null)}>Cancel</button>
