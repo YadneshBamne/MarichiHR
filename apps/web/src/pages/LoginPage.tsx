@@ -10,7 +10,7 @@ import GoogleButton from '../components/auth/GoogleButton'
 
 export const API_URL = import.meta.env.MARICHI_API_URL || 'http://localhost:4000/api/v1'
 export const SSO_ERRORS: Record<string, string> = {
-  no_account: 'No workspace uses that Google account yet. To start one, choose Get started and continue with Google.',
+  no_account: 'No workspace uses that Google account yet.',
   org_required: 'That Google account is in more than one organisation. Enter your organisation, then continue with Google.',
   google_error: 'Google sign-in failed. Please try again.',
   email_unverified: 'Your Google email address is not verified.',
@@ -38,6 +38,8 @@ export default function LoginPage() {
   // Google's client id when Google sign-in is on (null: off)
   const [google, setGoogle] = useState<string | null>(null)
   const [error, setError] = useState('')
+  // A Google account with no workspace yet: its verified profile is parked so sign-up can continue without signing in again
+  const [signupCode, setSignupCode] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   // The organisation is only needed when an email belongs to several companies (or for Google sign-in)
   const [showOrg, setShowOrg] = useState(!!form.tenantSlug)
@@ -49,6 +51,7 @@ export default function LoginPage() {
     api.get('/auth/providers').then((r) => setGoogle(r.data.data.google ? r.data.data.googleClientId : null)).catch(() => {})
     const e = params.get('sso_error')
     if (e) setError(SSO_ERRORS[e] || 'Google sign-in failed. Please try again.')
+    if (e === 'no_account' && params.get('google')) setSignupCode(params.get('google'))
   }, [params])
 
   // A known workspace shows its own name and logo
@@ -69,6 +72,7 @@ export default function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSignupCode(null)
     setLoading(true)
     try {
       const org = showOrg ? form.tenantSlug.trim().toLowerCase() : ''
@@ -95,6 +99,7 @@ export default function LoginPage() {
       else navigate(from, { replace: true })
     } catch (err: any) {
       if (err?.response?.data?.code === 'ORG_REQUIRED') setShowOrg(true)
+      setSignupCode(err?.response?.data?.signupCode ?? null)
       setError(err?.response?.data?.message || (err?.response ? 'Google sign-in failed. Please try again.' : 'Cannot reach the server. Check your connection.'))
       shake()
     } finally { setLoading(false) }
@@ -150,7 +155,16 @@ export default function LoginPage() {
                 {!showOrg && <button type="button" className="link" style={{ marginRight: 'auto' }} onClick={() => setShowOrg(true)}>Sign in to a specific organisation</button>}
                 <button type="button" className="link" onClick={() => { setError(''); setMode('forgot') }}>Forgot password?</button>
               </div>
-              {error && <div role="alert" style={errBox}><Icon name="alert" size={16} /> {error}</div>}
+              {error && (
+                <div role="alert" style={{ ...errBox, ...(signupCode && { flexWrap: 'wrap' }) }}>
+                  <Icon name="alert" size={16} /> {error}
+                  {signupCode && (
+                    <Link to={`/signup?google=${encodeURIComponent(signupCode)}`} className="btn btn-primary btn-sm" style={{ flexBasis: '100%', justifyContent: 'center', marginTop: 4 }}>
+                      Create a workspace with this Google account <Icon name="arrowRight" size={14} />
+                    </Link>
+                  )}
+                </div>
+              )}
               <button data-rise className="btn btn-primary" type="submit" disabled={loading || !form.email || !form.password || (showOrg && !form.tenantSlug.trim())} style={{ width: '100%', height: 46 }}>
                 {loading ? <span className="spinner" style={{ borderTopColor: 'var(--night-ink)' }} /> : <>Sign in <Icon name="arrowRight" size={16} /></>}
               </button>

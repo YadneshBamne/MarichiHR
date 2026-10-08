@@ -78,7 +78,6 @@ async function verifyIdToken(credential: string): Promise<GoogleInfo> {
 }
 
 const ID_ERRORS: Record<string, [string, number, string]> = {
-  no_account: ['No workspace uses that Google account yet. To start one, choose Get started and continue with Google.', 404, 'NO_ACCOUNT'],
   org_required: ['That Google account is in more than one organisation. Enter your organisation, then continue with Google.', 400, 'ORG_REQUIRED'],
 }
 
@@ -137,6 +136,7 @@ export const googleSso = {
 
       if (st.intent === 'signup') return res.redirect(`${clientUrl()}/signup?google=${await parkSignup(g)}`)
       const found = await matchGoogleUser(g, st.tenant)
+      if (found === 'no_account') return res.redirect(`${clientUrl()}/login?sso_error=no_account&google=${await parkSignup(g)}`)
       if (typeof found === 'string') return back(found)
       const user = found
 
@@ -156,6 +156,11 @@ export const googleSso = {
     const info = await verifyIdToken(credential)
     if (intent === 'signup') return res.json({ success: true, data: { signupCode: await parkSignup(info) } })
     const found = await matchGoogleUser(info, tenantSlug?.trim().toLowerCase() || null)
+    // No workspace yet: offer to create one with this same Google account (parked like a sign-up; nothing is created
+    // until the person confirms a company name on the sign-up page)
+    if (found === 'no_account') {
+      return res.status(404).json({ success: false, code: 'NO_ACCOUNT', message: `No workspace uses ${info.email} yet.`, signupCode: await parkSignup(info) })
+    }
     if (typeof found === 'string') throw new AppError(...ID_ERRORS[found])
     const [tenant, user] = await Promise.all([
       prisma.tenant.findFirstOrThrow({ where: { id: found.tenantId, active: true } }),

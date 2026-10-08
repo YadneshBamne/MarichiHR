@@ -6,7 +6,7 @@ const { api, tokenFor, check, done, prisma } = require('./lib')
 const TAG = `p23${Date.now() % 1e7}`
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 2 })
-const clearSignupLimit = async () => { const keys = await redis.keys('signup:ip:*'); if (keys.length) await redis.del(...keys) }
+const clearSignupLimit = async () => { const keys = await redis.keys('signup:*'); if (keys.length) await redis.del(...keys) }
 const bearer = (t) => ({ token: t })
 
 ;(async () => {

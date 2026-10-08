@@ -12,7 +12,7 @@ const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 2 })
 const DAY = 86_400_000
 
 ;(async () => {
-  const keys = await redis.keys('signup:ip:*')
+  const keys = await redis.keys('signup:*')
   if (keys.length) await redis.del(...keys)
   let tenantId
 
@@ -63,6 +63,7 @@ const DAY = 86_400_000
   await redis.set(`gsignup:${code}`, JSON.stringify({ sub, email, name: 'Gia Owner', picture: 'https://lh3.googleusercontent.com/a/test' }), 'EX', 900)
   r = await api(null, 'GET', `/auth/google/signup/${code}`)
   check('prefill returns the Google name, email and photo', r.status === 200 && r.body.email === email && r.body.fullName === 'Gia Owner' && r.body.avatarUrl?.startsWith('https://'), r.data)
+  check('failed sign-up attempts do not use up the sign-up limit', (await redis.keys('signup:*')).length === 0)
   r = await api(null, 'POST', '/auth/signup', { companyName: `Gee ${TAG}`, fullName: 'Gia Owner', googleCode: code })
   const sign = r.body
   check('Google sign-up creates the company and signs the owner in', r.status === 201 && sign.accessToken && sign.refreshToken && sign.user.email === email, r.data)
@@ -72,6 +73,18 @@ const DAY = 86_400_000
   check('owner has no password, is linked to the Google account and has the Google photo', u && u.passwordHash === null && u.googleSub === sub && u.avatarUrl === 'https://lh3.googleusercontent.com/a/test', u && { pw: u.passwordHash, sub: u.googleSub })
   r = await api(null, 'POST', '/auth/signup', { companyName: `Gee again ${TAG}`, fullName: 'Gia Owner', googleCode: code })
   check('the Google code works once', r.status === 400, r.data)
+
+  // ─── SIGN-UP LIMITS COUNT CREATED WORKSPACES ──────────────
+  const ipKeys = await redis.keys('signup:ip:*')
+  check('a created workspace counts once against this visitor', ipKeys.length === 1 && (await redis.get(ipKeys[0])) === '1', ipKeys)
+  await redis.set(ipKeys[0], '10', 'EX', 60)
+  r = await api(null, 'POST', '/auth/signup', { companyName: `Capped ${TAG}`, fullName: 'Cap Owner', email: `cap.${TAG}@example.com`, password: 'Start12345x' })
+  check('the 11th workspace from one visitor within an hour is refused (429)', r.status === 429, r.data)
+  await redis.del(ipKeys[0])
+  await redis.set(`signup:email:cap.${TAG}@example.com`, '3', 'EX', 60)
+  r = await api(null, 'POST', '/auth/signup', { companyName: `Capped ${TAG}`, fullName: 'Cap Owner', email: `cap.${TAG}@example.com`, password: 'Start12345x' })
+  check('a 4th workspace for one email within an hour is refused (429)', r.status === 429 && /email/.test(r.data.message), r.data)
+  await redis.del(`signup:email:cap.${TAG}@example.com`)
   r = await api(null, 'POST', '/auth/login', { email, password: 'Anything123x' })
   check('a Google-only owner cannot sign in with a password', r.status === 401, r.data)
 

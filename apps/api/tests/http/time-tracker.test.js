@@ -10,7 +10,7 @@ const HOUR = 3_600_000
 const near = (a, b, tol = 0.002) => Math.abs(a - b) < tol
 
 ;(async () => {
-  const keys = await redis.keys('signup:ip:*')
+  const keys = await redis.keys('signup:*')
   if (keys.length) await redis.del(...keys)
   let r = await api(null, 'POST', '/auth/signup', { companyName: `Tracker ${TAG}`, fullName: 'Tia Tracker', email: `tia.${TAG}@example.com`, password: `Start${TAG}x9` })
   if (r.status !== 201) throw new Error(`signup: ${JSON.stringify(r.data)}`)
