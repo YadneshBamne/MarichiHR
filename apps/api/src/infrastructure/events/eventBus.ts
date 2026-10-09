@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { prisma } from '../database/prisma'
 import { Queue } from 'bullmq'
-import { redis } from '../cache/redis'
+import { redis, soft } from '../cache/redis'
 import { logSystemChatter } from '../../modules/activities/activities.repository'
 
 let eventQueue: Queue | null = null
@@ -86,7 +86,8 @@ export function prepareEvent(tenantId: string, eventType: string, payload: Recor
   } catch (err) {
     console.error(`Failed to build chatter for event ${eventType}:`, err)
   }
-  return { rows, after: () => enqueueEvent(id).catch((err) => console.error('Failed to enqueue event:', err)) }
+  // The events-sweep job re-enqueues pending events, so a Redis outage only delays delivery (and never hangs a request)
+  return { rows, after: () => soft(() => enqueueEvent(id), undefined) }
 }
 
 export const eventBus = {
@@ -105,14 +106,8 @@ export const eventBus = {
         console.error(`Failed to log chatter for event ${eventType}:`, err)
       }
     }
-    const enqueue = async () => {
-      try {
-        await enqueueEvent(event.id)
-      } catch (err) {
-        // The events-sweep job re-enqueues pending events, so a Redis hiccup only delays delivery
-        console.error('Failed to enqueue event:', err)
-      }
-    }
+    // The events-sweep job re-enqueues pending events, so a Redis outage only delays delivery (and never hangs a request)
+    const enqueue = () => soft(() => enqueueEvent(event.id), undefined)
     await Promise.all([chatter(), enqueue()])
 
     return event

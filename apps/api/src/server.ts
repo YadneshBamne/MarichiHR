@@ -33,7 +33,8 @@ async function main() {
   const httpServer = createServer(app)
 
   // Workers + cron run in the API process unless JOBS_ENABLED=false (then run `npm run worker` separately)
-  if (process.env.JOBS_ENABLED !== 'false') await startJobs()
+  // A Redis outage (or exhausted quota) must not stop the API from serving; jobs resume on the next restart
+  if (process.env.JOBS_ENABLED !== 'false') await startJobs().catch((err) => console.error('✗ Jobs not started (Redis unavailable):', err.message))
 
   httpServer.listen(PORT, () => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')

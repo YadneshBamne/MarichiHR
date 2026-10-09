@@ -64,6 +64,10 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
   },
 }
 
+// Upstash bills every Redis command. Idle workers wait in one blocking call of up to 5 min (a new job wakes them at
+// once) and check for stalled jobs every 5 min, instead of BullMQ's defaults of 5 s and 30 s: ~50x fewer commands.
+const IDLE_CHEAP = { drainDelay: 300, stalledInterval: 300_000 }
+
 let cronQueue: Queue | null = null
 const workers: Worker[] = []
 
@@ -74,7 +78,7 @@ export function getCronQueue() {
 
 export async function startJobs() {
   workers.push(
-    new Worker('domain-events', async (job) => dispatchEvent(job.data.eventId), { connection: redis, concurrency: 5 }),
+    new Worker('domain-events', async (job) => dispatchEvent(job.data.eventId), { connection: redis, concurrency: 5, ...IDLE_CHEAP }),
     new Worker(
       'cron',
       async (job) => {
@@ -84,7 +88,7 @@ export async function startJobs() {
         console.log(`[cron] ${job.name}:`, JSON.stringify(result))
         return result
       },
-      { connection: redis, concurrency: 1 }
+      { connection: redis, concurrency: 1, ...IDLE_CHEAP }
     )
   )
   for (const w of workers) w.on('failed', (job, err) => console.error(`[jobs] ${job?.queueName}/${job?.name} failed:`, err.message))

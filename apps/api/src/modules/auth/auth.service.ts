@@ -5,7 +5,7 @@ import { authRepository } from './auth.repository'
 import { LoginDto, AuthTokens, JwtPayload } from './auth.types'
 import { AppError } from '../../shared/utils/AppError'
 import { prisma } from '../../infrastructure/database/prisma'
-import { redis } from '../../infrastructure/cache/redis'
+import { redis, soft } from '../../infrastructure/cache/redis'
 import { encryptField, decryptField } from '../../shared/utils/crypto'
 import { generateTotpSecret, verifyTotp, otpauthUrl } from '../../shared/utils/totp'
 
@@ -53,10 +53,10 @@ export const strongPassword = (pw: string) => pw.length >= 10 && /[A-Za-z]/.test
 // Failed password attempts per email+IP; after 10 in 15 minutes sign-in is refused for that pair
 const LOGIN_MAX_FAILURES = 10
 async function guardLogin(key: string) {
-  if ((Number(await redis.get(key)) || 0) >= LOGIN_MAX_FAILURES) throw new AppError('Too many failed sign-in attempts. Try again in 15 minutes.', 429)
+  if ((Number(await soft(() => redis.get(key), null)) || 0) >= LOGIN_MAX_FAILURES) throw new AppError('Too many failed sign-in attempts. Try again in 15 minutes.', 429)
 }
 async function failLogin(key: string): Promise<never> {
-  await redis.multi().incr(key).expire(key, 900).exec()
+  await soft(() => redis.multi().incr(key).expire(key, 900).exec(), null)
   throw new AppError('Invalid credentials', 401)
 }
 
@@ -110,14 +110,14 @@ export async function completeLogin(user: LoginUser, tenant: LoginTenant): Promi
 // Wrong codes are counted per user in Redis; after MFA_MAX_FAILURES in 15 minutes every attempt is refused
 async function checkTotp(userId: string, secretEnc: string | null, lastStep: number | null, code: string) {
   const key = `mfa:fail:${userId}`
-  const failures = Number(await redis.get(key)) || 0
+  const failures = Number(await soft(() => redis.get(key), null)) || 0
   if (failures >= MFA_MAX_FAILURES) throw new AppError('Too many invalid codes. Try again in 15 minutes.', 429)
   const step = secretEnc ? verifyTotp(decryptField(secretEnc), code, lastStep) : null
   if (step == null) {
-    await redis.multi().incr(key).expire(key, 900).exec()
+    await soft(() => redis.multi().incr(key).expire(key, 900).exec(), null)
     throw new AppError('Invalid authentication code', 401)
   }
-  await redis.del(key)
+  await soft(() => redis.del(key), 0)
   await prisma.user.update({ where: { id: userId }, data: { mfaLastStep: step } })
 }
 
@@ -143,7 +143,7 @@ export const authService = {
     // A password pasted with a space at either end still works (spaces inside it still count)
     const passwordOk = async (hash: string) => (await bcrypt.compare(dto.password, hash)) || (dto.password !== dto.password.trim() && (await bcrypt.compare(dto.password.trim(), hash)))
     if (!user || !user.passwordHash || !(await passwordOk(user.passwordHash))) return failLogin(guardKey)
-    await redis.del(guardKey)
+    await soft(() => redis.del(guardKey), 0)
     return completeLogin(user, tenant)
   },
 

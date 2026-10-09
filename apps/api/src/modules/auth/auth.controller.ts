@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import { authService } from './auth.service'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
-import { redis } from '../../infrastructure/cache/redis'
+import { redis, soft } from '../../infrastructure/cache/redis'
 import { companyService } from '../company/company.service'
 import { clientIp } from '../../shared/utils/clientIp'
 
@@ -51,11 +51,11 @@ export const authController = {
   signup: asyncHandler(async (req: Request, res: Response) => {
     const ipKey = `signup:ip:${clientIp(req)}`
     const emailKey = req.body.email ? `signup:email:${String(req.body.email).toLowerCase()}` : null
-    const [byIp, byEmail] = await Promise.all([redis.get(ipKey), emailKey ? redis.get(emailKey) : null])
+    const [byIp, byEmail] = await Promise.all([soft(() => redis.get(ipKey), null), emailKey ? soft(() => redis.get(emailKey), null) : null])
     if (Number(byIp) >= SIGNUPS_PER_IP) throw new AppError('Too many new workspaces from this network. Try again in an hour.', 429)
     if (Number(byEmail) >= SIGNUPS_PER_EMAIL) throw new AppError('Too many new workspaces for this email. Try again in an hour.', 429)
     const result = await companyService.signup(req.body)
-    await Promise.all([ipKey, emailKey].filter((k): k is string => !!k).map(async (k) => { if ((await redis.incr(k)) === 1) await redis.expire(k, 3600) }))
+    await Promise.all([ipKey, emailKey].filter((k): k is string => !!k).map((k) => soft(async () => { if ((await redis.incr(k)) === 1) await redis.expire(k, 3600) }, undefined)))
     res.status(201).json({ success: true, data: result })
   }),
 
