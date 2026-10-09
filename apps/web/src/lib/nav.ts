@@ -36,7 +36,7 @@ export const SECTIONS: NavSection[] = [
     key: 'employees', label: 'Employees', icon: 'users', items: [
       { label: 'Employees', selfLabel: 'My team', path: '/employees', icon: 'users', roles: ROLE.DIRECTORY, keywords: 'directory staff people team' },
       { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ROLE.PAYROLL, keywords: 'exits resignation full and final settlement clearance' },
-      { label: 'Org chart', path: '/soon/org-chart', icon: 'layers', roles: ROLE.ADMIN, soon: soon('Phase 5', 'See the whole organisation as an interactive tree, from board to every team.', ['Drag to explore departments and reporting lines', 'Open counts and vacancies per unit', 'Export as PDF for board packs']) },
+      { label: 'Org chart', path: '/org-chart', icon: 'layers', keywords: 'organisation hierarchy reporting lines tree managers departments' },
       { label: 'Recruitment', path: '/soon/recruitment', icon: 'briefcase', roles: ROLE.ADMIN, soon: soon('Later', 'Requisitions, candidates and offers that flow straight into onboarding.', ['Job requisitions with approval', 'Candidate pipeline and interview kits', 'Offer letters that create the employee record']) },
     ],
   },

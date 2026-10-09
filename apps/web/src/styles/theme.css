@@ -176,6 +176,32 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .seg-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; transition: width .9s cubic-bezier(.2, .8, .2, 1); }
 .seg-fill.honey { background: var(--honey); }
 
+/* Org chart: a top-down tree drawn with nested lists; connector lines are pseudo-elements on each <li> */
+.oc-canvas { overflow: auto; padding: 28px 16px 36px; min-height: 420px; max-height: calc(100vh - 230px); cursor: grab; touch-action: pan-x pan-y; }
+.oc-canvas:active { cursor: grabbing; }
+.oc-tree { width: max-content; min-width: 100%; }
+.oc-tree ul { display: flex; justify-content: center; padding: 22px 0 0; margin: 0; position: relative; }
+.oc-tree > ul { padding-top: 0; }
+.oc-tree li { list-style: none; position: relative; padding: 22px 8px 0; display: flex; flex-direction: column; align-items: center; }
+.oc-tree li::before, .oc-tree li::after { content: ''; position: absolute; top: 0; right: 50%; width: 50%; height: 22px; border-top: 1.5px solid var(--line-2); }
+.oc-tree li::after { right: auto; left: 50%; border-left: 1.5px solid var(--line-2); }
+.oc-tree li:only-child::before, .oc-tree li:only-child::after { display: none; }
+.oc-tree li:only-child { padding-top: 0; }
+.oc-tree li:first-child::before, .oc-tree li:last-child::after { border: 0 none; }
+.oc-tree li:last-child::before { border-right: 1.5px solid var(--line-2); border-radius: 0 12px 0 0; }
+.oc-tree li:first-child::after { border-radius: 12px 0 0 0; }
+.oc-tree ul ul::before { content: ''; position: absolute; top: 0; left: 50%; height: 22px; border-left: 1.5px solid var(--line-2); }
+.oc-tree > ul > li:only-child { padding-top: 0; }
+.oc-card { display: flex; align-items: flex-start; gap: 10px; width: 236px; padding: 12px 12px 12px 14px; border-radius: 18px; background: var(--card-2); border: 1px solid var(--line); box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); transition: opacity .3s, box-shadow .3s, border-color .3s; }
+.oc-card.unit { width: 210px; }
+.oc-card.me { border-color: var(--honey); }
+.oc-card.hit { box-shadow: 0 0 0 3px var(--honey); }
+.oc-name { display: block; font-size: 14px; font-weight: 600; color: var(--ink); background: none; border: 0; padding: 0; text-align: left; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+button.oc-name { cursor: pointer; }
+.oc-sub { font-size: 12px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.oc-toggle { align-self: center; display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 11px; font-weight: 600; cursor: pointer; }
+@media (max-width: 640px) { .oc-canvas { padding: 18px 8px 24px; max-height: calc(100vh - 260px); } .oc-card { width: 200px; } .oc-name, .oc-sub { max-width: 120px; } }
+
 @keyframes stripes { to { background-position: 22px 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }

@@ -10,7 +10,7 @@ import {
 } from './employees.controller'
 import { requireRoles } from '../../middleware/rbac.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
-import { accessService } from './employees.service'
+import { accessService, orgChartService } from './employees.service'
 import {
   AccessSchema,
   CreateEmployeeSchema,
@@ -54,6 +54,10 @@ employeeRouter.patch('/work-locations/:id', requirePermission('employees:write')
 employeeRouter.get('/skill-types', requirePermission('employees:read'), employeeController.getSkillTypes)
 
 // ─── EMPLOYEES ────────────────────────────────────────────────
+// Everyone in the company may see the org chart (public fields only); declared before /:id
+employeeRouter.get('/org-chart', requirePermission('employees:read'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await orgChartService.get(req.user!) })
+}))
 employeeRouter.get('/', requirePermission('employees:read'), validate(ListQuerySchema), employeeController.list)
 employeeRouter.post('/', requirePermission('employees:write'), validate(CreateEmployeeSchema), employeeController.create)
 employeeRouter.get('/:id', requirePermission('employees:read'), employeeController.getById)

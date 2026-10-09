@@ -457,3 +457,49 @@ export const accessService = {
     return { ...view, ...(issuedPassword && { temporaryPassword: issuedPassword }) }
   },
 }
+
+// Org chart: the whole company as a reporting tree, for everyone in it. Only public fields (name, title, department,
+// location, photo) are returned; `canOpen` mirrors canAccessProfile (self, hr_admin, or someone below you in the
+// reporting line), so the page links only to profiles the viewer may open.
+export const orgChartService = {
+  async get(user: AccessUser) {
+    const [rows, units] = await Promise.all([
+      prisma.employee.findMany({
+        where: { tenantId: user.tenantId, active: true, employmentStatus: { not: 'terminated' } },
+        select: {
+          id: true, firstName: true, lastName: true, managerId: true, orgUnitId: true, hireDate: true,
+          orgUnit: { select: { name: true } }, jobPosition: { select: { title: true } }, workLocation: { select: { name: true } },
+          user: { select: { avatarUrl: true } },
+        },
+        orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      }),
+      prisma.orgUnit.findMany({ where: { tenantId: user.tenantId, active: true }, select: { id: true, name: true, parentId: true, type: true }, orderBy: { name: 'asc' } }),
+    ])
+    const ids = new Set(rows.map((r) => r.id))
+    // A manager who left (inactive) leaves their reports at the top of the chart instead of hanging off nothing
+    const managerOf = new Map(rows.map((r) => [r.id, r.managerId && ids.has(r.managerId) ? r.managerId : null]))
+    const below = new Set<string>()
+    if (user.employeeId) {
+      const kids = new Map<string, string[]>()
+      for (const [id, m] of managerOf) if (m) kids.set(m, [...(kids.get(m) ?? []), id])
+      const stack = [...(kids.get(user.employeeId) ?? [])]
+      while (stack.length) { const id = stack.pop()!; if (!below.has(id)) { below.add(id); stack.push(...(kids.get(id) ?? [])) } }
+    }
+    const isHR = user.roleIds.includes('hr_admin')
+    return {
+      people: rows.map((r) => ({
+        id: r.id,
+        name: `${r.firstName} ${r.lastName === '-' ? '' : r.lastName}`.trim(),
+        title: r.jobPosition?.title ?? null,
+        department: r.orgUnit?.name ?? null,
+        departmentId: r.orgUnitId,
+        location: r.workLocation?.name ?? null,
+        avatarUrl: r.user?.avatarUrl ?? null,
+        managerId: managerOf.get(r.id) ?? null,
+        isMe: r.id === user.employeeId,
+        canOpen: isHR || r.id === user.employeeId || below.has(r.id),
+      })),
+      departments: units,
+    }
+  },
+}
