@@ -207,16 +207,22 @@ model WorkLocation {
   @@map("work_locations")
 }
 
+// A list of holidays for one year. Applies to employees whose country (work location, else tax jurisdiction) matches
+// countryCode and, when set, who sit at workLocationId; with neither set it applies to everyone in the company.
 model HolidayCalendar {
-  id          String   @id @default(uuid())
-  tenantId    String
-  name        String
-  countryCode String?
-  year        Int
-  createdAt   DateTime @default(now())
+  id             String   @id @default(uuid())
+  tenantId       String
+  name           String
+  countryCode    String?
+  workLocationId String?
+  year           Int
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   holidays Holiday[]
+
+  @@index([tenantId, year])
 
   @@map("holiday_calendars")
 }
@@ -228,8 +234,11 @@ model Holiday {
   date       DateTime @db.Date
   type       String   @default("national")
   isOptional Boolean  @default(false)
+  active     Boolean  @default(true)
 
   calendar HolidayCalendar @relation(fields: [calendarId], references: [id])
+
+  @@index([calendarId, date])
 
   @@map("holidays")
 }

@@ -9,6 +9,7 @@ import {
 
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
 import { PAYROLL_CONFIG } from '../payroll/payroll.config'
+import { calendarApplies, holidayMap, holidaysBetween, holidayTargetOf, HolidayTarget } from '../../shared/utils/holidays'
 
 const ymdOf = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -171,9 +172,15 @@ export const attendanceService = {
   },
 
   async getMonthlyCalendar(employeeId: string, year: number, month: number) {
-    const records = await attendanceRepository.getMonthlyCalendar(employeeId, year, month)
+    const { start: mStart, end: mEnd, daysInMonth } = monthRange(year, month)
+    const emp = await prisma.employee.findUnique({ where: { id: employeeId }, select: { tenantId: true } })
+    const [records, holidayRows, target] = await Promise.all([
+      attendanceRepository.getMonthlyCalendar(employeeId, year, month),
+      emp ? holidaysBetween(emp.tenantId, mStart, mEnd) : [],
+      holidayTargetOf(employeeId),
+    ])
+    const holidays = holidayMap(holidayRows, target)
 
-    const { daysInMonth } = monthRange(year, month)
     const calendar = []
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -182,12 +189,15 @@ export const attendanceService = {
 
       const record = records.find((r) => new Date(r.date).getUTCDate() === day)
 
+      const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const holiday = holidays.get(date) ?? null
       calendar.push({
-        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        date,
         dayOfWeek,
         isWeekend,
+        holiday,
         record: record || null,
-        status: record?.status || (isWeekend ? 'week_off' : 'no_record'),
+        status: record?.status || (isWeekend ? 'week_off' : holiday ? 'holiday' : 'no_record'),
       })
     }
 
@@ -197,6 +207,7 @@ export const attendanceService = {
       halfDay: calendar.filter((d) => d.status === 'half_day').length,
       onLeave: calendar.filter((d) => d.status === 'on_leave').length,
       weekOff: calendar.filter((d) => d.isWeekend).length,
+      holidays: calendar.filter((d) => d.holiday && !d.isWeekend).length,
       totalWorkedHours: records.reduce((sum, r) => sum + (r.workedHours || 0), 0),
       totalOvertimeHours: records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0),
     }
@@ -426,15 +437,12 @@ export const attendanceService = {
       prisma.employee.findMany({
         where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, ...(opts.employeeIds && { id: { in: opts.employeeIds } }) },
         select: {
-          id: true, hireDate: true, exitDate: true, taxJurisdiction: true,
+          id: true, hireDate: true, exitDate: true, taxJurisdiction: true, workLocationId: true,
           workLocation: { select: { countryCode: true } },
           resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } },
         },
       }),
-      prisma.holiday.findMany({
-        where: { date: { gte: from, lte: to }, isOptional: false, calendar: { tenantId } },
-        select: { date: true, calendar: { select: { countryCode: true } } },
-      }),
+      holidaysBetween(tenantId, from, to),
       prisma.attendanceRecord.findMany({
         where: { employee: { tenantId }, date: { gte: from, lte: to } },
         select: { employeeId: true, date: true },
@@ -452,20 +460,19 @@ export const attendanceService = {
     const recorded = new Set(records.map((r) => `${r.employeeId}|${ymdOf(r.date)}`))
     const locked = (d: string) => lockedCycles.some((c) => ymdOf(c.payPeriodStart) <= d && d <= ymdOf(c.payPeriodEnd))
     const onLeave = (empId: string, d: string) => leaves.some((l) => l.employeeId === empId && ymdOf(l.startDate) <= d && d <= ymdOf(l.endDate))
-    const isHoliday = (country: string | null | undefined, d: string) =>
-      holidays.some((h) => ymdOf(h.date) === d && (!h.calendar.countryCode || h.calendar.countryCode === country))
+    const isHoliday = (who: HolidayTarget, d: string) => holidays.some((h) => !h.isOptional && ymdOf(h.date) === d && calendarApplies(h.calendar, who))
 
     const created: { employeeId: string; date: string }[] = []
     for (const emp of employees) {
       // dayOfWeek in resource calendars: 0 = Monday ... 6 = Sunday
       // ponytail: two-week calendars (weekType) are treated as one repeating week
       const workDays = new Set<number>(emp.resourceCalendar?.days?.length ? emp.resourceCalendar.days.map((d) => d.dayOfWeek) : PAYROLL_CONFIG.DEFAULT_WORKING_DAYS)
-      const country = emp.workLocation?.countryCode || emp.taxJurisdiction
+      const who = { countryCode: emp.workLocation?.countryCode || emp.taxJurisdiction || null, workLocationId: emp.workLocationId ?? null }
       const marked: string[] = []
       for (const d of dates) {
         if (d < ymdOf(emp.hireDate) || (emp.exitDate && d > ymdOf(emp.exitDate))) continue
         if (!workDays.has((normaliseDateInput(d).getUTCDay() + 6) % 7)) continue
-        if (isHoliday(country, d) || recorded.has(`${emp.id}|${d}`) || onLeave(emp.id, d) || locked(d)) continue
+        if (isHoliday(who, d) || recorded.has(`${emp.id}|${d}`) || onLeave(emp.id, d) || locked(d)) continue
         const res = await prisma.attendanceRecord.createMany({
           data: [{ employeeId: emp.id, date: normaliseDateInput(d), status: 'absent', source: 'system', overrideReason: 'No attendance or approved leave (nightly job)' }],
           skipDuplicates: true,

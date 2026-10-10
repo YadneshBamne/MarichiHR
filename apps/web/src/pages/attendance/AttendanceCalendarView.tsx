@@ -76,7 +76,7 @@ export default function AttendanceCalendarView() {
                 // Phones get H:MM (full HH:MM:SS in the tooltip); a status without hours shrinks to its coloured dot
                 <span data-chip className={`pill ${chip.cls} cal-chip`} title={`Worked ${fmtHours(h)}`}><span className="cal-full">{fmtHours(h)}</span><span className="cal-short">{fmtHours(h).replace(/^0?(\d+:\d\d):\d\d$/, '$1')}</span></span>
               ) : (
-                <span data-chip className={`pill ${chip.cls} cal-chip`} title={chip.label ?? d.status} aria-label={chip.label ?? d.status}><span className="cal-full">{chip.label ?? d.status}</span></span>
+                <span data-chip className={`pill ${chip.cls} cal-chip`} title={d.holiday ?? chip.label ?? d.status} aria-label={d.holiday ?? chip.label ?? d.status}><span className="cal-full">{d.holiday ?? chip.label ?? d.status}</span></span>
               ))}
             </div>
           )

@@ -213,7 +213,8 @@ function WeekLeave({ week, label }: { week: any; label: string }) {
                 <span className="display num" style={{ fontSize: 16, width: 30, height: 30, lineHeight: '30px', textAlign: 'center', borderRadius: '50%', background: day === today ? 'var(--night)' : 'transparent', color: day === today ? 'var(--night-ink)' : 'var(--dim)' }}>{utc(day).getUTCDate()}</span>
                 <span className="dim" style={{ fontSize: 12 }}>{fmt(day, { weekday: 'short' })}</span>
               </div>
-              {on.length === 0 && <div className="muted" style={{ fontSize: 11 }}>Everyone in</div>}
+              {(week.holidays ?? []).filter((h: any) => h.date === day).map((h: any) => <div key={h.date} data-ev title={`Public holiday · ${h.name}`} style={{ background: 'var(--night)', color: 'var(--night-ink)', borderRadius: 10, padding: '5px 8px', marginBottom: 5, fontSize: 11.5, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{h.name}</div>)}
+              {on.length === 0 && !(week.holidays ?? []).some((h: any) => h.date === day) && <div className="muted" style={{ fontSize: 11 }}>Everyone in</div>}
               {on.map((l: any) => <div key={l.id + day} data-ev title={`${l.name} · ${l.type}`} style={{ background: 'var(--honey-2)', borderRadius: 10, padding: '5px 8px', marginBottom: 5, fontSize: 11.5, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}><strong style={{ fontWeight: 600 }}>{l.name.split(' ')[0]}</strong> · {l.type}</div>)}
             </div>
           )
@@ -279,7 +280,7 @@ function SelfRows({ d }: { d: any }) {
       <div className="dgrid row">
         {att && <TimeTracker className="span-4" />}
         {att && <HoursCard last7={att.last7} />}
-        {lv && <LeaveCard lv={lv} span={att ? 'span-4' : 'span-6'} />}
+        {lv && <LeaveCard lv={lv} holidays={s.holidays ?? []} span={att ? 'span-4' : 'span-6'} />}
         <TasksCard className={att ? 'span-6' : lv ? 'span-6' : 'span-8'} />
         <PayCard payslip={s.payslip} apps={d.apps} span={att || lv ? 'span-6' : 'span-4'} />
       </div>
@@ -319,7 +320,7 @@ function HoursCard({ last7 }: { last7: { date: string; hours: number }[] }) {
   )
 }
 
-function LeaveCard({ lv, span }: { lv: any; span: string }) {
+function LeaveCard({ lv, holidays, span }: { lv: any; holidays: { date: string; name: string }[]; span: string }) {
   return (
     <section data-card className={`card ${span}`} style={{ padding: 22, display: 'flex', flexDirection: 'column' }} data-tour="balances">
       <CardHead title="My leave" to="/leave" />
@@ -334,7 +335,8 @@ function LeaveCard({ lv, span }: { lv: any; span: string }) {
           {lv.balances.every((b: any) => !(b.total > 0 || b.used > 0)) && <li className="dim" style={{ fontSize: 12 }}>Balances appear once leave is allocated or accrued.</li>}
         </ul>
       )}
-      <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+      <div style={{ marginTop: 'auto', paddingTop: 12, display: 'grid', gap: 6 }}>
+        {holidays[0] && <Link to="/holidays" className="well" style={{ padding: '8px 12px', fontSize: 12.5, display: 'block' }}><strong style={{ fontWeight: 500 }}>Holiday:</strong> {holidays[0].name}, {fmt(holidays[0].date, { weekday: 'short', day: 'numeric', month: 'short' })}</Link>}
         {lv.upcoming.length > 0
           ? <div className="well" style={{ padding: '8px 12px', fontSize: 12.5 }}><strong style={{ fontWeight: 500 }}>Next:</strong> {lv.upcoming[0].type}, {fmt(lv.upcoming[0].start, { day: 'numeric', month: 'short' })}{lv.upcoming[0].end !== lv.upcoming[0].start ? ` – ${fmt(lv.upcoming[0].end, { day: 'numeric', month: 'short' })}` : ''} <Badge label={lv.upcoming[0].status} /></div>
           : <Link to="/leave" className="btn btn-ghost btn-sm" style={{ width: '100%' }}><Icon name="plus" size={13} /> Apply for leave</Link>}

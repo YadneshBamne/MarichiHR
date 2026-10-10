@@ -20,14 +20,16 @@ function pickLeaveTypeFields(body: Record<string, unknown>) {
 }
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
 import { consistent } from './leave.schema'
+import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
 
-function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string): number {
+// Weekdays in the range minus the employee's (mandatory) public holidays
+function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string, holidays: Map<string, string> = new Map()): number {
   let days = 0
   const current = new Date(startDate)
 
   while (current <= endDate) {
     const dow = current.getUTCDay()
-    if (dow !== 0 && dow !== 6) {
+    if (dow !== 0 && dow !== 6 && !holidays.has(current.toISOString().slice(0, 10))) {
       days++
     }
     current.setUTCDate(current.getUTCDate() + 1)
@@ -96,8 +98,9 @@ export const leaveService = {
 
     if (startDate > endDate) throw new AppError('Start date cannot be after end date', 400)
 
-    const totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf)
-    if (totalDays <= 0) throw new AppError('Invalid date range — no working days', 400)
+    const [holidayRows, target] = await Promise.all([holidaysBetween(tenantId, startDate, endDate), holidayTargetOf(employeeId)])
+    const totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf, holidayMap(holidayRows, target))
+    if (totalDays <= 0) throw new AppError('No working days in that range (weekends and public holidays do not count)', 400)
 
     const lwpDays = leaveType.isPaid ? 0 : totalDays
 

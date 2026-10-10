@@ -45,7 +45,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out timesheet regularisation overtime' },
       { label: 'Leave', selfLabel: 'My leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'time off holiday vacation balance' },
       { label: 'Leave policies', path: '/leave-types', icon: 'sliders', roles: ['hr_admin'], app: 'leave', keywords: 'leave types accrual configuration' },
-      { label: 'Holiday calendar', path: '/soon/holidays', icon: 'calendar', roles: ROLE.ADMIN, soon: soon('Phase 3', 'Country holiday calendars that drive leave, attendance and payroll.', ['Calendars per country and location', 'Optional holidays with quotas', 'Import official lists each year']) },
+      { label: 'Holiday calendar', path: '/holidays', icon: 'calendar', keywords: 'public holidays festivals days off calendar' },
     ],
   },
   {

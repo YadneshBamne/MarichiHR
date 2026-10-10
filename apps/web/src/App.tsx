@@ -12,6 +12,7 @@ const AppShell = lazy(() => import('./components/AppShell'))
 const LandingPage = lazy(() => import('./pages/public/LandingPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const OrgChartPage = lazy(() => import('./pages/employees/OrgChartPage'))
+const HolidaysPage = lazy(() => import('./pages/holidays/HolidaysPage'))
 const SignupPage = lazy(() => import('./pages/public/SignupPage'))
 const ChangePasswordPage = lazy(() => import('./pages/public/ChangePasswordPage'))
 const SsoCallbackPage = lazy(() => import('./pages/SsoCallbackPage'))
@@ -68,6 +69,7 @@ export default function App() {
                     <Route path="employees" element={page(guard(<EmployeeListPage />, { roles: DIRECTORY }))} />
                     <Route path="employees/:id" element={page(<EmployeeProfilePage />)} />
                     <Route path="org-chart" element={page(<OrgChartPage />)} />
+                    <Route path="holidays" element={page(<HolidaysPage />)} />
                     <Route path="leave" element={page(guard(<LeavePage />, { app: 'leave' }))} />
                     <Route path="leave-types" element={page(guard(<LeaveTypesPage />, { roles: ['hr_admin'], app: 'leave' }))} />
                     <Route path="attendance" element={page(guard(<AttendancePage />, { app: 'attendance' }))} />

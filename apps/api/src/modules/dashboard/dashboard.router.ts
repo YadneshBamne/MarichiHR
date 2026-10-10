@@ -4,6 +4,7 @@ import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { prisma } from '../../infrastructure/database/prisma'
 import { tenantModules } from '../../middleware/module.middleware'
 import { businessToday, monthRange } from '../../shared/utils/businessDate'
+import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
 
 // Role-based home: each section is returned only when the caller's roles (and the company's installed apps) allow it.
 //   self    – anyone with an employee record: own attendance, leave, tasks, latest payslip
@@ -84,7 +85,7 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
 
   const self = sc.self ? (async () => {
     const me = u.employeeId!
-    const [balances, upcoming, att7, todayRec, monthRecs, tasks, payslip] = await Promise.all([
+    const [balances, upcoming, att7, todayRec, monthRecs, tasks, payslip, holidayRows, target] = await Promise.all([
       has('leave') ? prisma.leaveBalance.findMany({ where: { employeeId: me, leaveType: { active: true } }, select: { balanceDays: true, usedDays: true, pendingDays: true, leaveType: { select: { name: true, code: true } } } }) : [],
       has('leave') ? prisma.leaveRequest.findMany({ where: { employeeId: me, status: { in: ['approved', 'pending'] }, endDate: { gte: today } }, select: { id: true, startDate: true, endDate: true, totalDays: true, status: true, leaveType: { select: { name: true } } }, orderBy: { startDate: 'asc' }, take: 4 }) : [],
       has('attendance') ? prisma.attendanceRecord.findMany({ where: { employeeId: me, date: { gte: new Date(today.getTime() - 6 * dayMs), lte: today } }, select: { date: true, workedHours: true, status: true } }) : [],
@@ -92,9 +93,12 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
       has('attendance') ? prisma.attendanceRecord.findMany({ where: { employeeId: me, date: { gte: monthStart, lt: today } }, select: { status: true, workedHours: true } }) : [],
       prisma.activity.findMany({ where: { tenantId: u.tenantId, assignedToId: me, status: { in: ['planned', 'overdue'] } }, select: { id: true, title: true, dueDate: true, activityType: { select: { name: true } } }, orderBy: { dueDate: 'asc' }, take: 8 }),
       has('payroll') ? prisma.payslip.findFirst({ where: { employeeId: me, payrollCycle: { status: { in: ['disbursed', 'locked'] }, payPeriodEnd: { lte: today } } }, select: { id: true, netPay: true, currency: true, payrollCycle: { select: { payPeriodStart: true, payPeriodEnd: true } } }, orderBy: { payrollCycle: { payPeriodEnd: 'desc' } } }) : null,
+      holidaysBetween(u.tenantId, monthStart.getTime() < weekStart.getTime() ? monthStart : weekStart, new Date(today.getTime() + 120 * dayMs)),
+      holidayTargetOf(me),
     ])
+    const myHolidays = holidayMap(holidayRows, target)
     let workingSoFar = 0
-    for (let d = new Date(monthStart); d < today; d = new Date(d.getTime() + dayMs)) if (![0, 6].includes(d.getUTCDay())) workingSoFar++
+    for (let d = new Date(monthStart); d < today; d = new Date(d.getTime() + dayMs)) if (![0, 6].includes(d.getUTCDay()) && !myHolidays.has(ymd(d))) workingSoFar++
     const present = monthRecs.filter((r) => ['present', 'half_day', 'on_leave'].includes(r.status)).length
     return {
       leave: has('leave') ? {
@@ -106,6 +110,7 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
         last7: Array.from({ length: 7 }, (_, i) => { const d = ymd(new Date(today.getTime() - (6 - i) * dayMs)); const r = att7.find((x) => ymd(x.date) === d); return { date: d, hours: r?.workedHours ?? 0, status: r?.status ?? null } }),
         month: { workingDays: workingSoFar, present, hours: monthRecs.reduce((a, r) => a + (r.workedHours || 0), 0) },
       } : null,
+      holidays: [...myHolidays].filter(([d]) => d >= todayStr).slice(0, 3).map(([date, name]) => ({ date, name })),
       tasks: { open: tasks.length, overdue: tasks.filter((t) => ymd(t.dueDate) < todayStr).length, items: tasks.map((t) => ({ id: t.id, title: t.title, due: ymd(t.dueDate), type: t.activityType?.name ?? null })) },
       payslip: payslip ? { id: payslip.id, net: Number(payslip.netPay), currency: payslip.currency, start: ymd(payslip.payrollCycle.payPeriodStart), end: ymd(payslip.payrollCycle.payPeriodEnd) } : null,
     }
@@ -113,13 +118,16 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
 
   const team = sc.team ? (async () => {
     const where = teamWhere(u, sc.hr)
-    const [members, recsToday, leaveToday, leaveWeek, approvals] = await Promise.all([
+    const [members, recsToday, leaveToday, leaveWeek, approvals, weekHolidayRows, viewer] = await Promise.all([
       prisma.employee.findMany({ where: { ...where, NOT: { id: u.employeeId ?? '' } }, select: { id: true, firstName: true, lastName: true, user: { select: { avatarUrl: true } }, jobPosition: { select: { title: true } } }, orderBy: { firstName: 'asc' }, take: 500 }),
       has('attendance') ? prisma.attendanceRecord.findMany({ where: { date: today, employee: where }, select: { employeeId: true, status: true, checkInTime: true } }) : [],
       has('leave') ? prisma.leaveRequest.findMany({ where: { status: 'approved', startDate: { lte: today }, endDate: { gte: today }, employee: where }, select: { employeeId: true } }) : [],
       has('leave') ? prisma.leaveRequest.findMany({ where: { status: 'approved', startDate: { lte: weekEnd }, endDate: { gte: weekStart }, employee: where }, select: { id: true, startDate: true, endDate: true, employee: { select: { id: true, firstName: true, lastName: true } }, leaveType: { select: { name: true } } }, orderBy: { startDate: 'asc' }, take: 30 }) : [],
       approvalsWaiting(u, apps, sc),
+      holidaysBetween(u.tenantId, weekStart, weekEnd),
+      u.employeeId ? holidayTargetOf(u.employeeId) : Promise.resolve({ countryCode: null, workLocationId: null }),
     ])
+    const weekHolidays = [...holidayMap(weekHolidayRows, viewer)].map(([date, name]) => ({ date, name }))
     const onLeave = new Set(leaveToday.map((l) => l.employeeId))
     const rec = new Map(recsToday.map((r) => [r.employeeId, r]))
     const statusOf = (id: string) => (onLeave.has(id) ? 'on_leave' : rec.get(id)?.checkInTime ? 'in' : rec.get(id)?.status === 'absent' ? 'absent' : 'not_in')
@@ -130,7 +138,7 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
       size: people.length,
       today: has('attendance') ? { in: tally('in'), onLeave: tally('on_leave'), absent: tally('absent'), notIn: tally('not_in') } : null,
       people: people.sort((a, b) => ['in', 'on_leave', 'not_in', 'absent'].indexOf(a.status) - ['in', 'on_leave', 'not_in', 'absent'].indexOf(b.status)).slice(0, 10),
-      week: { start: ymd(weekStart), end: ymd(weekEnd), leave: leaveWeek.map((l) => ({ id: l.id, name: `${l.employee.firstName} ${l.employee.lastName}`, employeeId: l.employee.id, type: l.leaveType.name, start: ymd(l.startDate), end: ymd(l.endDate) })) },
+      week: { start: ymd(weekStart), end: ymd(weekEnd), holidays: weekHolidays, leave: leaveWeek.map((l) => ({ id: l.id, name: `${l.employee.firstName} ${l.employee.lastName}`, employeeId: l.employee.id, type: l.leaveType.name, start: ymd(l.startDate), end: ymd(l.endDate) })) },
       approvals,
     }
   })() : null

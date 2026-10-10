@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import api from '../../lib/api'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
 import { useLeaveTypes, useMyLeaveBalances, useApplyLeave } from '../../lib/hooks/useLeave'
@@ -8,17 +10,13 @@ interface Props {
   onClose: () => void
 }
 
-function getWorkingDays(start: string, end: string): number {
-  if (!start || !end) return 0
-  const s = new Date(start)
-  const e = new Date(end)
-  if (s > e) return 0
+// Weekdays in the range minus public holidays (date-only values: UTC throughout); matches the server's count
+function getWorkingDays(start: string, end: string, holidays: Set<string>): number {
+  if (!start || !end || start > end) return 0
   let count = 0
-  const cur = new Date(s)
-  while (cur <= e) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
+  for (let cur = new Date(`${start}T00:00:00Z`); cur <= new Date(`${end}T00:00:00Z`); cur = new Date(cur.getTime() + 86_400_000)) {
+    const day = cur.toISOString().slice(0, 10)
+    if (cur.getUTCDay() !== 0 && cur.getUTCDay() !== 6 && !holidays.has(day)) count++
   }
   return count
 }
@@ -41,7 +39,14 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
 
   const selectedBalance = balances.find((b: any) => b.leaveTypeId === form.leaveTypeId)
   const selectedType = leaveTypes.find((t: any) => t.id === form.leaveTypeId)
-  const workingDays = getWorkingDays(form.startDate, form.endDate)
+  const ranged = !!form.startDate && !!form.endDate && form.startDate <= form.endDate
+  const { data: holidaysInRange = [] } = useQuery({
+    queryKey: ['holidays-mine', form.startDate, form.endDate],
+    queryFn: async () => (await api.get('/holidays/mine', { params: { from: form.startDate, to: form.endDate } })).data.data as { date: string; name: string; isOptional: boolean }[],
+    enabled: ranged,
+  })
+  const offDays = holidaysInRange.filter((h) => !h.isOptional)
+  const workingDays = getWorkingDays(form.startDate, form.endDate, new Set(offDays.map((h) => h.date)))
   const available = selectedBalance
     ? Math.max(0, selectedBalance.balanceDays - selectedBalance.usedDays - selectedBalance.pendingDays)
     : null
@@ -119,6 +124,7 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
           }}>
             Balance available: <strong>{available.toFixed(1)} days</strong>
             {workingDays > 0 && ` · Requesting: ${workingDays} working day${workingDays !== 1 ? 's' : ''}`}
+            {ranged && offDays.length > 0 && ` · ${offDays.map((h) => h.name).join(', ')} ${offDays.length === 1 ? 'is a holiday' : 'are holidays'} (not counted)`}
           </div>
         )}
 
