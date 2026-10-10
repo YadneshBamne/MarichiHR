@@ -19,6 +19,7 @@ import { holidaysRouter } from './modules/holidays/holidays.router'
 import { announcementsRouter } from './modules/announcements/announcements.router'
 import { policiesRouter } from './modules/policies/policies.router'
 import { grievancesRouter } from './modules/grievances/grievances.router'
+import { auditRouter } from './modules/audit/audit.router'
 import { dashboardRouter } from './modules/dashboard/dashboard.router'
 import { authenticate } from './middleware/auth.middleware'
 import { requireModule } from './middleware/module.middleware'
@@ -64,6 +65,7 @@ export function createApp() {
   app.use('/api/v1/announcements', announcementsRouter)
   app.use('/api/v1/policies', policiesRouter)
   app.use('/api/v1/grievances', grievancesRouter)
+  app.use('/api/v1/audit', auditRouter)
   app.use('/api/v1/dashboard', dashboardRouter)
   app.use('/api/v1/notifications', notificationsRouter)
   app.use('/api/v1/system', systemRouter)

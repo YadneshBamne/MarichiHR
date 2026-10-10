@@ -232,6 +232,7 @@ export const employeeService = {
     }
     const employee = { ...employeeRow, employeeCode: code, hireDate: new Date(employeeRow.hireDate as string), createdAt: new Date(now), updatedAt: new Date(now), bankAccountNo: null } as any
 
+    await prisma.auditLog.create({ data: { tenantId, userId: createdBy, action: 'EMPLOYEE_CREATED', entityType: 'employee', entityId: employee.id, newValue: { employeeCode: code, name: `${data.firstName} ${data.lastName}`, workEmail: data.workEmail, hireDate: data.hireDate } } })
     return {
       employee: toSafeEmployee(employee),
       message: 'Employee created. Grant login access to let them sign in.',
@@ -257,6 +258,16 @@ export const employeeService = {
     })
 
     const updated = await employeeRepository.update(id, safeData)
+    // Before/after for exactly the fields that changed (dates as YYYY-MM-DD)
+    const show = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ?? null)
+    const changed = Object.keys(safeData).filter((k) => String(show((employee as any)[k])) !== String(show((safeData as any)[k])))
+    if (changed.length) {
+      await prisma.auditLog.create({ data: {
+        tenantId, userId: updatedBy, action: 'EMPLOYEE_UPDATED', entityType: 'employee', entityId: id,
+        oldValue: Object.fromEntries(changed.map((k) => [k, show((employee as any)[k])])) as any,
+        newValue: Object.fromEntries(changed.map((k) => [k, show((safeData as any)[k])])) as any,
+      } })
+    }
 
     await eventBus.publish(tenantId, 'employee.updated', {
       employeeId: id,
@@ -329,6 +340,8 @@ export const employeeService = {
     const archived = await employeeRepository.archive(id, archivedBy, reason)
     // Archived people are signed out everywhere
     await prisma.refreshToken.updateMany({ where: { userId: employee.userId, revokedAt: null }, data: { revokedAt: new Date() } })
+
+    await prisma.auditLog.create({ data: { tenantId, userId: archivedBy, action: 'EMPLOYEE_ARCHIVED', entityType: 'employee', entityId: id, newValue: { reason } } })
 
     await eventBus.publish(tenantId, 'employee.archived', {
       employeeId: id,

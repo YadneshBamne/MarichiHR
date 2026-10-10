@@ -67,7 +67,7 @@ export const SECTIONS: NavSection[] = [
   {
     key: 'reports', label: 'Reports & Audit', icon: 'chart', items: [
       { label: 'Reports', path: '/soon/reports', icon: 'chart', roles: [...ROLE.HR, 'payroll_admin'], soon: soon('Phase 5', 'Headcount, attrition, leave and payroll analytics with exports.', ['Ready-made people and payroll reports', 'Filters by unit, location and period', 'Scheduled exports to CSV and PDF']) },
-      { label: 'Audit log', path: '/soon/audit', icon: 'audit', roles: [...ROLE.HR, 'compliance_officer'], soon: soon('Phase 5', 'Every sensitive change, who made it and when, searchable.', ['Filter by person, record and action', 'Before and after values', 'Export for auditors']) },
+      { label: 'Audit log', path: '/audit', icon: 'audit', roles: [...ROLE.HR, 'compliance_officer'], keywords: 'history changes who changed security log' },
     ],
   },
   {

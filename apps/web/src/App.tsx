@@ -16,6 +16,7 @@ const HolidaysPage = lazy(() => import('./pages/holidays/HolidaysPage'))
 const AnnouncementsPage = lazy(() => import('./pages/workplace/AnnouncementsPage'))
 const PoliciesPage = lazy(() => import('./pages/workplace/PoliciesPage'))
 const GrievancesPage = lazy(() => import('./pages/workplace/GrievancesPage'))
+const AuditPage = lazy(() => import('./pages/reports/AuditPage'))
 const MyCasePage = lazy(() => import('./pages/workplace/GrievancesPage').then((m) => ({ default: m.MyCasePage })))
 const HandlerCasePage = lazy(() => import('./pages/workplace/GrievancesPage').then((m) => ({ default: m.HandlerCasePage })))
 const PolicyPage = lazy(() => import('./pages/workplace/PoliciesPage').then((m) => ({ default: m.PolicyPage })))
@@ -80,6 +81,7 @@ export default function App() {
                     <Route path="policies" element={page(<PoliciesPage />)} />
                     <Route path="policies/:id" element={page(<PolicyPage />)} />
                     <Route path="grievances" element={page(<GrievancesPage />)} />
+                    <Route path="audit" element={page(guard(<AuditPage />, { roles: [...HR, 'compliance_officer'] }))} />
                     <Route path="grievances/mine/:id" element={page(<MyCasePage />)} />
                     <Route path="grievances/:id" element={page(guard(<HandlerCasePage />, { roles: ['hr_admin'] }))} />
                     <Route path="leave" element={page(guard(<LeavePage />, { app: 'leave' }))} />

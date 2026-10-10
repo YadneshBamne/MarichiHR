@@ -7,6 +7,7 @@ import { redis } from '../../infrastructure/cache/redis'
 import { prisma } from '../../infrastructure/database/prisma'
 import { authRepository } from './auth.repository'
 import { completeLogin } from './auth.service'
+import { auditSignIn } from '../../shared/utils/auditSignIn'
 
 // Google sign-in (OAuth 2.0 authorization code flow). Enabled only when GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set.
 // Sign-in (default): only existing, active users. The Google account is matched by its verified email (and then remembered
@@ -166,7 +167,9 @@ export const googleSso = {
       prisma.tenant.findFirstOrThrow({ where: { id: found.tenantId, active: true } }),
       authRepository.findUserByEmail(found.email, found.tenantId),
     ])
-    res.json({ success: true, data: await completeLogin(user!, tenant) })
+    const data = await completeLogin(user!, tenant)
+    await auditSignIn(req, data, 'google')
+    res.json({ success: true, data })
   }),
 
   // Prefill for the sign-up form (read-only; the code is consumed by POST /auth/signup)
@@ -187,6 +190,8 @@ export const googleSso = {
     const u = await prisma.user.findFirst({ where: { id: userId, tenantId, active: true }, select: { email: true } })
     const user = tenant && u ? await authRepository.findUserByEmail(u.email, tenant.id) : null
     if (!tenant || !user) throw new AppError('Sign-in link expired. Try again.', 401)
-    res.json({ success: true, data: await completeLogin(user, tenant) })
+    const data = await completeLogin(user, tenant)
+    await auditSignIn(req, data, 'google')
+    res.json({ success: true, data })
   }),
 }

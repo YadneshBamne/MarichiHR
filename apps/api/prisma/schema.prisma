@@ -860,6 +860,7 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
   @@map("audit_logs")
 }
 

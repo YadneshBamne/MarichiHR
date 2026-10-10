@@ -48,6 +48,7 @@ export const contractService = {
     }
 
     const updated = await contractRepository.transition(id, toStatus, userId, reason)
+    await prisma.auditLog.create({ data: { tenantId, userId, action: `CONTRACT_${toStatus.toUpperCase()}`, entityType: 'contract', entityId: id, oldValue: { status: currentStatus }, newValue: { status: toStatus, employeeId: contract.employee.id, ...(reason && { reason }) } } })
 
     await eventBus.publish(tenantId, `contract.${toStatus}`, {
       contractId: id,

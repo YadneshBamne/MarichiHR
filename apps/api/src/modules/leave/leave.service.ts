@@ -164,6 +164,7 @@ export const leaveService = {
 
     await leaveRepository.updateRequestStatus(requestId, 'approved')
     await leaveRepository.createApproval(requestId, approverId, 1, 'approved', dto.comments)
+    await prisma.auditLog.create({ data: { tenantId, userId: user.userId, action: 'LEAVE_APPROVED', entityType: 'leave_request', entityId: requestId, newValue: { employeeId: request.employeeId, leaveType: request.leaveType.name, days: request.totalDays, comments: dto.comments ?? null } } })
 
     await leaveRepository.updateBalance(request.employeeId, request.leaveTypeId, {
       pendingDays: -request.totalDays,
@@ -196,6 +197,7 @@ export const leaveService = {
 
     await leaveRepository.updateRequestStatus(requestId, 'rejected')
     await leaveRepository.createApproval(requestId, approverId, 1, 'rejected', dto.comments)
+    await prisma.auditLog.create({ data: { tenantId, userId: user.userId, action: 'LEAVE_REJECTED', entityType: 'leave_request', entityId: requestId, newValue: { employeeId: request.employeeId, leaveType: request.leaveType.name, days: request.totalDays, reason: dto.comments } } })
 
     await leaveRepository.updateBalance(request.employeeId, request.leaveTypeId, {
       pendingDays: -request.totalDays,

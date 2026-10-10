@@ -5,6 +5,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { redis, soft } from '../../infrastructure/cache/redis'
 import { companyService } from '../company/company.service'
 import { clientIp } from '../../shared/utils/clientIp'
+import { auditSignIn } from '../../shared/utils/auditSignIn'
 
 const SIGNUPS_PER_IP = 10
 const SIGNUPS_PER_EMAIL = 3
@@ -13,6 +14,7 @@ export const authController = {
   login: asyncHandler(async (req: Request, res: Response) => {
     const { email, password, tenantSlug } = req.body
     const result = await authService.login({ email, password, tenantSlug }, clientIp(req))
+    await auditSignIn(req, result, 'password')
 
     res.status(200).json({
       success: true,
@@ -43,7 +45,9 @@ export const authController = {
   }),
 
   mfaVerify: asyncHandler(async (req: Request, res: Response) => {
-    res.json({ success: true, data: await authService.verifyMfaLogin(req.body.mfaToken, req.body.code) })
+    const data = await authService.verifyMfaLogin(req.body.mfaToken, req.body.code)
+    await auditSignIn(req, data, 'mfa')
+    res.json({ success: true, data })
   }),
 
   // Abuse limits count workspaces actually created (a failed or retried attempt costs nothing): 10 per visitor IP and
