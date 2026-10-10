@@ -35,7 +35,7 @@ export default function AppShell() {
   const toggleCollapsed = () => setCollapsed((c) => { try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1') } catch { /* ignore */ } return !c })
 
   // Badge counts for the sidebar (approvals waiting for me), one light request
-  const { data: counts } = useQuery({ queryKey: ['nav-counts'], queryFn: async () => (await api.get('/dashboard/counts')).data.data as { approvals: number; tasks: number; announcements?: number }, refetchInterval: 60000 })
+  const { data: counts } = useQuery({ queryKey: ['nav-counts'], queryFn: async () => (await api.get('/dashboard/counts')).data.data as { approvals: number; tasks: number; announcements?: number; policies?: number }, refetchInterval: 60000 })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -131,7 +131,7 @@ export default function AppShell() {
 }
 
 function Sidebar({ sections, counts, collapsed, onToggle, mode, companyName, logoUrl, userName, avatarUrl, role }: {
-  sections: ReturnType<typeof visibleSections>; counts?: { approvals: number; tasks: number; announcements?: number }; collapsed: boolean; onToggle: () => void; mode: 'desktop' | 'drawer'
+  sections: ReturnType<typeof visibleSections>; counts?: { approvals: number; tasks: number; announcements?: number; policies?: number }; collapsed: boolean; onToggle: () => void; mode: 'desktop' | 'drawer'
   companyName: string; logoUrl?: string | null; userName: string; avatarUrl?: string; role: string
 }) {
   const { pathname } = useLocation()
@@ -156,7 +156,7 @@ function Sidebar({ sections, counts, collapsed, onToggle, mode, companyName, log
     return () => clearTimeout(t)
   }, [activePath, collapsed, sections.length])
 
-  const badge = (path: string) => (path === '/approvals' ? counts?.approvals : path === '/activities' ? counts?.tasks : path === '/announcements' ? counts?.announcements : 0) || 0
+  const badge = (path: string) => (path === '/approvals' ? counts?.approvals : path === '/activities' ? counts?.tasks : path === '/announcements' ? counts?.announcements : path === '/policies' ? counts?.policies : 0) || 0
 
   return (
     <aside className="sidebar card" data-collapsed={collapsed ? '1' : '0'} aria-label="Main navigation" data-tour="sidebar">

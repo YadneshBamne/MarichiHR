@@ -44,6 +44,7 @@ model Tenant {
   workLocations        WorkLocation[]
   holidayCalendars     HolidayCalendar[]
   announcements    Announcement[]
+  policies         Policy[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
   salaryStructures     SalaryStructure[]
@@ -1273,4 +1274,60 @@ model AnnouncementRead {
 
   @@unique([announcementId, userId])
   @@map("announcement_reads")
+}
+
+// Company policies with versions. Only one version is published at a time; publishing a new one supersedes the
+// previous and, when acceptance is required, asks the audience (departments incl. sub-units / offices, empty = all)
+// to read and accept again within acceptWithinDays.
+model Policy {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  title              String
+  category           String   @default("General")
+  departmentIds      String[] @default([])
+  workLocationIds    String[] @default([])
+  requiresAcceptance Boolean  @default(true)
+  acceptWithinDays   Int      @default(7)
+  active             Boolean  @default(true)
+  createdById        String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  versions PolicyVersion[]
+
+  @@index([tenantId])
+  @@map("policies")
+}
+
+model PolicyVersion {
+  id            String    @id @default(uuid())
+  policyId      String
+  version       Int
+  body          String
+  changeNote    String?
+  status        String    @default("draft") // draft | published | superseded
+  effectiveFrom DateTime? @db.Date
+  publishedAt   DateTime?
+  publishedById String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  policy      Policy             @relation(fields: [policyId], references: [id])
+  acceptances PolicyAcceptance[]
+
+  @@unique([policyId, version])
+  @@map("policy_versions")
+}
+
+model PolicyAcceptance {
+  id              String   @id @default(uuid())
+  policyVersionId String
+  userId          String
+  acceptedAt      DateTime @default(now())
+
+  policyVersion PolicyVersion @relation(fields: [policyVersionId], references: [id])
+
+  @@unique([policyVersionId, userId])
+  @@map("policy_acceptances")
 }

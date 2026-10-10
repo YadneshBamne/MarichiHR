@@ -21,6 +21,15 @@ const toHR = (type: string, title: string, body: (p: any) => string, link?: (p: 
 }
 
 export const EVENT_HANDLERS: Record<string, Handler[]> = {
+  // A new policy version: everyone in its audience (asked to accept when the policy requires it)
+  'policy.published': [
+    async (e) => {
+      const p = await prisma.policy.findFirst({ where: { id: e.payload.policyId, tenantId: e.tenantId, active: true } })
+      if (!p) return
+      const users = (await audienceUsers(e.tenantId, p)).map((u) => u.id)
+      await notify({ tenantId: e.tenantId, userIds: users, type: 'policy.published', title: p.requiresAcceptance ? 'Policy to read and accept' : 'Policy updated', body: `${p.title} (version ${e.payload.version})`, link: `/policies/${p.id}`, entityType: 'policy', entityId: p.id, eventId: e.id })
+    },
+  ],
   // Everyone in the audience except the author
   'announcement.published': [
     async (e) => {

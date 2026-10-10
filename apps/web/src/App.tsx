@@ -14,6 +14,8 @@ const LoginPage = lazy(() => import('./pages/LoginPage'))
 const OrgChartPage = lazy(() => import('./pages/employees/OrgChartPage'))
 const HolidaysPage = lazy(() => import('./pages/holidays/HolidaysPage'))
 const AnnouncementsPage = lazy(() => import('./pages/workplace/AnnouncementsPage'))
+const PoliciesPage = lazy(() => import('./pages/workplace/PoliciesPage'))
+const PolicyPage = lazy(() => import('./pages/workplace/PoliciesPage').then((m) => ({ default: m.PolicyPage })))
 const SignupPage = lazy(() => import('./pages/public/SignupPage'))
 const ChangePasswordPage = lazy(() => import('./pages/public/ChangePasswordPage'))
 const SsoCallbackPage = lazy(() => import('./pages/SsoCallbackPage'))
@@ -72,6 +74,8 @@ export default function App() {
                     <Route path="org-chart" element={page(<OrgChartPage />)} />
                     <Route path="holidays" element={page(<HolidaysPage />)} />
                     <Route path="announcements" element={page(<AnnouncementsPage />)} />
+                    <Route path="policies" element={page(<PoliciesPage />)} />
+                    <Route path="policies/:id" element={page(<PolicyPage />)} />
                     <Route path="leave" element={page(guard(<LeavePage />, { app: 'leave' }))} />
                     <Route path="leave-types" element={page(guard(<LeaveTypesPage />, { roles: ['hr_admin'], app: 'leave' }))} />
                     <Route path="attendance" element={page(guard(<AttendancePage />, { app: 'attendance' }))} />
