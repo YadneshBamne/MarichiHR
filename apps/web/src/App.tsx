@@ -18,6 +18,7 @@ const PoliciesPage = lazy(() => import('./pages/workplace/PoliciesPage'))
 const GrievancesPage = lazy(() => import('./pages/workplace/GrievancesPage'))
 const AuditPage = lazy(() => import('./pages/reports/AuditPage'))
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
+const IncentivesPage = lazy(() => import('./pages/payroll/IncentivesPage'))
 const ReportPage = lazy(() => import('./pages/reports/ReportsPage').then((m) => ({ default: m.ReportPage })))
 const MyCasePage = lazy(() => import('./pages/workplace/GrievancesPage').then((m) => ({ default: m.MyCasePage })))
 const HandlerCasePage = lazy(() => import('./pages/workplace/GrievancesPage').then((m) => ({ default: m.HandlerCasePage })))
@@ -83,6 +84,7 @@ export default function App() {
                     <Route path="policies" element={page(<PoliciesPage />)} />
                     <Route path="policies/:id" element={page(<PolicyPage />)} />
                     <Route path="grievances" element={page(<GrievancesPage />)} />
+                    <Route path="incentives" element={page(guard(<IncentivesPage />, { app: 'payroll' }))} />
                     <Route path="reports" element={page(guard(<ReportsPage />, { roles: [...HR, 'payroll_admin', 'compliance_officer', 'manager'] }))} />
                     <Route path="reports/:key" element={page(guard(<ReportPage />, { roles: [...HR, 'payroll_admin', 'compliance_officer', 'manager'] }))} />
                     <Route path="audit" element={page(guard(<AuditPage />, { roles: [...HR, 'compliance_officer'] }))} />

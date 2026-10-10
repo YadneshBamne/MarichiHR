@@ -46,6 +46,8 @@ model Tenant {
   announcements    Announcement[]
   policies         Policy[]
   grievances       Grievance[]
+  incentiveTypes   IncentiveType[]
+  incentives       Incentive[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
   salaryStructures     SalaryStructure[]
@@ -1376,4 +1378,53 @@ model GrievanceMessage {
 
   @@index([grievanceId, createdAt])
   @@map("grievance_messages")
+}
+
+// Incentives: kinds of award (with an optional cap and the payroll earning they are paid as)
+model IncentiveType {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  name               String
+  code               String
+  description        String?
+  defaultAmount      Decimal? @db.Decimal(18, 2)
+  maxAmount          Decimal? @db.Decimal(18, 2)
+  payrollInputTypeId String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  incentives Incentive[]
+
+  @@unique([tenantId, code])
+  @@map("incentive_types")
+}
+
+// A nomination: nominated -> approved | rejected (by an HR admin who is not the nominator) -> posted to a payroll
+// run as a payroll input (which payroll then approves like any input); cancelled while still nominated
+model Incentive {
+  id                String    @id @default(uuid())
+  tenantId          String
+  employeeId        String
+  typeId            String
+  amount            Decimal   @db.Decimal(18, 2)
+  currency          String
+  reason            String
+  status            String    @default("nominated")
+  nominatedByUserId String
+  decidedByUserId   String?
+  decidedAt         DateTime?
+  decisionNote      String?
+  payrollCycleId    String?
+  payrollInputId    String?
+  postedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id])
+  type   IncentiveType @relation(fields: [typeId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([employeeId])
+  @@map("incentives")
 }

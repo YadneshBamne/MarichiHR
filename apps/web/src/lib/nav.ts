@@ -54,7 +54,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Expenses', selfLabel: 'My expenses', path: '/expenses', icon: 'receipt', app: 'expenses', keywords: 'claims reimbursements per diem' },
       { label: 'Salary structures', path: '/compensation', icon: 'sliders', roles: ROLE.PAYROLL, app: 'payroll', keywords: 'compensation rules grade bands contracts' },
       { label: 'Tax & compliance', path: '/soon/tax', icon: 'scale', roles: ROLE.PAYROLL, soon: soon('Phase 3', 'Versioned statutory tables and filings for every country you employ in.', ['Zambia PAYE, NAPSA and NHIMA tables by effective date', 'India TDS (cumulative), Kenya and Nigeria', 'Tax declarations, certificates and statutory filing exports']) },
-      { label: 'Incentives', path: '/soon/incentives', icon: 'gift', roles: ROLE.PAYROLL, soon: soon('Phase 4', 'Bonuses, commissions and recognition paid through payroll.', ['Nominations with approval', 'Commission plans and targets', 'Payouts posted as payroll inputs']) },
+      { label: 'Incentives', selfLabel: 'My awards', path: '/incentives', icon: 'gift', app: 'payroll', keywords: 'bonus award reward recognition nominate referral' },
     ],
   },
   {
