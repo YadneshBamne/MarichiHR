@@ -15,6 +15,9 @@ const OrgChartPage = lazy(() => import('./pages/employees/OrgChartPage'))
 const HolidaysPage = lazy(() => import('./pages/holidays/HolidaysPage'))
 const AnnouncementsPage = lazy(() => import('./pages/workplace/AnnouncementsPage'))
 const PoliciesPage = lazy(() => import('./pages/workplace/PoliciesPage'))
+const GrievancesPage = lazy(() => import('./pages/workplace/GrievancesPage'))
+const MyCasePage = lazy(() => import('./pages/workplace/GrievancesPage').then((m) => ({ default: m.MyCasePage })))
+const HandlerCasePage = lazy(() => import('./pages/workplace/GrievancesPage').then((m) => ({ default: m.HandlerCasePage })))
 const PolicyPage = lazy(() => import('./pages/workplace/PoliciesPage').then((m) => ({ default: m.PolicyPage })))
 const SignupPage = lazy(() => import('./pages/public/SignupPage'))
 const ChangePasswordPage = lazy(() => import('./pages/public/ChangePasswordPage'))
@@ -76,6 +79,9 @@ export default function App() {
                     <Route path="announcements" element={page(<AnnouncementsPage />)} />
                     <Route path="policies" element={page(<PoliciesPage />)} />
                     <Route path="policies/:id" element={page(<PolicyPage />)} />
+                    <Route path="grievances" element={page(<GrievancesPage />)} />
+                    <Route path="grievances/mine/:id" element={page(<MyCasePage />)} />
+                    <Route path="grievances/:id" element={page(guard(<HandlerCasePage />, { roles: ['hr_admin'] }))} />
                     <Route path="leave" element={page(guard(<LeavePage />, { app: 'leave' }))} />
                     <Route path="leave-types" element={page(guard(<LeaveTypesPage />, { roles: ['hr_admin'], app: 'leave' }))} />
                     <Route path="attendance" element={page(guard(<AttendancePage />, { app: 'attendance' }))} />

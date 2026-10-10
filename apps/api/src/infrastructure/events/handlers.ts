@@ -21,6 +21,14 @@ const toHR = (type: string, title: string, body: (p: any) => string, link?: (p: 
 }
 
 export const EVENT_HANDLERS: Record<string, Handler[]> = {
+  // A new grievance: HR admins learn the ticket, category and severity, never who raised it
+  'grievance.raised': [
+    async (e) => {
+      const g = await prisma.grievance.findFirst({ where: { id: e.payload.grievanceId, tenantId: e.tenantId } })
+      if (!g) return
+      await notify({ tenantId: e.tenantId, userIds: await hr(e.tenantId), type: 'grievance.raised', title: `New grievance ${g.ticketNo}`, body: `${g.category} · ${g.severity} severity${g.anonymous ? ' · anonymous' : ''}`, link: `/grievances/${g.id}`, entityType: 'grievance', entityId: g.id, eventId: e.id })
+    },
+  ],
   // A new policy version: everyone in its audience (asked to accept when the policy requires it)
   'policy.published': [
     async (e) => {

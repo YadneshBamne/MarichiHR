@@ -45,6 +45,7 @@ model Tenant {
   holidayCalendars     HolidayCalendar[]
   announcements    Announcement[]
   policies         Policy[]
+  grievances       Grievance[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
   salaryStructures     SalaryStructure[]
@@ -1330,4 +1331,48 @@ model PolicyAcceptance {
 
   @@unique([policyVersionId, userId])
   @@map("policy_acceptances")
+}
+
+// Confidential grievance desk. Named cases keep raisedByUserId; anonymous ones store no identity at all, only the
+// hash of a case key the raiser keeps to follow up. Only HR admins handle cases (managers never see them).
+model Grievance {
+  id               String    @id @default(uuid())
+  tenantId         String
+  ticketNo         String
+  category         String
+  subject          String
+  description      String
+  severity         String    @default("medium") // low | medium | high | critical
+  anonymous        Boolean   @default(false)
+  raisedByUserId   String?
+  caseKeyHash      String?
+  status           String    @default("open") // open | in_review | resolved | closed
+  assignedToUserId String?
+  resolution       String?
+  dueAt            DateTime
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id])
+  messages GrievanceMessage[]
+
+  @@unique([tenantId, ticketNo])
+  @@index([tenantId, status])
+  @@map("grievances")
+}
+
+model GrievanceMessage {
+  id           String   @id @default(uuid())
+  grievanceId  String
+  authorUserId String?
+  authorRole   String // raiser | handler
+  body         String
+  internal     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  grievance Grievance @relation(fields: [grievanceId], references: [id])
+
+  @@index([grievanceId, createdAt])
+  @@map("grievance_messages")
 }

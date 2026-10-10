@@ -60,7 +60,7 @@ export const SECTIONS: NavSection[] = [
   {
     key: 'workplace', label: 'Workplace', icon: 'book', items: [
       { label: 'Policies', path: '/policies', icon: 'book', keywords: 'handbook rules code of conduct accept' },
-      { label: 'Grievances', path: '/soon/grievances', icon: 'flag', roles: ROLE.ADMIN, soon: soon('Phase 4', 'A confidential way to raise and resolve concerns.', ['Anonymous or named submissions', 'Case handling with restricted access', 'Resolution timelines and audit']) },
+      { label: 'Grievances', path: '/grievances', icon: 'flag', keywords: 'complaint concern report confidential anonymous' },
       { label: 'Announcements', path: '/announcements', icon: 'message', keywords: 'news updates notices company communication' },
     ],
   },
