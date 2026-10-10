@@ -5,6 +5,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { tenantModules } from '../../middleware/module.middleware'
 import { businessToday, monthRange } from '../../shared/utils/businessDate'
 import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
+import { announcementService } from '../announcements/announcements.service'
 
 // Role-based home: each section is returned only when the caller's roles (and the company's installed apps) allow it.
 //   self    – anyone with an employee record: own attendance, leave, tasks, latest payslip
@@ -65,11 +66,12 @@ dashboardRouter.get('/counts', asyncHandler(async (req, res) => {
   const u = req.user as U
   const sc = scopes(u)
   const apps = await tenantModules(u.tenantId)
-  const [a, tasks] = await Promise.all([
+  const [a, tasks, announcements] = await Promise.all([
     approvalsWaiting(u, apps, sc),
     u.employeeId ? prisma.activity.count({ where: { tenantId: u.tenantId, assignedToId: u.employeeId, status: { in: ['planned', 'overdue'] } } }) : 0,
+    announcementService.unreadCount(u as any),
   ])
-  res.json({ success: true, data: { approvals: a.leave + a.attendance + a.expenses + a.finance + a.signoffs, tasks } })
+  res.json({ success: true, data: { approvals: a.leave + a.attendance + a.expenses + a.finance + a.signoffs, tasks, announcements } })
 }))
 
 dashboardRouter.get('/', asyncHandler(async (req, res) => {

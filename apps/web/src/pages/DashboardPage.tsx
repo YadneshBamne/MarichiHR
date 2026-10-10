@@ -57,6 +57,7 @@ export default function DashboardPage() {
 
       {isLoading || !d ? <Skeleton /> : (
         <>
+          <NewsBanner />
           <Kpis d={d} role={role} />
           {role === 'payroll_admin' || role === 'compliance_officer' ? <PayrollRows d={d} /> : null}
           {d.team && <TeamRows d={d} />}
@@ -429,5 +430,19 @@ function Skeleton() {
     <div className="dgrid">
       {[3, 3, 3, 3, 8, 4, 4, 4, 4].map((n, i) => <div key={i} className={`skeleton span-${n}`} style={{ height: i < 4 ? 132 : 260, borderRadius: 'var(--r-card)' }} />)}
     </div>
+  )
+}
+
+// Newest announcement still to read (or acknowledge), as a one-line banner
+function NewsBanner() {
+  const { data = [] } = useQuery({ queryKey: ['announcements'], queryFn: async () => (await api.get('/announcements')).data.data as any[] })
+  const a = data.find((x) => !x.read || (x.requiresAck && !x.acknowledged))
+  if (!a) return null
+  return (
+    <Link to="/announcements" data-rise className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', marginBottom: 'var(--gap)', borderLeft: '4px solid var(--honey)' }}>
+      <Icon name="message" size={16} />
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><strong style={{ fontWeight: 600 }}>{a.title}</strong> <span className="dim">· {a.author}</span></span>
+      <span className="pill honey">{a.requiresAck && !a.acknowledged ? 'Please acknowledge' : 'New'}</span>
+    </Link>
   )
 }

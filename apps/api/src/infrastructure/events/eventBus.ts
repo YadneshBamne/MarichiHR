@@ -1,14 +1,14 @@
 import crypto from 'crypto'
 import { prisma } from '../database/prisma'
 import { Queue } from 'bullmq'
-import { redis, soft } from '../cache/redis'
+import { redis, soft, QUEUE_PREFIX } from '../cache/redis'
 import { logSystemChatter } from '../../modules/activities/activities.repository'
 
 let eventQueue: Queue | null = null
 
 function getEventQueue(): Queue {
   if (!eventQueue) {
-    eventQueue = new Queue('domain-events', { connection: redis })
+    eventQueue = new Queue('domain-events', { connection: redis, prefix: QUEUE_PREFIX })
   }
   return eventQueue
 }

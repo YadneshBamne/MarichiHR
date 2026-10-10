@@ -1,6 +1,7 @@
 import { prisma } from '../database/prisma'
 import { notify, userIdsWithRole, userIdOfEmployee } from '../notifications/notify'
 import { normaliseDateInput } from '../../shared/utils/businessDate'
+import { audienceUsers } from '../../shared/utils/audience'
 
 // Consumers of domain_events, run by the domain-events worker. Each handler must be safe to run twice:
 // notifications dedupe on (eventId, userId, type) and data fixes are idempotent.
@@ -20,6 +21,15 @@ const toHR = (type: string, title: string, body: (p: any) => string, link?: (p: 
 }
 
 export const EVENT_HANDLERS: Record<string, Handler[]> = {
+  // Everyone in the audience except the author
+  'announcement.published': [
+    async (e) => {
+      const a = await prisma.announcement.findFirst({ where: { id: e.payload.announcementId, tenantId: e.tenantId, active: true } })
+      if (!a) return
+      const users = (await audienceUsers(e.tenantId, a)).map((u) => u.id).filter((id) => id !== a.createdById)
+      await notify({ tenantId: e.tenantId, userIds: users, type: 'announcement', title: a.requiresAck ? 'New announcement · please acknowledge' : 'New announcement', body: a.title, link: '/announcements', entityType: 'announcement', entityId: a.id, eventId: e.id })
+    },
+  ],
   'leave.request.submitted': [
     async (e) => {
       const p = e.payload

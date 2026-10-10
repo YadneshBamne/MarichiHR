@@ -1,11 +1,12 @@
 import { Queue, Worker } from 'bullmq'
-import { redis } from '../cache/redis'
+import { redis, QUEUE_PREFIX } from '../cache/redis'
 import { prisma } from '../database/prisma'
 import { dispatchEvent } from '../events/handlers'
 import { enqueueEvent } from '../events/eventBus'
 import { leaveService } from '../../modules/leave/leave.service'
 import { contractService } from '../../modules/employees/contracts.service'
 import { attendanceService } from '../../modules/attendance/attendance.service'
+import { announcementService } from '../../modules/announcements/announcements.service'
 
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
@@ -21,7 +22,7 @@ async function perTenant(only: string | undefined, fn: (tenantId: string) => Pro
 export const JOBS: Record<string, { pattern: string; description: string; run: (tenantId?: string) => Promise<unknown> }> = {
   'events-sweep': {
     pattern: '*/10 * * * *',
-    description: 'Re-dispatch domain events that were never enqueued or whose handlers failed',
+    description: 'Re-dispatch domain events that were never enqueued or whose handlers failed; publish scheduled announcements',
     run: async (tenantId) => {
       const stale = await prisma.domainEvent.findMany({
         where: {
@@ -35,6 +36,9 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
         take: 500,
       })
       for (const e of stale) await enqueueEvent(e.id)
+      // Scheduled announcements that just went live notify their audience
+      const announced = await announcementService.publishDue()
+      if (announced) console.log(`[cron] events-sweep: ${announced} scheduled announcement(s) published`)
       return stale.length
     },
   },
@@ -72,13 +76,13 @@ let cronQueue: Queue | null = null
 const workers: Worker[] = []
 
 export function getCronQueue() {
-  if (!cronQueue) cronQueue = new Queue('cron', { connection: redis })
+  if (!cronQueue) cronQueue = new Queue('cron', { connection: redis, prefix: QUEUE_PREFIX })
   return cronQueue
 }
 
 export async function startJobs() {
   workers.push(
-    new Worker('domain-events', async (job) => dispatchEvent(job.data.eventId), { connection: redis, concurrency: 5, ...IDLE_CHEAP }),
+    new Worker('domain-events', async (job) => dispatchEvent(job.data.eventId), { connection: redis, prefix: QUEUE_PREFIX, concurrency: 5, ...IDLE_CHEAP }),
     new Worker(
       'cron',
       async (job) => {
@@ -88,7 +92,7 @@ export async function startJobs() {
         console.log(`[cron] ${job.name}:`, JSON.stringify(result))
         return result
       },
-      { connection: redis, concurrency: 1, ...IDLE_CHEAP }
+      { connection: redis, prefix: QUEUE_PREFIX, concurrency: 1, ...IDLE_CHEAP }
     )
   )
   for (const w of workers) w.on('failed', (job, err) => console.error(`[jobs] ${job?.queueName}/${job?.name} failed:`, err.message))

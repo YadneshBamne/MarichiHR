@@ -43,6 +43,7 @@ model Tenant {
   activityTypes        ActivityType[]
   workLocations        WorkLocation[]
   holidayCalendars     HolidayCalendar[]
+  announcements    Announcement[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
   salaryStructures     SalaryStructure[]
@@ -1233,4 +1234,43 @@ model ExitClearance {
   @@unique([exitId, department])
   @@index([responsibleUserId, status])
   @@map("exit_clearances")
+}
+
+// Company news. Audience: everyone, or only people in the listed departments (and their sub-units) and/or offices.
+// Scheduled ones become visible at publishAt; the events sweep notifies the audience once (notifiedAt).
+model Announcement {
+  id              String    @id @default(uuid())
+  tenantId        String
+  title           String
+  body            String
+  departmentIds   String[]  @default([])
+  workLocationIds String[]  @default([])
+  pinned          Boolean   @default(false)
+  requiresAck     Boolean   @default(false)
+  publishAt       DateTime  @default(now())
+  expiresAt       DateTime?
+  notifiedAt      DateTime?
+  createdById     String
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id])
+  reads  AnnouncementRead[]
+
+  @@index([tenantId, publishAt])
+  @@map("announcements")
+}
+
+model AnnouncementRead {
+  id             String    @id @default(uuid())
+  announcementId String
+  userId         String
+  readAt         DateTime  @default(now())
+  acknowledgedAt DateTime?
+
+  announcement Announcement @relation(fields: [announcementId], references: [id])
+
+  @@unique([announcementId, userId])
+  @@map("announcement_reads")
 }

@@ -9,6 +9,10 @@ export const redis = new Redis(process.env.REDIS_URL, {
   enableReadyCheck: false,
 })
 
+// BullMQ key prefix. Servers that share one Redis (e.g. a laptop and production) must use different prefixes, or
+// either one may pick up the other's jobs and run them with different code. Set QUEUE_PREFIX in local .env.
+export const QUEUE_PREFIX = process.env.QUEUE_PREFIX || 'bull'
+
 redis.on('connect', () => {
   console.log('✓ Redis connected')
 })
