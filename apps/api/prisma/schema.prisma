@@ -26,6 +26,8 @@ model Tenant {
   companySize     String?
   primaryCountry  String?
   modules         String[]  @default([])
+  employeeCodePrefix String  @default("EMP") // employee ID series: prefix + zero-padded number
+  employeeCodeDigits Int     @default(4)
   ownerUserId     String?
   onboardedAt     DateTime?
   active          Boolean  @default(true)

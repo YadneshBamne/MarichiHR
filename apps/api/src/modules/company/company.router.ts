@@ -22,6 +22,8 @@ export const UpdateCompanySchema = z.object({
     timezone: z.string().refine(isTimeZone, 'Unknown time zone').optional(),
     fiscalYearStartMonth: z.number().int().min(1).max(12).optional(),
     logoUrl: logo.nullable().optional(),
+    employeeCodePrefix: z.string().trim().toUpperCase().regex(/^[A-Z][A-Z0-9-]{0,9}$/, 'Start with a letter; letters, digits and - only, up to 10').optional(),
+    employeeCodeDigits: z.number().int().min(3).max(8).optional(),
   }).strict(),
 })
 

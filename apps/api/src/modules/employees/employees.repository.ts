@@ -278,9 +278,17 @@ export const employeeRepository = {
   },
 
   // Next code after the highest existing EMPnnnn (counting rows breaks once codes have gaps)
+  // Next `count` codes in the company's series (prefix + zero-padded number, e.g. EMP0042), after the highest one used
+  async generateEmployeeCodes(tenantId: string, count = 1): Promise<string[]> {
+    const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { employeeCodePrefix: true, employeeCodeDigits: true } })
+    const prefix = t?.employeeCodePrefix ?? 'EMP'
+    const rows = await prisma.$queryRaw<{ n: number | null }[]>`SELECT max(substring("employeeCode" from ${prefix.length + 1}::int)::bigint)::int AS n FROM employees WHERE "tenantId" = ${tenantId} AND "employeeCode" ~ ${`^${prefix}[0-9]+$`}`
+    const start = (rows[0]?.n ?? 0) + 1
+    return Array.from({ length: count }, (_, i) => `${prefix}${String(start + i).padStart(t?.employeeCodeDigits ?? 4, '0')}`)
+  },
+
   async generateEmployeeCode(tenantId: string): Promise<string> {
-    const rows = await prisma.$queryRaw<{ n: number | null }[]>`SELECT max(substring("employeeCode" from 4)::int) AS n FROM employees WHERE "tenantId" = ${tenantId} AND "employeeCode" ~ '^EMP[0-9]+$'`
-    return `EMP${String((rows[0]?.n ?? 0) + 1).padStart(4, '0')}`
+    return (await this.generateEmployeeCodes(tenantId, 1))[0]
   },
 
   async addSkill(employeeId: string, data: AddSkillDto) {

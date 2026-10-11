@@ -8,6 +8,9 @@ import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import CreateEmployeeModal from './CreateEmployeeModal'
+import { downloadCredentials } from './ImportEmployeesPage'
+import api from '../../lib/api'
+import { useToast } from '../../components/ui/Toast'
 
 const STATUS_PILL: Record<string, string> = { active: 'ok', probation: 'honey', notice: 'warn', on_leave: 'info', terminated: 'mute', resigned: 'mute' }
 const since = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
@@ -39,6 +42,19 @@ export default function EmployeeListPage() {
   const meta = data?.meta
   const page$ = useReveal<HTMLDivElement>()
   const rows = useRowsIn<HTMLTableSectionElement>(`${search}|${unit}|${page}|${archived}|${employees.length}`)
+  const toast = useToast()
+  const [issuing, setIssuing] = useState(false)
+  // Temporary passwords for the selected people, downloaded once as a credentials sheet
+  const issueLogins = async () => {
+    if (!confirm(`Give ${selected.length} ${selected.length === 1 ? 'person' : 'people'} a new temporary password? Any current password stops working.`)) return
+    setIssuing(true)
+    try {
+      const list = (await api.post('/employees/access/bulk', { employeeIds: selected })).data.data
+      downloadCredentials(list)
+      toast(`Credentials sheet downloaded for ${list.length}. Store it safely.`)
+      setSelected([])
+    } catch (e: any) { toast(e?.response?.data?.message || 'Could not issue logins', 'error') } finally { setIssuing(false) }
+  }
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
 
   return (
@@ -48,6 +64,7 @@ export default function EmployeeListPage() {
         sub={meta ? `${meta.total} ${archived ? 'including archived' : 'active'} ${meta.total === 1 ? 'person' : 'people'}` : ' '}
         actions={<>
           <SearchField value={q} onChange={setQ} placeholder="Search by name, email or code" width={280} />
+          {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/import')}><Icon name="download" size={16} /> Import</button>}
           {isHR && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add member</button>}
         </>}
       >
@@ -112,6 +129,7 @@ export default function EmployeeListPage() {
       {(selected.length > 0 || (meta && meta.totalPages > 1)) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
           {selected.length > 0 && <span className="pill night" style={{ height: 30, padding: '0 14px' }}>{selected.length} selected <button className="link" style={{ color: 'var(--honey)' }} onClick={() => setSelected([])}>Clear</button></span>}
+          {isHR && selected.length > 0 && <button className="btn btn-honey btn-sm" disabled={issuing} onClick={issueLogins}><Icon name="key" size={14} /> Issue logins</button>}
           {meta && meta.totalPages > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
               <button className="btn btn-ghost btn-sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}><Icon name="chevronLeft" size={14} /> Prev</button>

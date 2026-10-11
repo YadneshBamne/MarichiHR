@@ -210,7 +210,7 @@ export const employeeService = {
       createdAt: now, updatedAt: now,
     }
     // Codes come from the highest existing one, so two people added at the same moment can collide: take the next and retry
-    let code = employeeCode
+    let code = data.employeeCode ?? employeeCode
     for (let attempt = 0; ; attempt++) {
       const event = prepareEvent(tenantId, 'employee.created', { employeeId, employeeCode: code, name: `${data.firstName} ${data.lastName}`, email: data.workEmail, createdBy })
       try {
@@ -227,7 +227,8 @@ export const employeeService = {
         const dupCode = /employeeCode|employees_tenantId_employeeCode/.test(String(err?.message))
         if (/users_tenantId_email_key/.test(String(err?.message))) throw new AppError('An employee with this email already exists', 409)
         if (!dupCode || attempt >= 4) throw err
-        code = `EMP${String(Number(code.slice(3)) + 1 + attempt).padStart(4, '0')}`
+        if (data.employeeCode) throw new AppError(`Employee ID ${code} is already used`, 409)
+        code = code.replace(/\d+$/, (d) => String(Number(d) + 1 + attempt).padStart(d.length, '0'))
       }
     }
     const employee = { ...employeeRow, employeeCode: code, hireDate: new Date(employeeRow.hireDate as string), createdAt: new Date(now), updatedAt: new Date(now), bankAccountNo: null } as any

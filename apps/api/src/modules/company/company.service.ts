@@ -47,7 +47,7 @@ export const companyService = {
     const before = await prisma.tenant.findUnique({ where: { id: tenantId } })
     if (!before) throw new AppError('Company not found', 404)
     const data: Prisma.TenantUpdateInput = {}
-    for (const k of ['name', 'legalName', 'industry', 'companySize', 'primaryCountry', 'baseCurrency', 'timezone', 'logoUrl'] as const) {
+    for (const k of ['name', 'legalName', 'industry', 'companySize', 'primaryCountry', 'baseCurrency', 'timezone', 'logoUrl', 'employeeCodePrefix', 'employeeCodeDigits'] as const) {
       if (body[k] !== undefined) (data as any)[k] = body[k]
     }
     if (body.primaryCountry) data.countryCodes = { set: [...new Set([body.primaryCountry, ...before.countryCodes])] }
@@ -85,6 +85,6 @@ export function shape(t: any) {
     id: t.id, name: t.name, slug: t.slug, legalName: t.legalName, industry: t.industry, companySize: t.companySize,
     primaryCountry: t.primaryCountry, baseCurrency: t.baseCurrency, timezone: t.timezone, logoUrl: t.logoUrl,
     fiscalYearStartMonth: new Date(t.fiscalYearStart).getUTCMonth() + 1, modules: t.modules ?? [], ownerUserId: t.ownerUserId,
-    onboardedAt: t.onboardedAt,
+    onboardedAt: t.onboardedAt, employeeCodePrefix: t.employeeCodePrefix, employeeCodeDigits: t.employeeCodeDigits,
   }
 }

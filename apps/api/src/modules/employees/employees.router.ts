@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission } from '../../middleware/rbac.middleware'
@@ -11,6 +12,7 @@ import {
 import { requireRoles } from '../../middleware/rbac.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { accessService, orgChartService } from './employees.service'
+import { importEmployees, issueCredentials, IMPORT_COLUMNS } from './import.service'
 import {
   AccessSchema,
   CreateEmployeeSchema,
@@ -57,6 +59,17 @@ employeeRouter.get('/skill-types', requirePermission('employees:read'), employee
 // Everyone in the company may see the org chart (public fields only); declared before /:id
 employeeRouter.get('/org-chart', requirePermission('employees:read'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await orgChartService.get(req.user!) })
+}))
+// Bulk import (all-or-nothing; dryRun checks the file) and credentials sheets: HR and system admins
+const ImportSchema = z.object({ body: z.object({
+  rows: z.array(z.partialRecord(z.enum(IMPORT_COLUMNS), z.string().max(200))).min(1).max(1000),
+  dryRun: z.boolean(), createMissing: z.boolean().default(false), grantLogin: z.boolean().default(false),
+}).strict() })
+employeeRouter.post('/import', requireRoles('hr_admin', 'system_admin'), validate(ImportSchema), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await importEmployees(req.user!, req.body) })
+}))
+employeeRouter.post('/access/bulk', requireRoles('hr_admin', 'system_admin'), validate(z.object({ body: z.object({ employeeIds: z.array(z.string().uuid()).min(1).max(500) }).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await issueCredentials(req.user!, req.body.employeeIds) })
 }))
 employeeRouter.get('/', requirePermission('employees:read'), validate(ListQuerySchema), employeeController.list)
 employeeRouter.post('/', requirePermission('employees:write'), validate(CreateEmployeeSchema), employeeController.create)

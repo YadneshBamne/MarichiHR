@@ -46,6 +46,7 @@ export interface CreateEmployeeDto {
   emergencyContactName?: string
   emergencyContactPhone?: string
   emergencyContactRelation?: string
+  employeeCode?: string // set by bulk import (pre-assigned from the series or given in the file)
 }
 
 export interface UpdateEmployeeDto {

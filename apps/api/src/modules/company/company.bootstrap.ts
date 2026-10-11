@@ -35,7 +35,7 @@ export async function bootstrapCompany(input: BootstrapInput) {
   const leaveTypes = DEFAULT_LEAVE_TYPES.map((lt) => ({ ...LEAVE_TYPE_DEFAULTS, id: id(), tenantId, createdAt: now, ...lt }))
 
   const rows: Rows = {
-    tenants: [{ id: tenantId, name: input.companyName, slug: input.slug, countryCodes: [], baseCurrency: 'USD', fiscalYearStart: `${now.slice(0, 4)}-01-01T00:00:00.000Z`, timezone: 'UTC', active: true, createdAt: now, updatedAt: now, modules: ALL_APPS, ownerUserId: userId }],
+    tenants: [{ id: tenantId, name: input.companyName, slug: input.slug, countryCodes: [], baseCurrency: 'USD', fiscalYearStart: `${now.slice(0, 4)}-01-01T00:00:00.000Z`, timezone: 'UTC', active: true, createdAt: now, updatedAt: now, modules: ALL_APPS, ownerUserId: userId, employeeCodePrefix: 'EMP', employeeCodeDigits: 4 }],
     roles: ROLE_DEFS.map((r) => ({ id: roleIds[r.name], tenantId, ...r, isSystemRole: true, createdAt: now })),
     leave_types: leaveTypes,
     activity_types: DEFAULT_ACTIVITY_TYPES.map((a) => ({ id: id(), tenantId, ...a, createdAt: now })),

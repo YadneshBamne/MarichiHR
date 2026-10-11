@@ -19,6 +19,7 @@ const GrievancesPage = lazy(() => import('./pages/workplace/GrievancesPage'))
 const AuditPage = lazy(() => import('./pages/reports/AuditPage'))
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
 const IncentivesPage = lazy(() => import('./pages/payroll/IncentivesPage'))
+const ImportEmployeesPage = lazy(() => import('./pages/employees/ImportEmployeesPage'))
 const TaxPage = lazy(() => import('./pages/payroll/TaxPage'))
 const RecruitmentPage = lazy(() => import('./pages/employees/RecruitmentPage'))
 const OpeningPage = lazy(() => import('./pages/employees/RecruitmentPage').then((m) => ({ default: m.OpeningPage })))
@@ -81,6 +82,7 @@ export default function App() {
                   <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                     <Route path="dashboard" element={page(<DashboardPage />)} />
                     <Route path="employees" element={page(guard(<EmployeeListPage />, { roles: DIRECTORY }))} />
+                    <Route path="employees/import" element={page(guard(<ImportEmployeesPage />, { roles: ADMINS }))} />
                     <Route path="employees/:id" element={page(<EmployeeProfilePage />)} />
                     <Route path="org-chart" element={page(<OrgChartPage />)} />
                     <Route path="recruitment" element={page(<RecruitmentPage />)} />
