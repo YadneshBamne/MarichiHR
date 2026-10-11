@@ -50,14 +50,18 @@ async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>) {
 export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun: boolean; createMissing: boolean; grantLogin: boolean }): Promise<ImportResult> {
   const t = actor.tenantId
   await ensureDefaults(t)
-  const [units, positions, locations, existing, root, masters] = await Promise.all([
+  const [units, positions, locations, existing, root, masters, required] = await Promise.all([
     prisma.orgUnit.findMany({ where: { tenantId: t, active: true }, select: { id: true, name: true } }),
     prisma.jobPosition.findMany({ where: { tenantId: t }, select: { id: true, title: true, orgUnitId: true } }),
     prisma.workLocation.findMany({ where: { tenantId: t }, select: { id: true, name: true } }),
     prisma.employee.findMany({ where: { tenantId: t }, select: { id: true, employeeCode: true, workEmail: true, active: true, user: { select: { email: true } } } }),
     prisma.orgUnit.findFirst({ where: { tenantId: t, parentId: null, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
     prisma.masterValue.findMany({ where: { tenantId: t, active: true, list: { in: ['employment_type', 'gender', 'nationality'] } }, select: { list: true, code: true, label: true } }),
+    prisma.employeeFieldSetting.findMany({ where: { tenantId: t, mode: 'mandatory' }, select: { field: true } }),
   ])
+  // Columns the company's employee form marks Required
+  const REQUIRED_COLUMNS: Record<string, [keyof Row, string]> = { dateOfBirth: ['date_of_birth', 'Date of birth'], gender: ['gender', 'Gender'], nationality: ['nationality', 'Nationality'], personalEmail: ['personal_email', 'Personal email'], mobilePersonal: ['mobile', 'Personal mobile'], taxJurisdiction: ['tax_country', 'Tax country'] }
+  const requiredCols = required.map((x) => REQUIRED_COLUMNS[x.field]).filter(Boolean)
   // A spreadsheet may hold a master's code or its label, in any case or spacing ("Full time", "full-time", "FULL_TIME")
   const master = (list: string, input: string) => masters.find((m) => m.list === list && (norm(m.code) === norm(input) || norm(m.label) === norm(input)))?.code ?? null
   const byName = <X extends { id: string }>(list: X[], name: (x: X) => string) => {
@@ -90,6 +94,7 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
     else if (seenEmail.has(email)) errors.push(`${email} is also on row ${seenEmail.get(email)}`)
     else seenEmail.set(email, n)
     const hireDate = parseDate(r.hire_date ?? '')
+    for (const [col, label] of requiredCols) if (!r[col]) errors.push(`${col} is required by your company's employee form (${label})`)
     if (!hireDate) errors.push('hire_date must be a date like 2026-10-01 or 01/10/2026')
     const dob = r.date_of_birth ? parseDate(r.date_of_birth) : null
     if (r.date_of_birth && !dob) errors.push('date_of_birth is not a valid date')

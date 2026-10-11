@@ -52,6 +52,8 @@ model Tenant {
   incentives       Incentive[]
   jobOpenings      JobOpening[]
   masterValues     MasterValue[]
+  customFieldDefs  CustomFieldDefinition[]
+  employeeFieldSettings EmployeeFieldSetting[]
   candidates       Candidate[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
@@ -322,6 +324,20 @@ model Employee {
   exitDate         DateTime?
   exitReason       String?
 
+  // Full record (greytHR-style). Values that come from masters hold the master code.
+  title            String? // master: title
+  middleName       String?
+  preferredName    String?
+  maritalStatus    String? // master: marital_status
+  marriageDate     DateTime? @db.Date
+  bloodGroup       String? // master: blood_group
+  religion         String? // master: religion
+  languages        Json? // master codes: language
+  employeeCategory String? // master: employee_category
+  costCentre       String? // master: cost_centre
+  sourceOfHire     String? // master: source_of_hire
+  customFields     Json? // values of the company's custom fields, by key
+
   bankName       String?
   bankAccountNo  String?
   bankIfscSwift  String?
@@ -336,6 +352,14 @@ model Employee {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  addresses          EmployeeAddress[]
+  familyMembers      EmployeeFamilyMember[]
+  emergencyContacts  EmployeeEmergencyContact[]
+  educations         EmployeeEducation[]
+  previousEmployment EmployeePreviousEmployment[]
+  identities         EmployeeIdentity[]
+  positionHistory    EmployeePositionHistory[]
 
   tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
   user                      User                       @relation(fields: [userId], references: [id])
@@ -1558,4 +1582,179 @@ model MasterValue {
   @@unique([tenantId, list, code])
   @@index([tenantId, list, active])
   @@map("master_values")
+}
+
+// ─── Full employee record ──────────────────────────────────────────────────────
+model EmployeeAddress {
+  id         String   @id @default(uuid())
+  employeeId String
+  kind       String // present | permanent | contact
+  line1      String
+  line2      String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String? // ISO code
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, kind])
+  @@map("employee_addresses")
+}
+
+model EmployeeFamilyMember {
+  id           String    @id @default(uuid())
+  employeeId   String
+  name         String
+  relationship String // master: relationship
+  dateOfBirth  DateTime? @db.Date
+  gender       String? // master: gender
+  bloodGroup   String? // master: blood_group
+  nationality  String? // master: nationality
+  profession   String?
+  phone        String?
+  isDependent  Boolean   @default(false)
+  nomineeShare Decimal?  @db.Decimal(5, 2) // percent of nominated benefits
+  createdAt    DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_family_members")
+}
+
+model EmployeeEmergencyContact {
+  id           String   @id @default(uuid())
+  employeeId   String
+  name         String
+  relationship String // master: relationship
+  phone        String
+  altPhone     String?
+  email        String?
+  priority     Int      @default(1)
+  createdAt    DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_emergency_contacts")
+}
+
+model EmployeeEducation {
+  id             String   @id @default(uuid())
+  employeeId     String
+  qualification  String // master: qualification
+  institute      String
+  specialisation String?
+  startYear      Int?
+  endYear        Int?
+  grade          String?
+  createdAt      DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_educations")
+}
+
+model EmployeePreviousEmployment {
+  id               String    @id @default(uuid())
+  employeeId       String
+  company          String
+  designation      String?
+  fromDate         DateTime? @db.Date
+  toDate           DateTime? @db.Date
+  reasonForLeaving String?
+  lastSalary       Decimal?  @db.Decimal(18, 2)
+  currency         String?
+  pfMemberId       String?
+  createdAt        DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_previous_employment")
+}
+
+// Identity numbers are encrypted (BANK_ENCRYPTION_KEY); numberHash (HMAC) finds duplicates and rehires without decrypting
+model EmployeeIdentity {
+  id             String    @id @default(uuid())
+  employeeId     String
+  tenantId       String
+  documentType   String // master: identity_document
+  numberEnc      String
+  numberHash     String
+  numberLast4    String
+  issueDate      DateTime? @db.Date
+  expiryDate     DateTime? @db.Date
+  issuingCountry String?
+  details        String? // e.g. licence class, visa type
+  verified       Boolean   @default(false)
+  verifiedBy     String?
+  verifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, documentType])
+  @@index([tenantId, documentType, numberHash])
+  @@map("employee_identities")
+}
+
+// Department, position, manager, location, type and category over time: answers "who was the boss on that date"
+model EmployeePositionHistory {
+  id               String    @id @default(uuid())
+  employeeId       String
+  effectiveFrom    DateTime  @db.Date
+  orgUnitId        String?
+  jobPositionId    String?
+  managerId        String?
+  workLocationId   String?
+  employmentType   String?
+  employeeCategory String?
+  reason           String?
+  appliedAt        DateTime? // future-dated changes are applied by the daily job
+  createdBy        String
+  createdAt        DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId, effectiveFrom])
+  @@map("employee_position_history")
+}
+
+// Extra fields a company adds to the employee record
+model CustomFieldDefinition {
+  id         String   @id @default(uuid())
+  tenantId   String
+  key        String
+  label      String
+  section    String   @default("custom") // personal | job | custom
+  type       String // text | number | date | yes_no | list
+  masterList String? // for type list: a master list key
+  options    Json? // for type list without a master: [{code,label}]
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@map("custom_field_definitions")
+}
+
+// Form builder: per company, whether each standard field is shown, required or hidden, and if employees may edit it
+model EmployeeFieldSetting {
+  id              String  @id @default(uuid())
+  tenantId        String
+  field           String
+  mode            String // display | mandatory | hidden
+  employeeCanEdit Boolean @default(false)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, field])
+  @@map("employee_field_settings")
 }

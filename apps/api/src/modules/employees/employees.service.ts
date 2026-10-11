@@ -7,13 +7,14 @@ import { buildMeta } from '../../shared/utils/pagination'
 import { prisma } from '../../infrastructure/database/prisma'
 import bcrypt from 'bcryptjs'
 import { assertMasters } from '../masters/masters.service'
+import { historyRow, assertCreateMandatory } from './record.service'
 import crypto from 'crypto'
 import { UpdateEmployeeSchema } from './employees.schema'
 import { encryptField, decryptField, last4 } from '../../shared/utils/crypto'
 import { AccessUser, assertProfileAccess, getReportingSubtreeIds } from '../../shared/utils/access'
 
 // Every id supplied by a client must point at a record in the caller's own tenant
-async function assertRefsInTenant(tenantId: string, refs: {
+export async function assertRefsInTenant(tenantId: string, refs: {
   parentOrgUnitId?: string
   orgUnitId?: string
   jobPositionId?: string
@@ -236,6 +237,7 @@ export const employeeService = {
       prisma.leaveType.findMany({ where: { tenantId, active: true }, select: { id: true } }),
       data.resourceCalendarId ? null : prisma.resourceCalendar.findFirst({ where: { tenantId, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
       assertMasters(tenantId, { employment_type: data.employmentType ?? 'full_time', gender: data.gender, nationality: data.nationality, relationship: data.emergencyContactRelation }),
+      assertCreateMandatory(tenantId, data as any),
     ])
     if (existingUser) {
       throw new AppError('An employee with this email already exists', 409)
@@ -267,6 +269,7 @@ export const employeeService = {
           users: [{ id: userId, tenantId, email: data.workEmail, fullName: `${data.firstName} ${data.lastName}`, passwordHash: null, active: true, mfaEnabled: false, mustChangePassword: false, createdAt: now, updatedAt: now }],
           user_roles: employeeRole ? [{ id: crypto.randomUUID(), userId, roleId: employeeRole.id, scopeType: 'org', validFrom: now, createdAt: now }] : [],
           employees: [{ ...employeeRow, employeeCode: code }],
+          employee_position_history: [historyRow(employeeId, createdBy, data as any, employeeRow.hireDate as string, 'Joined')],
           leave_balances: leaveTypes.map((lt) => ({ employeeId, leaveTypeId: lt.id, balanceDays: 0, usedDays: 0, pendingDays: 0, encashedDays: 0, lapsedDays: 0, asOfDate: now })),
           ...event.rows,
         })
@@ -324,6 +327,13 @@ export const employeeService = {
         oldValue: Object.fromEntries(changed.map((k) => [k, show((employee as any)[k])])) as any,
         newValue: Object.fromEntries(changed.map((k) => [k, show((safeData as any)[k])])) as any,
       } })
+    }
+
+    // Placement edited directly still lands in position history, effective today
+    const placement = ['orgUnitId', 'jobPositionId', 'managerId', 'workLocationId', 'employmentType']
+    if (changed.some((k) => placement.includes(k))) {
+      const h = historyRow(id, updatedBy, { ...Object.fromEntries(changed.filter((k) => placement.includes(k)).map((k) => [k, (safeData as any)[k] ?? ''])) }, new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z', 'Profile edit')
+      await prisma.employeePositionHistory.create({ data: { ...h, effectiveFrom: new Date(h.effectiveFrom), appliedAt: new Date(), createdAt: new Date() } })
     }
 
     await eventBus.publish(tenantId, 'employee.updated', {

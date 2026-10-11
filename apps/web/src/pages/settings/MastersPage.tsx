@@ -8,13 +8,14 @@ import Modal from '../../components/ui/Modal'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import EmployeeFormBuilder from './EmployeeFormBuilder'
 import { useMasters, type MasterListData, type MasterValue } from '../../lib/hooks/useMasters'
 
 // One place for every list the rest of the product picks from. Departments, positions, locations and expense
 // categories are edited here; the others link to the screen that already manages them.
 interface Unit { id: string; name: string; type: string; parentId: string | null; costCenter: string | null; headcount: number }
 interface Overview { units: Unit[]; counts: Record<string, number> }
-type Tab = 'overview' | 'lists' | 'departments' | 'positions' | 'locations' | 'expenses'
+type Tab = 'overview' | 'lists' | 'form' | 'departments' | 'positions' | 'locations' | 'expenses'
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
 export default function MastersPage() {
@@ -28,6 +29,7 @@ export default function MastersPage() {
   const listCount = lists.length || undefined
   const cards: { label: string; n?: number; sub: string; go: Tab | string; app?: string }[] = [
     { label: 'Dropdown lists', n: listCount, sub: 'Gender, relationship, documents, banks, exit reasons and every other choice', go: 'lists' },
+    { label: 'Employee form', sub: 'Which details are shown, required or hidden, and your own custom fields', go: 'form' },
     { label: 'Departments', n: c.departments, sub: 'Org structure, cost centres', go: 'departments' },
     { label: 'Job positions', n: c.positions, sub: 'Titles and grade per department', go: 'positions' },
     { label: 'Work locations', n: c.locations, sub: 'Offices, sites and clock-in geofences', go: 'locations' },
@@ -43,7 +45,7 @@ export default function MastersPage() {
     <div ref={root}>
       <PageHeader title="Masters" sub="Every list your people, payroll and policies are built on">
         <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-          {([['overview', 'All masters'], ['lists', 'Dropdown lists'], ['departments', 'Departments'], ['positions', 'Job positions'], ['locations', 'Work locations'], ...(has('expenses') ? [['expenses', 'Expense categories']] : [])] as [Tab, string][]).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+          {([['overview', 'All masters'], ['lists', 'Dropdown lists'], ['form', 'Employee form'], ['departments', 'Departments'], ['positions', 'Job positions'], ['locations', 'Work locations'], ...(has('expenses') ? [['expenses', 'Expense categories']] : [])] as [Tab, string][]).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
         </div>
       </PageHeader>
       {tab === 'overview' && (
@@ -58,6 +60,7 @@ export default function MastersPage() {
         </div>
       )}
       {tab === 'lists' && <ListsEditor />}
+      {tab === 'form' && <EmployeeFormBuilder />}
       {tab === 'departments' && <Departments units={o?.units ?? []} />}
       {tab === 'positions' && <Positions units={o?.units ?? []} />}
       {tab === 'locations' && <Locations />}

@@ -7,6 +7,7 @@ import { leaveService } from '../../modules/leave/leave.service'
 import { contractService } from '../../modules/employees/contracts.service'
 import { attendanceService } from '../../modules/attendance/attendance.service'
 import { announcementService } from '../../modules/announcements/announcements.service'
+import { applyDuePositionChanges } from '../../modules/employees/record.service'
 
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
@@ -60,6 +61,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
       expired: await contractService.runAutoExpireCron(t),
       alerted: await contractService.runExpiryAlertCron(t),
     }),
+  },
+  'position-changes': {
+    pattern: '10 1 * * *',
+    description: 'Apply future-dated position changes (department, manager, position, location) whose day has come',
+    run: (t) => perTenant(t, (id) => applyDuePositionChanges(id)),
   },
   'leave-accrual': {
     pattern: '0 2 1 * *',

@@ -13,6 +13,7 @@ import { requireRoles } from '../../middleware/rbac.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { accessService, orgChartService, archiveJobPosition, archiveWorkLocation, mastersOverview } from './employees.service'
 import { profile360 } from './profile360.service'
+import { recordRouter } from './record.router'
 import { importEmployees, issueCredentials, IMPORT_COLUMNS } from './import.service'
 import {
   AccessSchema,
@@ -35,6 +36,8 @@ import {
 export const employeeRouter = Router()
 
 employeeRouter.use(authenticate)
+// Full record, form builder, custom fields, position history, rehire check
+employeeRouter.use(recordRouter)
 
 // ─── ORG UNITS ────────────────────────────────────────────────
 // Masters hub: departments with headcount plus the size of every other master list (HR and system admins)

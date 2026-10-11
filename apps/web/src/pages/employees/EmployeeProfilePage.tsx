@@ -10,12 +10,13 @@ import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
 import Profile360 from './Profile360'
+import { useRecord, FieldsCard, ListSection, IdentitySection, PositionHistory, CustomFieldsCard, MissingBanner } from './RecordSections'
 import { useMasters } from '../../lib/hooks/useMasters'
 
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
 
-type Tab = 'overview' | 'work' | 'personal' | 'skills' | 'resume' | 'chatter' | 'access'
+type Tab = 'overview' | 'work' | 'personal' | 'family' | 'qualifications' | 'identity' | 'skills' | 'resume' | 'chatter' | 'access'
 
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -24,6 +25,7 @@ export default function EmployeeProfilePage() {
   const canManageAccess = hasRole('hr_admin') || hasRole('system_admin')
   const { data: employee, isLoading } = useEmployee(id!)
   const { label: master } = useMasters()
+  const { data: rec } = useRecord(id!)
   const archiveEmployee = useArchiveEmployee()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
@@ -45,8 +47,11 @@ export default function EmployeeProfilePage() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'work', label: 'Work Info' },
     { key: 'personal', label: 'Personal' },
+    { key: 'work', label: 'Job' },
+    ...(rec?.can.seeSensitive ? [{ key: 'family' as Tab, label: 'Family' }] : []),
+    { key: 'qualifications', label: 'Education & experience' },
+    ...(rec?.can.seeSensitive ? [{ key: 'identity' as Tab, label: 'Identity' }] : []),
     { key: 'skills', label: `Skills (${employee.skills?.length || 0})` },
     { key: 'resume', label: `Resume (${employee.resumeLines?.length || 0})` },
     { key: 'chatter', label: 'Chatter' },
@@ -117,18 +122,15 @@ export default function EmployeeProfilePage() {
           <div style={s.infoGrid}>
             <InfoRow label="Employee Code" value={employee.employeeCode} />
             <InfoRow label="Work Email" value={employee.workEmail} />
-            <InfoRow label="Work Mobile" value={employee.mobileWork} />
             <InfoRow label="Department" value={employee.orgUnit?.name} />
             <InfoRow label="Job Position" value={employee.jobPosition?.title} />
             <InfoRow label="Work Location" value={employee.workLocation ? `${employee.workLocation.name}, ${employee.workLocation.city}` : undefined} />
             <InfoRow label="Manager" value={employee.manager?.user?.fullName} />
-            <InfoRow label="Hire Date" value={employee.hireDate ? dateOnly(employee.hireDate)! : undefined} />
-            <InfoRow label="Employment Type" value={master('employment_type', employee.employmentType)} />
-            <InfoRow label="Tax Jurisdiction" value={employee.taxJurisdiction} />
-            <InfoRow label="Probation End" value={employee.probationEndDate ? dateOnly(employee.probationEndDate)! : undefined} />
             <InfoRow label="Resource Calendar" value={employee.resourceCalendar?.name} />
 
             {hasRole('hr_admin') && <BankDetailsCard employee={employee} />}
+
+            {rec && <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 26, marginTop: 8 }}><FieldsCard rec={rec} sections={['job']} title="Employment details" /><PositionHistory rec={rec} /></div>}
 
             {/* Current contract */}
             {employee.contracts?.length > 0 && (
@@ -156,18 +158,27 @@ export default function EmployeeProfilePage() {
           </div>
         )}
 
-        {activeTab === 'personal' && (
-          <div style={s.infoGrid}>
-            <InfoRow label="Personal Email" value={employee.personalEmail} />
-            <InfoRow label="Personal Mobile" value={employee.mobilePersonal} />
-            <InfoRow label="Date of Birth" value={employee.dateOfBirth ? dateOnly(employee.dateOfBirth)! : undefined} />
-            <InfoRow label="Gender" value={master('gender', employee.gender)} />
-            <InfoRow label="Nationality" value={master('nationality', employee.nationality)} />
-            <InfoRow label="Emergency Contact" value={employee.emergencyContactName} />
-            <InfoRow label="Emergency Phone" value={employee.emergencyContactPhone} />
-            <InfoRow label="Relationship" value={master('relationship', employee.emergencyContactRelation)} />
+        {activeTab === 'personal' && (rec ? (
+          <div style={{ display: 'grid', gap: 26 }}>
+            <MissingBanner rec={rec} />
+            <FieldsCard rec={rec} sections={['personal']} title="Personal details" />
+            <FieldsCard rec={rec} sections={['contact']} title="Contact" />
+            <ListSection rec={rec} section="addresses" />
+            <ListSection rec={rec} section="emergencyContacts" />
+            <CustomFieldsCard rec={rec} />
+          </div>
+        ) : <div className="skeleton" style={{ height: 200, borderRadius: 14 }} />)}
+
+        {activeTab === 'family' && rec && <ListSection rec={rec} section="family" />}
+
+        {activeTab === 'qualifications' && rec && (
+          <div style={{ display: 'grid', gap: 26 }}>
+            <ListSection rec={rec} section="education" />
+            <ListSection rec={rec} section="previousEmployment" />
           </div>
         )}
+
+        {activeTab === 'identity' && rec && <IdentitySection rec={rec} />}
 
         {activeTab === 'skills' && (
           <div>
@@ -276,7 +287,7 @@ const s: Record<string, React.CSSProperties> = {
   statLabel: { fontSize: '10px', color: 'var(--faint)', whiteSpace: 'nowrap' },
   tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
-  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
+  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', border: '1px solid var(--night)' },
   tabContent: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '24px' },
   infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
   sectionLabel: { fontSize: '11px', color: 'var(--faint)', fontWeight: '500', marginBottom: '8px' },

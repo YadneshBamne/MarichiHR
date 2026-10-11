@@ -43,3 +43,10 @@ export function decryptField(stored: string): string {
 export function last4(plain: string): string {
   return plain.slice(-4)
 }
+
+// Keyed hash for matching sensitive values (identity numbers) without decrypting them. Same input -> same hash;
+// without the key it cannot be reversed or brute-forced offline.
+export function lookupHash(scope: string, value: string): string {
+  const normalised = value.replace(/[\s\-/.]/g, '').toUpperCase()
+  return crypto.createHmac('sha256', getKey()).update(`${scope}:${normalised}`).digest('hex')
+}

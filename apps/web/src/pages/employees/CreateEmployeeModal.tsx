@@ -8,6 +8,7 @@ import { useCreateEmployee, useOrgTree, useJobPositions, useWorkLocations, useEm
 import { TemporaryPassword } from '../../components/company/AccessCard'
 import { COUNTRIES } from '../../components/company/CompanyParts'
 import MasterSelect from '../../components/ui/MasterSelect'
+import { Link } from 'react-router-dom'
 
 interface Props { open: boolean; onClose: () => void }
 
@@ -31,6 +32,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
   const flatOrg = ((function flat(units: any[], depth = 0): any[] { return units.flatMap((u: any) => [{ ...u, depth }, ...flat(u.children || [], depth + 1)]) })(Array.isArray(orgTree) ? orgTree : []))
   const initial = () => ({
     firstName: '', lastName: '', workEmail: '', orgUnitId: '', jobPositionId: '', workLocationId: '', managerId: user?.employee?.id ?? '',
+    gender: '', dateOfBirth: '', nationality: '',
     hireDate: today(), employmentType: 'full_time', taxJurisdiction: (user?.tenant as any)?.primaryCountry || '', role: 'employee', createLogin: true,
   })
   const [form, setForm] = useState(initial)
@@ -39,6 +41,15 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
   const [busy, setBusy] = useState(false)
   useEffect(() => { if (!form.orgUnitId && flatOrg[0]) setForm((f) => ({ ...f, orgUnitId: flatOrg[0].id })) }, [flatOrg.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }))
+  // Rehire / duplicate check: someone with this name (and date of birth, if given) was here before or still is
+  const [matches, setMatches] = useState<{ id: string; employeeCode: string; name: string; status: string; exitDate: string | null; match: string }[]>([])
+  useEffect(() => {
+    if (form.firstName.trim().length < 2 || form.lastName.trim().length < 2) { setMatches([]); return }
+    const t = setTimeout(async () => {
+      try { setMatches((await api.post('/employees/rehire-check', { firstName: form.firstName.trim(), lastName: form.lastName.trim(), ...(form.dateOfBirth && { dateOfBirth: form.dateOfBirth }) })).data.data) } catch { setMatches([]) }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [form.firstName, form.lastName, form.dateOfBirth])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -46,7 +57,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
     setBusy(true)
     try {
       const body: Record<string, unknown> = { firstName: form.firstName.trim(), lastName: form.lastName.trim(), workEmail: form.workEmail.trim().toLowerCase(), orgUnitId: form.orgUnitId, hireDate: form.hireDate, employmentType: form.employmentType }
-      for (const k of ['jobPositionId', 'workLocationId', 'managerId', 'taxJurisdiction'] as const) if (form[k]) body[k] = form[k]
+      for (const k of ['jobPositionId', 'workLocationId', 'managerId', 'taxJurisdiction', 'gender', 'dateOfBirth', 'nationality'] as const) if (form[k]) body[k] = form[k]
       const res = await createEmployee.mutateAsync(body)
       const emp = res.employee
       let password: string | undefined, accessError: string | undefined
@@ -92,6 +103,18 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
           <div className="field"><label htmlFor="ce-fn">First name</label><input id="ce-fn" className="input" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required /></div>
           <div className="field"><label htmlFor="ce-ln">Last name</label><input id="ce-ln" className="input" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required /></div>
         </div>
+        <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+          <div className="field"><label htmlFor="ce-dob">Date of birth</label><input id="ce-dob" className="input" type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} /></div>
+          <div className="field"><label htmlFor="ce-gender">Gender</label><MasterSelect id="ce-gender" list="gender" value={form.gender} onChange={(v) => set('gender', v)} placeholder="—" /></div>
+          <div className="field"><label htmlFor="ce-nat">Nationality</label><MasterSelect id="ce-nat" list="nationality" value={form.nationality} onChange={(v) => set('nationality', v)} placeholder="—" /></div>
+        </div>
+        {matches.length > 0 && (
+          <div role="status" className="well" style={{ padding: '10px 14px', fontSize: 13, display: 'grid', gap: 4 }}>
+            <strong style={{ fontWeight: 600 }}>Already in your records?</strong>
+            {matches.map((m) => <span key={m.id}><Link to={`/employees/${m.id}`} className="link" target="_blank">{m.name} ({m.employeeCode})</Link> · {m.status === 'left' ? `left${m.exitDate ? ` ${m.exitDate}` : ''}` : m.status} · same {m.match}</span>)}
+            <span className="dim" style={{ fontSize: 12 }}>If this is the same person coming back, check their old record before adding them again.</span>
+          </div>
+        )}
         <div className="field"><label htmlFor="ce-em">Work email (their sign-in)</label><input id="ce-em" className="input" type="email" value={form.workEmail} onChange={(e) => set('workEmail', e.target.value)} required /></div>
         <div className="grid-2">
           <div className="field"><label htmlFor="ce-unit">Department</label>
