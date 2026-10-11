@@ -22,6 +22,7 @@ import { grievancesRouter } from './modules/grievances/grievances.router'
 import { auditRouter } from './modules/audit/audit.router'
 import { reportsRouter } from './modules/reports/reports.router'
 import { incentivesRouter } from './modules/incentives/incentives.router'
+import { recruitmentRouter } from './modules/recruitment/recruitment.router'
 import { dashboardRouter } from './modules/dashboard/dashboard.router'
 import { authenticate } from './middleware/auth.middleware'
 import { requireModule } from './middleware/module.middleware'
@@ -70,6 +71,7 @@ export function createApp() {
   app.use('/api/v1/audit', auditRouter)
   app.use('/api/v1/reports', reportsRouter)
   app.use('/api/v1/incentives', authenticate, requireModule('payroll'), incentivesRouter)
+  app.use('/api/v1/recruitment', recruitmentRouter)
   app.use('/api/v1/dashboard', dashboardRouter)
   app.use('/api/v1/notifications', notificationsRouter)
   app.use('/api/v1/system', systemRouter)

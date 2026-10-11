@@ -48,6 +48,8 @@ model Tenant {
   grievances       Grievance[]
   incentiveTypes   IncentiveType[]
   incentives       Incentive[]
+  jobOpenings      JobOpening[]
+  candidates       Candidate[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
   salaryStructures     SalaryStructure[]
@@ -1427,4 +1429,89 @@ model Incentive {
   @@index([tenantId, status])
   @@index([employeeId])
   @@map("incentives")
+}
+
+// Recruitment. An opening (requisition) is requested by a manager (pending_approval) or created by HR (open);
+// open -> on_hold -> closed. Candidates move through stages; hiring creates the employee record.
+model JobOpening {
+  id                    String    @id @default(uuid())
+  tenantId              String
+  title                 String
+  description           String    @default("")
+  orgUnitId             String
+  jobPositionId         String?
+  workLocationId        String?
+  employmentType        String    @default("full_time")
+  openings              Int       @default(1)
+  salaryMin             Decimal?  @db.Decimal(18, 2)
+  salaryMax             Decimal?  @db.Decimal(18, 2)
+  currency              String
+  hiringManagerId       String? // employee id
+  status                String    @default("open") // pending_approval | open | on_hold | closed | rejected
+  closedReason          String?
+  requestedByUserId     String
+  approvedByUserId      String?
+  approvedAt            DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  candidates Candidate[]
+
+  @@index([tenantId, status])
+  @@map("job_openings")
+}
+
+model Candidate {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  openingId           String
+  firstName           String
+  lastName            String
+  email               String
+  phone               String?
+  source              String    @default("direct") // direct | referral | job_board | careers | agency | other
+  resumeUrl           String?
+  summary             String?
+  referredByEmployeeId String?
+  stage               String    @default("applied") // applied | screening | interview | offer | hired | rejected | withdrawn
+  rating              Int?
+  rejectionReason     String?
+  offerCtcAnnual      Decimal?  @db.Decimal(18, 2)
+  offerJoiningDate    DateTime? @db.Date
+  offerStatus         String? // made | accepted | declined
+  offerNote           String?
+  hiredEmployeeId     String?
+  hiredAt             DateTime?
+  createdByUserId     String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  opening    JobOpening  @relation(fields: [openingId], references: [id])
+  interviews Interview[]
+
+  @@index([tenantId, openingId, stage])
+  @@map("candidates")
+}
+
+model Interview {
+  id                String    @id @default(uuid())
+  candidateId       String
+  interviewerUserId String
+  scheduledAt       DateTime
+  mode              String    @default("video") // video | phone | in_person
+  status            String    @default("scheduled") // scheduled | completed | cancelled
+  rating            Int?
+  recommendation    String? // strong_hire | hire | no_hire | strong_no_hire
+  feedback          String?
+  createdByUserId   String
+  createdAt         DateTime  @default(now())
+  completedAt       DateTime?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([interviewerUserId, status])
+  @@map("interviews")
 }
