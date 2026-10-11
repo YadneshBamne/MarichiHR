@@ -53,6 +53,7 @@ const ExitDetailPage = lazy(() => import('./pages/exits/ExitDetailPage'))
 const SalarySetupPage = lazy(() => import('./pages/salary/SalarySetupPage'))
 const SecurityPage = lazy(() => import('./pages/SecurityPage'))
 const MastersPage = lazy(() => import('./pages/settings/MastersPage'))
+const AutomationPage = lazy(() => import('./pages/settings/AutomationPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const CompanySettingsPage = lazy(() => import('./pages/settings/CompanySettings').then((m) => ({ default: m.CompanySettingsPage })))
 const AppsSettingsPage = lazy(() => import('./pages/settings/CompanySettings').then((m) => ({ default: m.AppsSettingsPage })))
@@ -127,6 +128,7 @@ export default function App() {
                     <Route path="settings" element={page(guard(<SettingsPage />, { roles: [...ADMINS, 'payroll_admin'] }))} />
                     <Route path="settings/masters" element={page(guard(<MastersPage />, { roles: ADMINS }))} />
                     <Route path="settings/company" element={page(guard(<CompanySettingsPage />, { roles: ADMINS }))} />
+                    <Route path="settings/automation" element={page(guard(<AutomationPage />, { roles: ADMINS }))} />
                     <Route path="settings/apps" element={page(guard(<AppsSettingsPage />, { roles: ADMINS }))} />
                     <Route path="soon/:slug" element={page(<ComingSoonPage />)} />
                     <Route path="*" element={page(<NotFoundPage />)} />
