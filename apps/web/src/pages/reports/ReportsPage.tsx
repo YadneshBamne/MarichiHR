@@ -7,11 +7,12 @@ import PageHeader from '../../components/ui/PageHeader'
 import Icon, { type IconName } from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import { useAuth } from '../../contexts/AuthContext'
 import { fmtHours } from '../../lib/format'
 import { flattenUnits } from '../workplace/AnnouncementsPage'
 
 type ColType = 'text' | 'number' | 'money' | 'hours' | 'date' | 'percent'
-interface Report { title: string; subtitle: string; columns: { key: string; label: string; type?: ColType }[]; rows: Record<string, any>[]; summary: { label: string; value: number | string; type?: ColType }[]; chart: { label: string; bars: { label: string; value: number }[]; type?: ColType }; currency?: string }
+export interface Report { title: string; subtitle: string; columns: { key: string; label: string; type?: ColType }[]; rows: Record<string, any>[]; summary: { label: string; value: number | string; type?: ColType }[]; chart: { label: string; bars: { label: string; value: number }[]; type?: ColType }; currency?: string }
 
 const ICONS: Record<string, IconName> = { headcount: 'users', attendance: 'clock', leave: 'leaf', payroll: 'wallet', expenses: 'receipt', attrition: 'door' }
 const today = () => new Date().toISOString().slice(0, 10)
@@ -31,10 +32,20 @@ export function formatValue(v: any, type: ColType | undefined, currency?: string
 
 export default function ReportsPage() {
   const { data = [], isLoading } = useQuery({ queryKey: ['reports'], queryFn: async () => (await api.get('/reports')).data.data as { key: string; title: string; description: string }[] })
+  const { hasRole } = useAuth()
+  const builder = ['hr_admin', 'system_admin', 'compliance_officer', 'payroll_admin'].some(hasRole)
+  const { data: saved = [] } = useQuery({ queryKey: ['builder-saved'], queryFn: async () => (await api.get('/reports/builder/saved')).data.data as { id: string; name: string; columns: string[]; groupBy: string | null }[], enabled: builder })
   const root = useReveal<HTMLDivElement>(isLoading)
   return (
     <div ref={root}>
-      <PageHeader title="Reports" sub="Ready-made reports with filters and CSV export" />
+      <PageHeader title="Reports" sub="Ready-made reports with filters and CSV export"
+        actions={builder ? <Link to="/reports/builder" className="btn btn-primary btn-sm"><Icon name="plus" size={14} /> Build a report</Link> : undefined} />
+      {saved.length > 0 && (
+        <section className="card" style={{ padding: 18, marginBottom: 'var(--gap)' }}>
+          <h3 style={{ fontSize: 15, marginBottom: 10 }}>Your company’s reports</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{saved.map((s) => <Link key={s.id} to={`/reports/builder/${s.id}`} className="chip">{s.name} <span className="dim">· {s.groupBy ? 'grouped' : `${s.columns.length} columns`}</span></Link>)}</div>
+        </section>
+      )}
       {isLoading ? <div className="skeleton" style={{ height: 160, borderRadius: 22 }} /> : (
         <div className="dgrid">
           {data.map((r) => (
@@ -69,7 +80,6 @@ export function ReportPage() {
       URL.revokeObjectURL(url)
     } catch { toast('Export failed', 'error') }
   }
-  const max = Math.max(1, ...(r?.chart.bars.map((b) => b.value) ?? [0]))
   return (
     <div ref={root}>
       <PageHeader title={r?.title ?? 'Report'} sub={r?.subtitle ?? (isLoading ? 'Loading…' : '')}
@@ -86,42 +96,48 @@ export function ReportPage() {
         </div>
       </PageHeader>
 
-      {error ? <section className="card" style={{ padding: 24 }}>{(error as any)?.response?.data?.message ?? 'This report could not be loaded.'}</section> : isLoading || !r ? <div className="skeleton" style={{ height: 240, borderRadius: 22 }} /> : (
-        <div style={{ display: 'grid', gap: 'var(--gap)' }}>
-          {r.summary.length > 0 && (
-            <div className="dgrid">
-              {r.summary.map((s) => (
-                <section key={s.label} data-card className={`card span-${r.summary.length >= 4 ? 3 : 4}`} style={{ padding: 18 }}>
-                  <div className="dim" style={{ fontSize: 13 }}>{s.label}</div>
-                  <div className="display num" style={{ fontSize: 30, marginTop: 6 }}>{formatValue(s.value, s.type, r.currency)}</div>
-                </section>
-              ))}
-            </div>
-          )}
-          {r.chart.bars.length > 0 && (
-            <section data-card className="card" style={{ padding: 20 }}>
-              <h2 style={{ fontSize: 16, marginBottom: 12 }}>{r.chart.label}</h2>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {r.chart.bars.slice(0, 12).map((b) => (
-                  <div key={b.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 180px) 1fr auto', gap: 10, alignItems: 'center', fontSize: 13 }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.label}>{b.label}</span>
-                    <span style={{ height: 12, borderRadius: 999, background: 'var(--well)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${(b.value / max) * 100}%`, background: 'var(--honey)', borderRadius: 999 }} /></span>
-                    <span className="num" style={{ minWidth: 60, textAlign: 'right' }}>{formatValue(b.value, r.chart.type ?? 'number', r.currency)}</span>
-                  </div>
-                ))}
-              </div>
+      {error ? <section className="card" style={{ padding: 24 }}>{(error as any)?.response?.data?.message ?? 'This report could not be loaded.'}</section> : isLoading || !r ? <div className="skeleton" style={{ height: 240, borderRadius: 22 }} /> : <ReportView r={r} />}
+    </div>
+  )
+}
+
+// Summary tiles, one bar chart and the table: shared by ready-made and builder reports
+export function ReportView({ r }: { r: Report }) {
+  const max = Math.max(1, ...r.chart.bars.map((b) => b.value))
+  return (
+    <div style={{ display: 'grid', gap: 'var(--gap)' }}>
+      {r.summary.length > 0 && (
+        <div className="dgrid">
+          {r.summary.map((s) => (
+            <section key={s.label} data-card className={`card span-${r.summary.length >= 4 ? 3 : 4}`} style={{ padding: 18 }}>
+              <div className="dim" style={{ fontSize: 13 }}>{s.label}</div>
+              <div className="display num" style={{ fontSize: 30, marginTop: 6 }}>{formatValue(s.value, s.type, r.currency)}</div>
             </section>
-          )}
-          <section data-card className="card" style={{ padding: 8, overflowX: 'auto' }}>
-            {r.rows.length === 0 ? <p className="dim" style={{ padding: 16 }}>No data for these filters.</p> : (
-              <table className="tbl" style={{ width: '100%', minWidth: Math.max(480, r.columns.length * 110) }}>
-                <thead><tr>{r.columns.map((c) => <th key={c.key} style={{ textAlign: c.type && c.type !== 'text' && c.type !== 'date' ? 'right' : 'left' }}>{c.label}</th>)}</tr></thead>
-                <tbody>{r.rows.map((row, i) => <tr key={i}>{r.columns.map((c) => <td key={c.key} className={c.type && c.type !== 'text' ? 'num' : undefined} style={{ textAlign: c.type && c.type !== 'text' && c.type !== 'date' ? 'right' : 'left' }}>{formatValue(row[c.key], c.type)}</td>)}</tr>)}</tbody>
-              </table>
-            )}
-          </section>
+          ))}
         </div>
       )}
+      {r.chart.bars.length > 0 && (
+        <section data-card className="card" style={{ padding: 20 }}>
+          <h2 style={{ fontSize: 16, marginBottom: 12 }}>{r.chart.label}</h2>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {r.chart.bars.slice(0, 12).map((b) => (
+              <div key={b.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 180px) 1fr auto', gap: 10, alignItems: 'center', fontSize: 13 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.label}>{b.label}</span>
+                <span style={{ height: 12, borderRadius: 999, background: 'var(--well)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${(b.value / max) * 100}%`, background: 'var(--honey)', borderRadius: 999 }} /></span>
+                <span className="num" style={{ minWidth: 60, textAlign: 'right' }}>{formatValue(b.value, r.chart.type ?? 'number', r.currency)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <section data-card className="card" style={{ padding: 8, overflowX: 'auto' }}>
+        {r.rows.length === 0 ? <p className="dim" style={{ padding: 16 }}>No data for these filters.</p> : (
+          <table className="tbl" style={{ width: '100%', minWidth: Math.max(480, r.columns.length * 110) }}>
+            <thead><tr>{r.columns.map((c) => <th key={c.key} style={{ textAlign: c.type && c.type !== 'text' && c.type !== 'date' ? 'right' : 'left' }}>{c.label}</th>)}</tr></thead>
+            <tbody>{r.rows.map((row, i) => <tr key={i}>{r.columns.map((c) => <td key={c.key} className={c.type && c.type !== 'text' ? 'num' : undefined} style={{ textAlign: c.type && c.type !== 'text' && c.type !== 'date' ? 'right' : 'left' }}>{formatValue(row[c.key], c.type)}</td>)}</tr>)}</tbody>
+          </table>
+        )}
+      </section>
     </div>
   )
 }

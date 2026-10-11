@@ -1990,3 +1990,20 @@ model SalaryRevision {
   @@index([employeeId])
   @@map("salary_revisions")
 }
+
+// Report builder: a company's own employee reports (columns, filters, grouping), saved by name and run on demand
+model SavedReport {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  columns   String[]
+  filters   Json     @default("{}")
+  groupBy   String?
+  createdBy String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("saved_reports")
+}
