@@ -57,6 +57,7 @@ export const MASTER_LISTS: MasterList[] = [
   { key: 'exit_type', name: 'Exit type', group: 'Hiring & exits', description: 'Who ended employment decides notice-shortfall handling', values: [
     v('resignation', 'Resignation', { endedBy: 'employee' }), v('termination', 'Termination', { endedBy: 'employer' }), v('retirement', 'Retirement', { endedBy: 'employer' }),
     v('end_of_contract', 'End of contract', { endedBy: 'employer' }), v('mutual_separation', 'Mutual separation', { endedBy: 'employer' }),
+    v('death', 'Death in service', { endedBy: 'employer' }), v('disablement', 'Disablement', { endedBy: 'employer' }),
   ] },
   { key: 'exit_reason', name: 'Exit reason', group: 'Hiring & exits', description: 'Why someone left; feeds attrition reports', values: [
     v('better_opportunity', 'Better opportunity'), v('compensation', 'Compensation'), v('higher_studies', 'Higher studies'), v('relocation', 'Relocation'), v('personal', 'Personal reasons'),

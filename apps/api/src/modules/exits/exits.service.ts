@@ -9,13 +9,14 @@ import { computeEmployeePayslip } from '../payroll/payroll.service'
 import { generatePayslipPdf } from '../payroll/payslip.pdf'
 import { CONTRACT_TRANSITIONS, ContractStatus } from '../employees/contracts.types'
 import { renderSettlementHtml } from './exits.pdf'
+import { computeGratuity, statutoryFor } from '../tax/statutory'
 import { DEPARTMENTS } from './exits.schema'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000)
 
-// ponytail: one divisor for every per-day rate (basic ÷ 30). Country rules (26-day months, gratuity) arrive with Phase 3 tax tables.
+// ponytail: one divisor for every per-day rate (basic ÷ 30); gratuity uses its own statutory divisor
 const DAYS_PER_MONTH = 30
 const STAFF = ['hr_admin', 'payroll_admin']
 const OPEN = ['initiated', 'computed', 'approved']
@@ -223,7 +224,17 @@ export const exitsService = {
 
     recoveries.forEach((r, i) => lines.push({ section: 'recovery', kind: 'deduction', code: `RECOVERY_${i + 1}`, name: r.description, amount: round2(r.amount) }))
 
-    lines.push({ section: 'gratuity', kind: 'earning', code: 'GRATUITY', name: 'Gratuity — PLACEHOLDER, statutory formula arrives in Phase 3', amount: 0 })
+    // Gratuity by the employee's tax country (statutory_tables IN_GRATUITY / ZM_GRATUITY)
+    const contract = await prisma.employeeContract.findFirst({ where: { employeeId: emp.id, active: true, effectiveFrom: { lte: lwd } }, orderBy: { effectiveFrom: 'desc' }, select: { effectiveFrom: true, effectiveUntil: true } })
+    const contractFrom = contract?.effectiveFrom ?? emp.hireDate
+    const paidBasic = await prisma.payslipLine.aggregate({ _sum: { amount: true }, where: { category: 'BASIC', payslip: { employeeId: emp.id, payrollCycle: { tenantId, status: { in: ['disbursed', 'locked'] }, payPeriodStart: { gte: contractFrom } } } } })
+    const finalBasic = salaryPaid ? 0 : (out.payslip.lines.create as any[]).filter((l) => l.category === 'BASIC').reduce((t, l) => t + Number(l.amount), 0)
+    const grat = computeGratuity({
+      country: emp.taxJurisdiction, hireDate: ymd(emp.hireDate), lastWorkingDate: ymd(lwd), exitType: exit.exitType, basicMonthly,
+      basicEarnedInContract: round2(Number(paidBasic._sum.amount ?? 0) + finalBasic), contractFrom: ymd(contractFrom), contractUntil: contract?.effectiveUntil ? ymd(contract.effectiveUntil) : null,
+    }, await statutoryFor(ymd(lwd)))
+    if (grat.amount > 0) lines.push({ section: 'gratuity', kind: 'earning', code: 'GRATUITY', name: 'Gratuity', amount: grat.amount, formula: grat.formula })
+    if (grat.warning) warnings.push(grat.warning)
     warnings.push('Leave encashment and notice pay are not taxed in this settlement: tax on terminal benefits arrives with the Phase 3 tax tables')
 
     const totalEarnings = round2(lines.filter((l) => l.kind === 'earning').reduce((s, l) => s + l.amount, 0))

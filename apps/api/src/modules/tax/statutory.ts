@@ -88,3 +88,30 @@ export function indiaFyStart(periodStart: string, fyStartMonth = 4) {
   const y = Number(periodStart.slice(0, 4)), m = Number(periodStart.slice(5, 7))
   return `${m >= fyStartMonth ? y : y - 1}-${String(fyStartMonth).padStart(2, '0')}-01`
 }
+
+// ─── Gratuity on exit ─────────────────────────────────────────
+export interface GratuityInput { country: string | null; hireDate: string; lastWorkingDate: string; exitType: string; basicMonthly: number; basicEarnedInContract: number; contractFrom: string; contractUntil: string | null }
+export interface GratuityResult { amount: number; formula?: string; warning?: string }
+const months = (a: string, b: string) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7)) - (Number(b.slice(8, 10)) < Number(a.slice(8, 10)) ? 1 : 0)
+
+export function computeGratuity(g: GratuityInput, tables: Record<string, StatutoryParams>): GratuityResult {
+  if (g.country === 'IN') {
+    const t = tables.IN_GRATUITY
+    if (!t) return { amount: 0, warning: 'No India gratuity table in force' }
+    const m = months(g.hireDate, g.lastWorkingDate)
+    const fullYears = Math.floor(m / 12)
+    if (fullYears < t.minYears && !t.exemptExitTypes.includes(g.exitType)) return { amount: 0, warning: `No gratuity: ${fullYears} completed year(s), the Act needs ${t.minYears}` }
+    const years = fullYears + (m % 12 >= t.roundUpMonths ? 1 : 0)
+    const raw = round2(g.basicMonthly * t.daysPerYear * years / t.divisor)
+    const amount = Math.min(raw, t.ceiling)
+    return { amount, formula: `basic ${g.basicMonthly} × ${t.daysPerYear} ÷ ${t.divisor} × ${years} year(s)${raw > t.ceiling ? `, capped at ${t.ceiling}` : ''}` }
+  }
+  if (g.country === 'ZM') {
+    const t = tables.ZM_GRATUITY
+    if (!t) return { amount: 0, warning: 'No Zambia gratuity table in force' }
+    if (!g.contractUntil) return { amount: 0, warning: 'Permanent contract: Zambian gratuity (s.73) is for long-term contracts; whether permanent contracts qualify is contested, add it as a manual line if your policy pays it' }
+    if (months(g.contractFrom, g.contractUntil) + 1 < t.minContractMonths) return { amount: 0, warning: `No gratuity: contract shorter than ${t.minContractMonths} months` }
+    return { amount: round2(g.basicEarnedInContract * t.rate), formula: `${t.rate * 100}% of basic earned since ${g.contractFrom} (${g.basicEarnedInContract})` }
+  }
+  return { amount: 0, warning: `No statutory gratuity rule for ${g.country ?? 'an employee without a tax country'}; add it as a manual line if due` }
+}

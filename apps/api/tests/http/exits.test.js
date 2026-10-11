@@ -116,7 +116,7 @@ const TAG = `p20-${Date.now()}`
   const reimb = fnf.lines.filter((l) => l.section === 'reimbursement')
   check('pending approved reimbursement included (300)', reimb.length === 1 && reimb[0].amount === 300 && reimb[0].sourceRefId === claim.id, reimb)
   check('manual recovery line (500)', L('RECOVERY_1')?.amount === 500 && L('RECOVERY_1').kind === 'deduction', L('RECOVERY_1'))
-  check('gratuity is a labelled 0 placeholder', L('GRATUITY')?.amount === 0 && /PLACEHOLDER/.test(L('GRATUITY').name), L('GRATUITY'))
+  check('gratuity follows the statutory rule: none on a short or permanent contract, with the reason in warnings', !L('GRATUITY') && fnf.warnings.some((w) => /gratuity/i.test(w)), fnf.warnings)
   const earn = sum(fnf.lines.filter((l) => l.kind === 'earning').map((l) => l.amount))
   const ded = sum(fnf.lines.filter((l) => l.kind === 'deduction').map((l) => l.amount))
   check(`totals: earnings ${earn} − deductions ${ded} = net ${fnf.netPayable}`, fnf.totalEarnings === earn && fnf.totalDeductions === ded && fnf.netPayable === round2(earn - ded), fnf)
