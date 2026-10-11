@@ -10,6 +10,8 @@ import { announcementService } from '../../modules/announcements/announcements.s
 import { applyDuePositionChanges } from '../../modules/employees/record.service'
 import { sendExpiryReminders } from '../../modules/employees/documents.service'
 import { autoYearEnd } from '../../modules/leave/yearend.service'
+import { publishPeopleDates } from '../../modules/automation/automation.service'
+import { retryWebhooks } from '../../modules/automation/integrations.service'
 
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
@@ -44,6 +46,16 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
       if (announced) console.log(`[cron] events-sweep: ${announced} scheduled announcement(s) published`)
       return stale.length
     },
+  },
+  'webhook-retry': {
+    pattern: '*/5 * * * *',
+    description: 'Retry failed webhook deliveries whose backoff has passed (up to 6 attempts)',
+    run: (t) => retryWebhooks(t),
+  },
+  'people-dates': {
+    pattern: '30 4 * * *',
+    description: 'Birthdays, work anniversaries and probation endings for automation rules and webhooks that listen to them',
+    run: (t) => perTenant(t, (id) => publishPeopleDates(id)),
   },
   'leave-sla-escalation': {
     pattern: '15 * * * *',

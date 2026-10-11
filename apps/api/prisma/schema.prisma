@@ -2007,3 +2007,94 @@ model SavedReport {
   @@index([tenantId])
   @@map("saved_reports")
 }
+
+// ─── AUTOMATION & INTEGRATIONS (Phase 6) ─────────────────────
+// "When <event> happens and <conditions> hold, do <actions>": set up by admins, run by the domain-events worker
+model AutomationRule {
+  id         String    @id @default(uuid())
+  tenantId   String
+  name       String
+  trigger    String // event type from the automation catalog
+  conditions Json      @default("[]") // [{field, op, value}]
+  actions    Json // [{type: notify|task, ...}]
+  active     Boolean   @default(true)
+  runCount   Int       @default(0)
+  lastRunAt  DateTime?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId, trigger])
+  @@map("automation_rules")
+}
+
+// One row per rule per event: makes a retried event idempotent and is the run log admins see
+model AutomationRun {
+  id        String   @id @default(uuid())
+  tenantId  String
+  ruleId    String
+  eventId   String
+  status    String // done | skipped | failed
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@unique([ruleId, eventId])
+  @@index([tenantId, createdAt])
+  @@map("automation_runs")
+}
+
+// Outbound webhooks: signed JSON POSTs for chosen events, retried with backoff
+model Webhook {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  url       String
+  secret    String // encrypted; shown once when created
+  events    String[]
+  active    Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id            String    @id @default(uuid())
+  tenantId      String
+  webhookId     String
+  eventId       String
+  eventType     String
+  status        String    @default("pending") // pending | delivered | failed (retrying) | dead
+  attempts      Int       @default(0)
+  responseCode  Int?
+  lastError     String?
+  nextAttemptAt DateTime?
+  deliveredAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([webhookId, eventId])
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+// Inbound API keys for other systems (read-only scopes). Only a keyed hash is stored; the key is shown once.
+model ApiKey {
+  id         String    @id @default(uuid())
+  tenantId   String
+  name       String
+  prefix     String // first characters, to recognise a key in the list
+  keyHash    String    @unique
+  scopes     String[]
+  active     Boolean   @default(true)
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+

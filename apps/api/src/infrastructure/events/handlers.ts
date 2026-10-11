@@ -2,6 +2,8 @@ import { prisma } from '../database/prisma'
 import { notify, userIdsWithRole, userIdOfEmployee } from '../notifications/notify'
 import { normaliseDateInput } from '../../shared/utils/businessDate'
 import { audienceUsers } from '../../shared/utils/audience'
+import { runAutomations } from '../../modules/automation/automation.service'
+import { queueWebhooks } from '../../modules/automation/integrations.service'
 
 // Consumers of domain_events, run by the domain-events worker. Each handler must be safe to run twice:
 // notifications dedupe on (eventId, userId, type) and data fixes are idempotent.
@@ -93,7 +95,6 @@ export const EVENT_HANDLERS: Record<string, Handler[]> = {
   'contract.expiring.soon': [toHR('contract.expiring.soon', 'Contract expiring soon', (p) => `Contract for ${p.name} expires in ${p.daysRemaining} days.`, (p) => `/employees/${p.employeeId}`)],
   'contract.expired': [toHR('contract.expired', 'Contract expired', (p) => `Contract for ${p.name} has expired. HR action required.`, (p) => `/employees/${p.employeeId}`)],
   'exit.initiated': [toHR('exit.initiated', 'Exit initiated', (p) => `Exit (${p.exitType}) initiated; last working day ${ymd(p.lastWorkingDate)}.`, (p) => (p.exitId ? `/exits/${p.exitId}` : '/exits'))],
-  'payslip.released': [toEmployee('payslip.released', 'Payslip available', (p) => `Your payslip is ready. Net pay ${p.netPay} ${p.currency}.`, (p) => `/payroll/payslips/${p.payslipId}`)],
   'attendance.absent.marked': [toEmployee('attendance.absent.marked', 'Marked absent', (p) => `No attendance or approved leave on ${p.date}; you were marked absent. Apply for leave or request regularisation if this is wrong.`, () => '/attendance')],
 }
 
@@ -102,6 +103,9 @@ export async function dispatchEvent(eventId: string) {
   if (!event || event.status === 'delivered') return
   try {
     for (const handler of EVENT_HANDLERS[event.eventType] ?? []) await handler(event)
+    // Company-defined automation and webhooks; neither throws (failures are recorded and retried on their own)
+    await runAutomations(event)
+    await queueWebhooks(event)
     await prisma.domainEvent.update({ where: { id: eventId }, data: { status: 'delivered', deliveredAt: new Date() } })
   } catch (err) {
     await prisma.domainEvent.update({ where: { id: eventId }, data: { status: 'failed', retryCount: { increment: 1 } } })

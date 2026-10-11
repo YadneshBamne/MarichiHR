@@ -31,6 +31,8 @@ import { recruitmentRouter } from './modules/recruitment/recruitment.router'
 import { dashboardRouter } from './modules/dashboard/dashboard.router'
 import { authenticate } from './middleware/auth.middleware'
 import { requireModule } from './middleware/module.middleware'
+import { automationRouter } from './modules/automation/automation.router'
+import { integrationApiRouter } from './modules/automation/integration-api.router'
 
 export function createApp() {
   const app = express()
@@ -78,6 +80,8 @@ export function createApp() {
   app.use('/api/v1/incentives', authenticate, requireModule('payroll'), incentivesRouter)
   app.use('/api/v1/masters', mastersRouter)
   app.use('/api/v1/profile-requests', requestsRouter)
+  app.use('/api/v1/automation', automationRouter)
+  app.use('/api/v1/integration', integrationApiRouter)
   app.use('/api/v1/approvals', approvalsRouter)
   app.use('/api/v1/salary-revisions', authenticate, requireModule('payroll'), revisionsRouter)
   app.use('/api/v1/recruitment', recruitmentRouter)

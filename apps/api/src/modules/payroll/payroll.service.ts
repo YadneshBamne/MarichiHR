@@ -578,15 +578,6 @@ export const payrollService = {
     if (!cycle.payslipsReleasedAt) await payrollService.releasePayslips(cycleId, tenantId, userId)
 
     await eventBus.publish(tenantId, 'payroll.cycle.disbursed', { payrollCycleId: cycleId, disbursedBy: userId })
-    const payslips = await repo.listCyclePayslips(cycleId)
-    for (const ps of payslips) {
-      await eventBus.publish(tenantId, 'payslip.released', {
-        payslipId: ps.id,
-        employeeId: ps.employeeId,
-        netPay: ps.netPay,
-        currency: ps.currency,
-      })
-    }
 
     return getCycleOrThrow(cycleId, tenantId)
   },
@@ -631,10 +622,12 @@ export const payrollService = {
     if (cycle.payslipsReleasedAt) throw new AppError('Payslips for this run are already released', 400)
     const claimed = await prisma.payrollCycle.updateMany({ where: { id: cycleId, payslipsReleasedAt: null }, data: { payslipsReleasedAt: new Date() } })
     if (!claimed.count) throw new AppError('Payslips for this run are already released', 400)
-    const slips = await prisma.payslip.findMany({ where: { payrollCycleId: cycleId, withheld: false }, select: { employee: { select: { userId: true } } } })
+    const slips = await prisma.payslip.findMany({ where: { payrollCycleId: cycleId, withheld: false }, select: { id: true, employeeId: true, netPay: true, currency: true, employee: { select: { userId: true } } } })
     await repo.createAudit({ tenantId, userId, action: 'PAYSLIPS_RELEASED', entityType: 'payroll_cycle', entityId: cycleId, newValue: { count: slips.length } })
     const month = new Date(cycle.payPeriodStart).toISOString().slice(0, 7)
     await notify({ tenantId, userIds: slips.map((s) => s.employee.userId), type: 'payslip.released', title: `Your payslip for ${month} is ready`, body: 'Open My payslips to view or download it', link: '/payroll', entityType: 'payroll_cycle', entityId: cycleId, eventId: `payslips:${cycleId}` })
+    // One event per released payslip, for automation rules and webhooks (the notification above is the employee's)
+    for (const ps of slips) await eventBus.publish(tenantId, 'payslip.released', { payslipId: ps.id, payrollCycleId: cycleId, employeeId: ps.employeeId, netPay: ps.netPay, currency: ps.currency })
     return { released: slips.length }
   },
 
