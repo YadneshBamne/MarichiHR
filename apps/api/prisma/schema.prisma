@@ -2098,3 +2098,90 @@ model ApiKey {
   @@map("api_keys")
 }
 
+// ─── LIVE INTEGRATIONS (Phase 7) ──────────────────────────────
+// Biometric readers, turnstiles and QR kiosks that send punches with their own key
+model AttendanceDevice {
+  id             String    @id @default(uuid())
+  tenantId       String
+  name           String
+  kind           String // biometric | turnstile | qr_kiosk
+  workLocationId String?
+  prefix         String
+  keyHash        String    @unique
+  active         Boolean   @default(true)
+  lastSeenAt     DateTime?
+  createdBy      String
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId])
+  @@map("attendance_devices")
+}
+
+// Every punch a device sent, applied or not (externalId from the device makes re-sends harmless)
+model DevicePunch {
+  id         String   @id @default(uuid())
+  tenantId   String
+  deviceId   String
+  externalId String
+  employeeId String?
+  badge      String
+  punchedAt  DateTime
+  direction  String // in | out | auto
+  status     String // applied | ignored | error
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([deviceId, externalId])
+  @@index([tenantId, punchedAt])
+  @@map("device_punches")
+}
+
+// Per person and alert category: which outside channels to use (in-app is always on)
+model NotificationPreference {
+  userId    String
+  category  String
+  channels  String[]
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, category])
+  @@map("notification_preferences")
+}
+
+// A statutory return for one payroll run and country, submitted through an adapter and closed by an acknowledgement
+model StatutoryFiling {
+  id             String    @id @default(uuid())
+  tenantId       String
+  payrollCycleId String
+  jurisdiction   String
+  adapter        String // manual | sandbox | digitax | whitebooks
+  status         String    @default("prepared") // prepared | submitted | acknowledged | rejected
+  package        Json
+  totals         Json
+  reference      String?
+  error          String?
+  preparedBy     String
+  submittedBy    String?
+  submittedAt    DateTime?
+  acknowledgedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([payrollCycleId, jurisdiction])
+  @@index([tenantId])
+  @@map("statutory_filings")
+}
+
+// A company's settings for one outside connection: mode, non-secret config, encrypted secrets
+model TenantIntegration {
+  tenantId  String
+  key       String
+  mode      String   @default("off") // off | sandbox | live
+  config    Json     @default("{}")
+  secrets   String?
+  updatedBy String
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, key])
+  @@map("tenant_integrations")
+}
+
