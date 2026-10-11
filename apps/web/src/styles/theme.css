@@ -304,3 +304,10 @@ th { text-transform: none !important; letter-spacing: 0 !important; background-c
 @media (max-width: 699px) { .span-3, .span-4, .span-6, .span-8 { grid-column: span 12; } }
 
 [role='dialog'] .sidebar { background: var(--solid); }
+
+/* Printing a statement: only the printable card */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; box-shadow: none; }
+}

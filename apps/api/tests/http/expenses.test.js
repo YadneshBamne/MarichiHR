@@ -137,7 +137,7 @@ const TAG = `p19-${Date.now()}`
     const code = ps.employee.employeeCode
     check(`${code}: one REIMB line per finance-approved claim (${expected.length})`, reimb.length === expected.length && expected.every((c) => reimb.some((l) => l.sourceRefId === c.id && l.amount === c.homeAmount)), reimb)
     check(`${code}: reimbursements not in gross (GROSS line ${gross?.amount} = earnings ${earnings} = payslip gross)`, gross && gross.amount === earnings && full.grossEarnings === earnings, { gross: gross?.amount, earnings, grossEarnings: full.grossEarnings })
-    check(`${code}: net = NET rule + reimbursements (added after NET)`, round2(net.amount + sum(reimb.map((l) => l.amount))) === full.netPay && Math.max(...reimb.map((l) => l.sequence), 0) > net.sequence, { net: net.amount, reimb: sum(reimb.map((l) => l.amount)), netPay: full.netPay })
+    check(`${code}: net = NET rule + reimbursements (added after NET)`, round2(net.amount + sum(reimb.map((l) => l.amount))) === full.netPay && (!reimb.length || Math.min(...reimb.map((l) => l.sequence)) > net.sequence), { net: net.amount, reimb: sum(reimb.map((l) => l.amount)), netPay: full.netPay })
     // PAYE is computed from GROSS alone: same gross with no claims must give the same tax
     const paye = full.lines.find((l) => l.code === 'PAYE_ZM')
     const ded = sum(full.lines.filter((l) => ['DED', 'TAX'].includes(l.category)).map((l) => l.amount))

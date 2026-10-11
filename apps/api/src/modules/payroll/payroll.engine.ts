@@ -1,5 +1,5 @@
 import { evaluateRuleExpression, evaluateCondition } from './payroll.expression'
-import { computeZraPaye, computeIndiaTdsPlaceholder } from './payroll.config'
+import { StatutoryContext, statutoryFunctions } from '../tax/statutory'
 
 export interface EngineRule {
   id: string
@@ -50,6 +50,8 @@ export interface EngineInput {
   inputsByCode: Record<string, number>
   // Paid after tax: never fed into any rule category, so gross and tax are unaffected
   reimbursementLines?: EngineReimbursementLine[]
+  // Statutory tables in force for the pay period (and India year-to-date figures) behind the tax functions
+  statutory?: StatutoryContext
 }
 
 export interface EngineLine {
@@ -105,6 +107,7 @@ export function runPayrollEngine(input: EngineInput): EngineResult {
     })
   }
 
+  const taxFns = statutoryFunctions(input.statutory ?? { at: 'today', tables: {} }, (w) => { if (!warnings.includes(w)) warnings.push(w) })
   const buildScope = () => ({
     contract: { ...input.contract },
     categories: { ...categories },
@@ -116,8 +119,7 @@ export function runPayrollEngine(input: EngineInput): EngineResult {
       workingDays: input.workingDays,
       factor: input.factor,
     },
-    compute_zra_paye: (x: number) => computeZraPaye(Number(x)),
-    compute_india_tds: (_gross: number, _ded: number) => computeIndiaTdsPlaceholder(),
+    ...taxFns,
   })
 
   const sorted = [...input.rules].sort((a, b) => a.sequence - b.sequence)

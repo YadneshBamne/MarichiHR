@@ -1,6 +1,7 @@
 import { payrollRepository as repo } from './payroll.repository'
 import { runPayrollEngine, EngineExtraLine } from './payroll.engine'
 import { PAYROLL_CONFIG } from './payroll.config'
+import { statutoryFor, indiaFyStart, indiaMonthsLeft, StatutoryContext } from '../tax/statutory'
 import { CreateCycleDto, AddPayrollInputDto } from './payroll.types'
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
@@ -174,6 +175,20 @@ export async function computeEmployeePayslip(
     reimbursementLines.push({ claimId: cl.id, categoryName: cl.category.name, expenseDate: dstr(cl.expenseDate), amount: cl.homeAmount })
   }
 
+  // ─── Statutory tables for the period; India TDS also needs this financial year's pay and tax so far ──
+  const statutory: StatutoryContext = { at: periodEnd, tables: await statutoryFor(periodEnd) }
+  if (contract.salaryStructure.rules.some((r: any) => /compute_india_tds/.test(`${r.pythonCode ?? ''}`))) {
+    const prior = await prisma.payslip.findMany({
+      where: { employeeId: emp.id, payrollCycleId: { not: cycle.id }, payrollCycle: { payPeriodStart: { gte: toDate(indiaFyStart(periodStart)), lt: cycle.payPeriodStart } } },
+      select: { grossEarnings: true, lines: { where: { category: 'TAX' }, select: { amount: true } } },
+    })
+    statutory.indiaYtd = {
+      gross: round2(prior.reduce((a, p) => a + Number(p.grossEarnings), 0)),
+      tax: round2(prior.reduce((a, p) => a + p.lines.reduce((b, l) => b + Number(l.amount), 0), 0)),
+      monthsLeft: indiaMonthsLeft(periodStart),
+    }
+  }
+
   // ─── Run the engine ───────────────────────────────────────
   const result = runPayrollEngine({
     rules: contract.salaryStructure.rules.map((r: any) => ({
@@ -204,6 +219,7 @@ export async function computeEmployeePayslip(
     extraLines,
     inputsByCode,
     reimbursementLines,
+    statutory,
   })
 
   warnings.push(...result.warnings)
@@ -218,6 +234,7 @@ export async function computeEmployeePayslip(
     lwpDays: 0,
     extraLines: [],
     inputsByCode,
+    statutory,
   })
 
   const workDays = Math.max(0, round2(windowWorking.length - lwpDays - paidLeaveDays))

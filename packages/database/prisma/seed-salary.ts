@@ -108,10 +108,10 @@ async function main() {
     { name: 'Transport Allowance', code: 'TA', sequence: 30, categoryCode: 'ALW', amountType: 'fixed', amountFixed: 1500, appearsOnPayslip: true },
     { name: 'Medical Allowance', code: 'MED', sequence: 40, categoryCode: 'ALW', amountType: 'fixed', amountFixed: 1000, appearsOnPayslip: true },
     { name: 'Gross Salary', code: 'GROSS', sequence: 50, categoryCode: 'GROSS', amountType: 'python_code', pythonCode: 'result = categories.BASIC + categories.ALW', appearsOnPayslip: true },
-    { name: 'NAPSA Employee (5%)', code: 'NAPSA_EMP', sequence: 60, categoryCode: 'DED', amountType: 'python_code', pythonCode: 'result = min(contract.wageMonthly * 0.05, 1073.20)', appearsOnPayslip: true },
-    { name: 'NHIMA Employee (1%)', code: 'NHIMA_EMP', sequence: 70, categoryCode: 'DED', amountType: 'percentage', amountPercentage: 0.01, amountPercentageBase: 'GROSS', appearsOnPayslip: true },
-    { name: 'ZRA PAYE', code: 'PAYE_ZM', sequence: 80, categoryCode: 'TAX', amountType: 'python_code', pythonCode: 'result = compute_zra_paye(categories.GROSS - categories.DED)', appearsOnPayslip: true },
-    { name: 'NAPSA Employer (10%)', code: 'NAPSA_EMPLOYER', sequence: 90, categoryCode: 'EMP_CONTRIB', amountType: 'python_code', pythonCode: 'result = min(contract.wageMonthly * 0.10, 2146.40)', appearsOnPayslip: false },
+    { name: 'NAPSA Employee (5%)', code: 'NAPSA_EMP', sequence: 60, categoryCode: 'DED', amountType: 'python_code', pythonCode: 'result = napsa_employee(categories.GROSS)', appearsOnPayslip: true },
+    { name: 'NHIMA Employee (1%)', code: 'NHIMA_EMP', sequence: 70, categoryCode: 'DED', amountType: 'python_code', pythonCode: 'result = nhima_employee(categories.BASIC)', appearsOnPayslip: true },
+    { name: 'ZRA PAYE', code: 'PAYE_ZM', sequence: 80, categoryCode: 'TAX', amountType: 'python_code', pythonCode: 'result = compute_zra_paye(categories.GROSS)', appearsOnPayslip: true },
+    { name: 'NAPSA Employer (5%)', code: 'NAPSA_EMPLOYER', sequence: 90, categoryCode: 'EMP_CONTRIB', amountType: 'python_code', pythonCode: 'result = napsa_employer(categories.GROSS)', appearsOnPayslip: false },
     { name: 'Net Pay', code: 'NET', sequence: 100, categoryCode: 'NET', amountType: 'python_code', pythonCode: 'result = categories.GROSS - categories.DED - categories.TAX', appearsOnPayslip: true },
   ]
 

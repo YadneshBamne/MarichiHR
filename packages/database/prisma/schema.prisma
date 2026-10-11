@@ -1515,3 +1515,21 @@ model Interview {
   @@index([interviewerUserId, status])
   @@map("interviews")
 }
+
+// Statutory rates (tax bands, social-security and health-insurance contributions) by country and effective date.
+// Platform-wide reference data maintained through migrations, each version citing its official source.
+model StatutoryTable {
+  id            String   @id @default(uuid())
+  country       String // ISO-3166 alpha-2: ZM, IN
+  code          String // ZM_PAYE | ZM_NAPSA | ZM_NHIMA | IN_TDS_NEW
+  name          String
+  effectiveFrom DateTime @db.Date
+  params        Json
+  sourceUrl     String
+  sourceNote    String
+  verified      Boolean  @default(false) // false = figure from a secondary source; confirm with the authority
+  createdAt     DateTime @default(now())
+
+  @@unique([code, effectiveFrom])
+  @@map("statutory_tables")
+}

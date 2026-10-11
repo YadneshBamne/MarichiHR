@@ -1,3 +1,4 @@
+import { statutoryFor } from '../tax/statutory'
 import { salaryRepository } from './salary.repository'
 import { CreateSalaryStructureTypeDto, CreateSalaryStructureDto, CreateSalaryRuleDto, CreateGradeBandDto } from './salary.types'
 import { AppError } from '../../shared/utils/AppError'
@@ -48,12 +49,14 @@ async function dryRun(tenantId: string, structureId: string, candidate: RuleInpu
     amountType: r.amountType, amountFixed: r.amountFixed, amountPercentage: r.amountPercentage, amountPercentageBase: r.amountPercentageBase,
     pythonCode: r.pythonCode, conditionSelect: r.conditionSelect || 'always', conditionExpr: r.conditionExpr, appearsOnPayslip: r.appearsOnPayslip ?? true,
   })
+  const today = new Date().toISOString().slice(0, 10)
   try {
     const result = runPayrollEngine({
       rules: [...others.map((r) => toEngine(r, r.category.code)), toEngine({ ...candidate, id: replaceRuleId }, category.code)],
       contract: { wageMonthly: sampleWage, fullWageMonthly: sampleWage, ctcAnnual: sampleWage * 12, variablePayPercent: 0 },
       factor: 1, workingDays: 22, paidDays: 22, lwpDays: 0, extraLines: [],
       inputsByCode: Object.fromEntries(inputCodes.map((c) => [c, 0])),
+      statutory: { at: today, tables: await statutoryFor(today) },
     })
     const own = result.lines.find((l) => l.code === candidate.code)
     return {
