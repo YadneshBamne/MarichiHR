@@ -55,6 +55,7 @@ model Tenant {
   customFieldDefs  CustomFieldDefinition[]
   employeeFieldSettings EmployeeFieldSetting[]
   attendancePolicies    AttendancePolicy[]
+  approvalChains        ApprovalChain[]
   candidates       Candidate[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
@@ -1878,4 +1879,62 @@ model AttendancePolicy {
 
   @@index([tenantId, active])
   @@map("attendance_policies")
+}
+
+// Approval chains (greytHR "workflow levels"): who approves each kind of request, in order. With no chain, the
+// old rule applies (the direct manager or HR). Steps are created when a request is raised; each acts in turn.
+model ApprovalChain {
+  id           String   @id @default(uuid())
+  tenantId     String
+  requestType  String // leave | regularisation | overtime
+  name         String
+  priority     Int      @default(100)
+  leaveTypeIds String[] @default([]) // leave only: empty = every leave type
+  minDays      Float? // leave only: applies from this many days
+  levels       Json // [{ kind: manager | skip_manager | hr | user, userId? }] 1-5 levels
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, requestType, active])
+  @@map("approval_chains")
+}
+
+model ApprovalStep {
+  id            String    @id @default(uuid())
+  tenantId      String
+  requestType   String
+  requestId     String
+  level         Int
+  kind          String
+  userId        String?
+  status        String    @default("waiting") // waiting | pending | approved | rejected | skipped
+  actedBy       String?
+  onBehalfOf    String? // set when a delegate acted
+  actedAt       DateTime?
+  comments      String?
+  pendingSince  DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, requestType, requestId])
+  @@index([tenantId, status])
+  @@map("approval_steps")
+}
+
+// While someone is away, their approvals can be done by a delegate
+model ApprovalDelegation {
+  id         String   @id @default(uuid())
+  tenantId   String
+  fromUserId String
+  toUserId   String
+  startDate  DateTime @db.Date
+  endDate    DateTime @db.Date
+  reason     String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, toUserId, active])
+  @@map("approval_delegations")
 }

@@ -1,4 +1,5 @@
 import { attendanceRepository } from './attendance.repository'
+import { startApproval, actOnApproval, closeApproval } from '../approvals/approvals.service'
 import { ClockInDto, ClockOutDto, RegularisationDto, OvertimeRequestDto, AttendanceOverrideDto } from './attendance.types'
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
@@ -311,7 +312,7 @@ export const attendanceService = {
       throw new AppError('A regularisation request already exists for this date', 409)
     }
 
-    return attendanceRepository.createRegularisation(employeeId, {
+    const created = await attendanceRepository.createRegularisation(employeeId, {
       date,
       actualIn: data.actualIn,
       actualOut: data.actualOut,
@@ -319,16 +320,19 @@ export const attendanceService = {
       expectedIn: record?.checkInTime ? localTimeString(record.checkInTime, tz) : undefined,
       expectedOut: record?.checkOutTime ? localTimeString(record.checkOutTime, tz) : undefined,
     })
+    await startApproval(tenantId, 'regularisation', created.id, employeeId)
+    return created
   },
 
-  async approveRegularisation(id: string, user: AccessUser) {
+  async approveRegularisation(id: string, user: AccessUser, opts: { override?: boolean; comments?: string } = {}) {
     const { tenantId } = user
     const reg = await attendanceRepository.findRegularisationById(id)
     if (!reg || reg.employee.tenantId !== tenantId) throw new AppError('Regularisation not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can approve requests', 403)
     const approverId = user.employeeId
-    await assertCanApprove(user, reg.employeeId, tenantId, { entityType: 'attendance_regularisation', entityId: id })
     if (reg.status !== 'pending') throw new AppError(`Already ${reg.status}`, 400)
+    const step = await actOnApproval(user, 'regularisation', id, reg.employeeId, true, opts.comments, opts)
+    if (!step.final) return attendanceRepository.findRegularisationById(id)
 
     await attendanceRepository.approveRegularisation(id, approverId)
 
@@ -381,14 +385,14 @@ export const attendanceService = {
     return attendanceRepository.findRegularisationById(id)
   },
 
-  async rejectRegularisation(id: string, user: AccessUser) {
+  async rejectRegularisation(id: string, user: AccessUser, opts: { override?: boolean; comments?: string } = {}) {
     const { tenantId } = user
     const reg = await attendanceRepository.findRegularisationById(id)
     if (!reg || reg.employee.tenantId !== tenantId) throw new AppError('Regularisation not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can reject requests', 403)
     const approverId = user.employeeId
-    await assertCanApprove(user, reg.employeeId, tenantId, { entityType: 'attendance_regularisation', entityId: id })
     if (reg.status !== 'pending') throw new AppError(`Already ${reg.status}`, 400)
+    await actOnApproval(user, 'regularisation', id, reg.employeeId, false, opts.comments, opts)
 
     return attendanceRepository.rejectRegularisation(id, approverId)
   },
@@ -410,37 +414,40 @@ export const attendanceService = {
       const agg = await prisma.overtimeRequest.aggregate({ _sum: { overtimeHours: true }, where: { employeeId, status: { in: ['pending', 'approved'] }, date: { gte: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)), lte: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)) } } })
       if ((agg._sum.overtimeHours ?? 0) + data.overtimeHours > policy.overtimeMaxHoursPerMonth) throw new AppError(`Your attendance policy caps overtime at ${policy.overtimeMaxHoursPerMonth} hours a month`, 400)
     }
-    return attendanceRepository.createOvertimeRequest(employeeId, {
+    const ot = await attendanceRepository.createOvertimeRequest(employeeId, {
       date: normaliseDateInput(data.date),
       overtimeHours: data.overtimeHours,
       reason: data.reason,
     })
+    await startApproval(tenantId, 'overtime', ot.id, employeeId)
+    return ot
   },
 
-  async approveOvertime(id: string, user: AccessUser, rate?: number) {
+  async approveOvertime(id: string, user: AccessUser, rate?: number, opts: { override?: boolean; comments?: string } = {}) {
     const { tenantId } = user
     const req = await prisma.overtimeRequest.findUnique({ where: { id }, include: { employee: { select: { tenantId: true } } } })
     if (!req || req.employee.tenantId !== tenantId) throw new AppError('Overtime request not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can approve requests', 403)
     const approverId = user.employeeId
-    await assertCanApprove(user, req.employeeId, tenantId, { entityType: 'overtime_request', entityId: id })
     const approvedRate = rate ?? (await policyFor(req.employeeId)).overtimeRate // the policy's rate unless the approver sets one
     if (typeof approvedRate !== 'number' || !Number.isFinite(approvedRate) || approvedRate < 1 || approvedRate > 5) {
       throw new AppError('Approved rate must be a number between 1 and 5', 400)
     }
     if (req.status !== 'pending') throw new AppError(`Already ${req.status}`, 400)
+    const step = await actOnApproval(user, 'overtime', id, req.employeeId, true, opts.comments, opts)
+    if (!step.final) return prisma.overtimeRequest.findUnique({ where: { id } })
 
     return attendanceRepository.approveOvertimeRequest(id, approverId, approvedRate)
   },
 
-  async rejectOvertime(id: string, user: AccessUser) {
+  async rejectOvertime(id: string, user: AccessUser, opts: { override?: boolean; comments?: string } = {}) {
     const { tenantId } = user
     const req = await prisma.overtimeRequest.findUnique({ where: { id }, include: { employee: { select: { tenantId: true } } } })
     if (!req || req.employee.tenantId !== tenantId) throw new AppError('Overtime request not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can reject requests', 403)
     const approverId = user.employeeId
-    await assertCanApprove(user, req.employeeId, tenantId, { entityType: 'overtime_request', entityId: id })
     if (req.status !== 'pending') throw new AppError(`Already ${req.status}`, 400)
+    await actOnApproval(user, 'overtime', id, req.employeeId, false, opts.comments, opts)
 
     return attendanceRepository.rejectOvertimeRequest(id, approverId)
   },

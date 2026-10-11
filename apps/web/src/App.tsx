@@ -115,7 +115,7 @@ export default function App() {
                     <Route path="payroll/cycles/:id" element={page(guard(<CycleDetailPage />, { roles: STAFF, app: 'payroll' }))} />
                     <Route path="payroll/payslips/:id" element={page(guard(<PayslipPage />, { app: 'payroll' }))} />
                     <Route path="expenses" element={page(guard(<ExpensesPage />, { app: 'expenses' }))} />
-                    <Route path="approvals" element={page(guard(<ApprovalsPage />, { roles: ['manager', ...HR] }))} />
+                    <Route path="approvals" element={page(<ApprovalsPage />)} />
                     <Route path="activities" element={page(<ActivitiesPage />)} />
                     <Route path="exits" element={page(guard(<ExitsPage />, { app: 'exits' }))} />
                     <Route path="exits/:id" element={page(guard(<ExitDetailPage />, { app: 'exits' }))} />

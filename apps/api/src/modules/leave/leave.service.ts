@@ -1,4 +1,5 @@
 import { leaveRepository } from './leave.repository'
+import { startApproval, actOnApproval, closeApproval } from '../approvals/approvals.service'
 import { ApplyLeaveDto, ApproveLeaveDto, RejectLeaveDto, LeaveAllocationRequestDto, ManualAllocationDto } from './leave.types'
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
@@ -139,6 +140,8 @@ export const leaveService = {
       slaDeadline
     )
 
+    await startApproval(tenantId, 'leave', request.id, employeeId, { leaveTypeId: data.leaveTypeId, days: totalDays })
+
     await eventBus.publish(tenantId, 'leave.request.submitted', {
       leaveRequestId: request.id,
       employeeId,
@@ -153,14 +156,16 @@ export const leaveService = {
     return request
   },
 
-  async approveLeave(requestId: string, user: AccessUser, dto: ApproveLeaveDto) {
+  async approveLeave(requestId: string, user: AccessUser, dto: ApproveLeaveDto, opts: { override?: boolean } = {}) {
     const { tenantId } = user
     const request = await leaveRepository.findRequestById(requestId)
     if (!request || request.employee.tenantId !== tenantId) throw new AppError('Leave request not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can approve requests', 403)
     const approverId = user.employeeId
-    await assertCanApprove(user, request.employeeId, tenantId, { entityType: 'leave_request', entityId: requestId })
     if (request.status !== 'pending') throw new AppError(`Leave request is already ${request.status}`, 400)
+    // With an approval chain, an approval before the last level only moves the request on
+    const step = await actOnApproval(user, 'leave', requestId, request.employeeId, true, dto.comments, opts)
+    if (!step.final) return leaveRepository.findRequestById(requestId)
 
     await leaveRepository.updateRequestStatus(requestId, 'approved')
     await leaveRepository.createApproval(requestId, approverId, 1, 'approved', dto.comments)
@@ -184,16 +189,15 @@ export const leaveService = {
     return leaveRepository.findRequestById(requestId)
   },
 
-  async rejectLeave(requestId: string, user: AccessUser, dto: RejectLeaveDto) {
+  async rejectLeave(requestId: string, user: AccessUser, dto: RejectLeaveDto, opts: { override?: boolean } = {}) {
     const { tenantId } = user
     const request = await leaveRepository.findRequestById(requestId)
     if (!request || request.employee.tenantId !== tenantId) throw new AppError('Leave request not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can reject requests', 403)
     const approverId = user.employeeId
-    await assertCanApprove(user, request.employeeId, tenantId, { entityType: 'leave_request', entityId: requestId })
     if (request.status !== 'pending') throw new AppError(`Leave request is already ${request.status}`, 400)
-
     if (!dto.comments) throw new AppError('Rejection reason is required', 400)
+    await actOnApproval(user, 'leave', requestId, request.employeeId, false, dto.comments, opts)
 
     await leaveRepository.updateRequestStatus(requestId, 'rejected')
     await leaveRepository.createApproval(requestId, approverId, 1, 'rejected', dto.comments)
@@ -223,6 +227,7 @@ export const leaveService = {
 
     const prevStatus = request.status
     await leaveRepository.updateRequestStatus(requestId, 'cancelled')
+    await closeApproval(tenantId, 'leave', requestId)
 
     if (prevStatus === 'pending') {
       await leaveRepository.updateBalance(request.employeeId, request.leaveTypeId, {

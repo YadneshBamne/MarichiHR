@@ -2,18 +2,21 @@ import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import LeaveApprovalsPanel from '../leave/LeaveApprovalsPanel'
 import ApprovalsPanel from '../attendance/ApprovalsPanel'
+import { WaitingForMe, Monitor, ChainsSetup, usePendingChain } from './ApprovalChainsPanel'
 import { usePendingLeaveApprovals } from '../../lib/hooks/useLeave'
 import {
   usePendingRegularisations as useAttPendingReg,
   usePendingOvertime as useAttPendingOT,
 } from '../../lib/hooks/useAttendance'
 
-type Tab = 'leave' | 'attendance'
+type Tab = 'leave' | 'attendance' | 'mine' | 'monitor' | 'chains'
 
 export default function ApprovalsPage() {
-  const { isManager, hasApp } = useAuth()
+  const { isManager, hasApp, hasRole } = useAuth()
+  const hr = hasRole('hr_admin') || hasRole('system_admin')
   const lv = hasApp('leave'), att = hasApp('attendance')
-  const [activeTab, setActiveTab] = useState<Tab>(lv ? 'leave' : 'attendance')
+  const [activeTab, setActiveTab] = useState<Tab>(!isManager ? 'mine' : lv ? 'leave' : 'attendance')
+  const { data: chainPending = [] } = usePendingChain()
 
   const { data: pendingLeave = [] } = usePendingLeaveApprovals(isManager && lv)
   const { data: pendingReg = [] } = useAttPendingReg(isManager && att)
@@ -21,22 +24,14 @@ export default function ApprovalsPage() {
 
   const leaveCount = Array.isArray(pendingLeave) ? pendingLeave.length : 0
   const attendanceCount = (Array.isArray(pendingReg) ? pendingReg.length : 0) + (Array.isArray(pendingOT) ? pendingOT.length : 0)
-  const totalCount = leaveCount + attendanceCount
-
-  if (!isManager) {
-    return (
-      <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--dim)', fontFamily: 'var(--font-body)' }}>
-        <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔒</div>
-        <div style={{ fontSize: '16px', fontWeight: '500', color: 'var(--ink)', marginBottom: '8px' }}>Access restricted</div>
-        <div style={{ fontSize: '13px' }}>Approvals are only available to managers and HR administrators.</div>
-      </div>
-    )
-  }
+  const totalCount = leaveCount + attendanceCount + chainPending.length
 
   const TABS = [
     ...(lv ? [{ key: 'leave' as Tab, label: 'Leave requests', count: leaveCount }] : []),
     ...(att ? [{ key: 'attendance' as Tab, label: 'Attendance', count: attendanceCount }] : []),
-  ]
+    { key: 'mine' as Tab, label: 'Approval chains & delegation', count: chainPending.length },
+    ...(hr ? [{ key: 'monitor' as Tab, label: 'Monitor', count: 0 }, { key: 'chains' as Tab, label: 'Set up chains', count: 0 }] : []),
+  ].filter((t) => isManager || ['mine'].includes(t.key))
 
   return (
     <div style={s.page}>
@@ -66,8 +61,11 @@ export default function ApprovalsPage() {
         ))}
       </div>
 
-      {activeTab === 'leave' && lv && <LeaveApprovalsPanel />}
-      {activeTab === 'attendance' && att && <ApprovalsPanel />}
+      {activeTab === 'mine' && <WaitingForMe />}
+      {activeTab === 'monitor' && hr && <Monitor />}
+      {activeTab === 'chains' && hr && <ChainsSetup />}
+      {activeTab === 'leave' && lv && isManager && <LeaveApprovalsPanel />}
+      {activeTab === 'attendance' && att && isManager && <ApprovalsPanel />}
       {!lv && !att && <div className="card" style={{ padding: 40, textAlign: 'center' }}><div className="display" style={{ fontSize: 22 }}>Nothing to approve here yet</div><p className="dim" style={{ marginTop: 6, fontSize: 13 }}>Approvals come from the Leave and Attendance apps. Expense approvals live in Expenses.</p></div>}
     </div>
   )
