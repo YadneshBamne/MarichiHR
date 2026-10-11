@@ -12,6 +12,7 @@ import {
 import { requireRoles } from '../../middleware/rbac.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { accessService, orgChartService, archiveJobPosition, archiveWorkLocation, mastersOverview } from './employees.service'
+import { profile360 } from './profile360.service'
 import { importEmployees, issueCredentials, IMPORT_COLUMNS } from './import.service'
 import {
   AccessSchema,
@@ -84,6 +85,9 @@ employeeRouter.post('/access/bulk', requireRoles('hr_admin', 'system_admin'), va
 employeeRouter.get('/', requirePermission('employees:read'), validate(ListQuerySchema), employeeController.list)
 employeeRouter.post('/', requirePermission('employees:write'), validate(CreateEmployeeSchema), employeeController.create)
 employeeRouter.get('/:id', requirePermission('employees:read'), employeeController.getById)
+employeeRouter.get('/:id/360', requirePermission('employees:read'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await profile360(req.user!, String(req.params.id)) })
+}))
 employeeRouter.patch('/:id', requirePermission('employees:write'), validate(UpdateEmployeeSchema), employeeController.update)
 employeeRouter.patch('/:id/bank', requirePermission('employees:write'), validate(BankDetailsSchema), employeeController.updateBank)
 employeeRouter.post('/:id/bank/verify', requirePermission('payroll:disburse'), employeeController.verifyBank)

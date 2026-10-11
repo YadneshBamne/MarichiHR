@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import api from '../../lib/api'
 import PageHeader from '../../components/ui/PageHeader'
@@ -22,7 +22,8 @@ const TONE = (a: string) => (/ARCHIVED|REJECTED|CANCELLED|DISABLED|SELF_APPROVAL
 
 export default function AuditPage() {
   const toast = useToast()
-  const [f, setF] = useState({ from: '', to: '', userId: '', entityType: '', action: '' })
+  const [sp, setSp] = useSearchParams() // ?entityId= narrows the log to one record (linked from a profile)
+  const [f, setF] = useState({ from: '', to: '', userId: '', entityType: '', action: '', entityId: sp.get('entityId') ?? '' })
   const params = Object.fromEntries(Object.entries(f).filter(([, v]) => v))
   const { data: facets } = useQuery({ queryKey: ['audit-facets'], queryFn: async () => (await api.get('/audit/facets')).data.data as { entityTypes: string[]; actions: string[]; users: { id: string; fullName: string }[] } })
   const q = useInfiniteQuery({
@@ -47,7 +48,7 @@ export default function AuditPage() {
   return (
     <div ref={root}>
       <PageHeader title="Audit log" sub="Every sensitive change: who made it, when, and what changed"
-        actions={<button className="btn btn-ghost btn-sm" onClick={exportCsv}><Icon name="download" size={14} /> Export CSV</button>}>
+        actions={<div style={{ display: 'flex', gap: 6 }}>{f.entityId && <button className="btn btn-honey btn-sm" onClick={() => { setF({ ...f, entityId: '' }); setSp({}) }}><Icon name="x" size={14} /> One record only</button>}<button className="btn btn-ghost btn-sm" onClick={exportCsv}><Icon name="download" size={14} /> Export CSV</button></div>}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 14 }}>
           <label className="field"><span>From</span><input className="input" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></label>
           <label className="field"><span>To</span><input className="input" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></label>

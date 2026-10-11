@@ -9,11 +9,12 @@ import AccessCard from '../../components/company/AccessCard'
 import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
+import Profile360 from './Profile360'
 
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
 
-type Tab = 'work' | 'personal' | 'skills' | 'resume' | 'chatter' | 'access'
+type Tab = 'overview' | 'work' | 'personal' | 'skills' | 'resume' | 'chatter' | 'access'
 
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -22,7 +23,7 @@ export default function EmployeeProfilePage() {
   const canManageAccess = hasRole('hr_admin') || hasRole('system_admin')
   const { data: employee, isLoading } = useEmployee(id!)
   const archiveEmployee = useArchiveEmployee()
-  const [activeTab, setActiveTab] = useState<Tab>('work')
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [archiveReason, setArchiveReason] = useState('')
   const ref = useReveal<HTMLDivElement>(employee?.id)
@@ -41,6 +42,7 @@ export default function EmployeeProfilePage() {
   }
 
   const TABS: { key: Tab; label: string }[] = [
+    { key: 'overview', label: 'Overview' },
     { key: 'work', label: 'Work Info' },
     { key: 'personal', label: 'Personal' },
     { key: 'skills', label: `Skills (${employee.skills?.length || 0})` },
@@ -107,6 +109,7 @@ export default function EmployeeProfilePage() {
 
       {/* Tab content */}
       <div style={s.tabContent}>
+        {activeTab === 'overview' && <Profile360 employeeId={employee.id} self={{ id: employee.id, name: fullName, employeeCode: employee.employeeCode, title: employee.jobPosition?.title ?? null, avatarUrl: employee.user?.avatarUrl ?? null }} />}
         {activeTab === 'access' && canManageAccess && <AccessCard employeeId={employee.id} isSelf={employee.userId === user?.id} />}
         {activeTab === 'work' && (
           <div style={s.infoGrid}>
