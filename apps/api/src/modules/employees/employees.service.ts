@@ -56,6 +56,14 @@ export const orgUnitService = {
     if (!unit) throw new AppError('Org unit not found', 404)
     if (data.parentId === id) throw new AppError('An org unit cannot be its own parent', 400)
     await assertRefsInTenant(tenantId, { parentOrgUnitId: data.parentId })
+    // Moving a unit under one of its own sub-units would cut that branch off the tree
+    if (data.parentId) {
+      const units = await prisma.orgUnit.findMany({ where: { tenantId }, select: { id: true, parentId: true } })
+      const parentOf = new Map(units.map((u) => [u.id, u.parentId]))
+      for (let p: string | null | undefined = data.parentId, hops = 0; p && hops < 50; p = parentOf.get(p), hops++) {
+        if (p === id) throw new AppError('A unit cannot move under one of its own sub-units', 400)
+      }
+    }
     return orgUnitRepository.update(id, tenantId, data)
   },
 
@@ -67,6 +75,8 @@ export const orgUnitService = {
     if (employeeCount > 0) {
       throw new AppError(`Cannot archive org unit with ${employeeCount} active employees`, 400)
     }
+    const children = await prisma.orgUnit.count({ where: { tenantId, parentId: id, active: true } })
+    if (children) throw new AppError(`Move or archive its ${children} sub-unit${children > 1 ? 's' : ''} first`, 400)
 
     return orgUnitRepository.archive(id, tenantId, archivedBy, reason)
   },
@@ -88,6 +98,43 @@ export const jobPositionService = {
     await assertRefsInTenant(tenantId, { orgUnitId: data.orgUnitId })
     return jobPositionRepository.update(id, data)
   },
+}
+
+// Positions and locations are archived (never deleted) once nobody active holds them
+async function archiveMaster(kind: 'jobPosition' | 'workLocation', id: string, tenantId: string, userId: string) {
+  const row = await (prisma[kind] as any).findFirst({ where: { id, tenantId } })
+  if (!row) throw new AppError(kind === 'jobPosition' ? 'Job position not found' : 'Work location not found', 404)
+  const inUse = await prisma.employee.count({ where: { tenantId, active: true, [kind === 'jobPosition' ? 'jobPositionId' : 'workLocationId']: id } })
+  if (inUse) throw new AppError(`${inUse} active ${inUse === 1 ? 'person uses' : 'people use'} it; move them first`, 400)
+  await (prisma[kind] as any).update({ where: { id }, data: { active: false } })
+  await prisma.auditLog.create({ data: { tenantId, userId, action: kind === 'jobPosition' ? 'JOB_POSITION_ARCHIVED' : 'WORK_LOCATION_ARCHIVED', entityType: kind === 'jobPosition' ? 'job_position' : 'work_location', entityId: id, newValue: { name: row.title ?? row.name } } })
+  return { archived: true }
+}
+export const archiveJobPosition = (id: string, tenantId: string, userId: string) => archiveMaster('jobPosition', id, tenantId, userId)
+export const archiveWorkLocation = (id: string, tenantId: string, userId: string) => archiveMaster('workLocation', id, tenantId, userId)
+
+// Every master list with how many entries it has, for the Masters hub
+export async function mastersOverview(tenantId: string) {
+  const active = { tenantId, active: true }
+  const [units, people, positions, locations, grades, leaveTypes, calendars, expenseCats, incentiveTypes, inputTypes, structures, activityTypes] = await Promise.all([
+    prisma.orgUnit.findMany({ where: active, select: { id: true, name: true, type: true, parentId: true, costCenter: true } }),
+    prisma.employee.groupBy({ by: ['orgUnitId'], where: active, _count: true }),
+    prisma.jobPosition.count({ where: active }),
+    prisma.workLocation.count({ where: active }),
+    prisma.gradeBand.count({ where: { tenantId } }),
+    prisma.leaveType.count({ where: active }),
+    prisma.holidayCalendar.count({ where: active }),
+    prisma.expenseCategory.count({ where: { tenantId } }),
+    prisma.incentiveType.count({ where: active }),
+    prisma.payrollInputType.count({ where: active }),
+    prisma.salaryStructure.count({ where: { tenantId } }),
+    prisma.activityType.count({ where: { tenantId } }),
+  ])
+  const headcount = new Map(people.map((p) => [p.orgUnitId, p._count]))
+  return {
+    units: units.map((u) => ({ ...u, headcount: headcount.get(u.id) ?? 0 })),
+    counts: { departments: units.length, positions, locations, grades, leaveTypes, calendars, expenseCats, incentiveTypes, inputTypes, structures, activityTypes },
+  }
 }
 
 export const workLocationService = {

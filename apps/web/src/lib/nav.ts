@@ -72,6 +72,7 @@ export const SECTIONS: NavSection[] = [
   },
   {
     key: 'admin', label: 'Administration', icon: 'settings', items: [
+      { label: 'Masters', path: '/settings/masters', icon: 'layers', roles: ROLE.ADMIN, keywords: 'departments positions designations locations grades categories lists setup master data' },
       { label: 'Company profile', path: '/settings/company', icon: 'briefcase', roles: ROLE.ADMIN, keywords: 'name logo country currency time zone' },
       { label: 'Apps', path: '/settings/apps', icon: 'grid', roles: ROLE.ADMIN, keywords: 'modules install' },
       { label: 'Settings', path: '/settings', icon: 'settings', roles: [...ROLE.ADMIN, 'payroll_admin'], keywords: 'configuration scheduled jobs' },

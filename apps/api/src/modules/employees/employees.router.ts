@@ -11,7 +11,7 @@ import {
 } from './employees.controller'
 import { requireRoles } from '../../middleware/rbac.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
-import { accessService, orgChartService } from './employees.service'
+import { accessService, orgChartService, archiveJobPosition, archiveWorkLocation, mastersOverview } from './employees.service'
 import { importEmployees, issueCredentials, IMPORT_COLUMNS } from './import.service'
 import {
   AccessSchema,
@@ -36,6 +36,10 @@ export const employeeRouter = Router()
 employeeRouter.use(authenticate)
 
 // ─── ORG UNITS ────────────────────────────────────────────────
+// Masters hub: departments with headcount plus the size of every other master list (HR and system admins)
+employeeRouter.get('/masters', requireRoles('hr_admin', 'system_admin'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await mastersOverview(req.user!.tenantId) })
+}))
 employeeRouter.get('/org-units/tree', requirePermission('employees:read'), orgUnitController.getTree)
 employeeRouter.get('/org-units/:id', requirePermission('employees:read'), orgUnitController.getById)
 employeeRouter.post('/org-units', requirePermission('employees:write'), validate(CreateOrgUnitSchema), orgUnitController.create)
@@ -46,11 +50,17 @@ employeeRouter.post('/org-units/:id/archive', requirePermission('employees:write
 employeeRouter.get('/job-positions', requirePermission('employees:read'), jobPositionController.list)
 employeeRouter.post('/job-positions', requirePermission('employees:write'), validate(CreateJobPositionSchema), jobPositionController.create)
 employeeRouter.patch('/job-positions/:id', requirePermission('employees:write'), validate(UpdateJobPositionSchema), jobPositionController.update)
+employeeRouter.post('/job-positions/:id/archive', requirePermission('employees:write'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await archiveJobPosition(String(req.params.id), req.user!.tenantId, req.user!.userId) })
+}))
 
 // ─── WORK LOCATIONS ───────────────────────────────────────────
 employeeRouter.get('/work-locations', requirePermission('employees:read'), workLocationController.list)
 employeeRouter.post('/work-locations', requirePermission('employees:write'), validate(CreateWorkLocationSchema), workLocationController.create)
 employeeRouter.patch('/work-locations/:id', requirePermission('employees:write'), validate(UpdateWorkLocationSchema), workLocationController.update)
+employeeRouter.post('/work-locations/:id/archive', requirePermission('employees:write'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await archiveWorkLocation(String(req.params.id), req.user!.tenantId, req.user!.userId) })
+}))
 
 // ─── SKILL TYPES ──────────────────────────────────────────────
 employeeRouter.get('/skill-types', requirePermission('employees:read'), employeeController.getSkillTypes)

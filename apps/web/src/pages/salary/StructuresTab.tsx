@@ -226,7 +226,7 @@ function RuleModal({ form: initial, onClose }: { form: any; onClose: () => void 
       )}
 
       <div style={{ marginTop: 12, fontSize: 11, color: 'var(--faint)', lineHeight: 1.6, backgroundColor: 'var(--solid)', borderRadius: 12, padding: '8px 10px' }}>
-        Available: <code>contract.wageMonthly</code> (prorated), <code>contract.fullWageMonthly</code>, <code>contract.ctcAnnual</code>, <code>categories.BASIC|ALW|GROSS|DED|TAX</code>, <code>rules.CODE</code> (earlier rules only), <code>inputs.CODE</code>, <code>payslip.paidDays|workingDays|lwpDays|factor</code>, <code>compute_zra_paye(x)</code>, <code>min</code>, <code>max</code>, <code>round</code>. Formulas run in a sandbox, never as code.
+        Available: <code>contract.wageMonthly</code> (prorated), <code>contract.fullWageMonthly</code>, <code>contract.ctcAnnual</code>, <code>categories.BASIC|ALW|GROSS|DED|TAX</code>, <code>rules.CODE</code> (earlier rules only), <code>inputs.CODE</code>, <code>payslip.paidDays|workingDays|lwpDays|factor</code>, <code>compute_zra_paye(gross)</code>, <code>napsa_employee(gross)</code>/<code>napsa_employer(gross)</code>, <code>nhima_employee(basic)</code>/<code>nhima_employer(basic)</code>, <code>compute_india_tds(gross)</code> (rates from Tax &amp; compliance), <code>min</code>, <code>max</code>, <code>round</code>. Formulas run in a sandbox, never as code.
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
