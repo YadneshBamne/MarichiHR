@@ -10,6 +10,7 @@ import {
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
 import { PAYROLL_CONFIG } from '../payroll/payroll.config'
 import { calendarApplies, holidayMap, holidaysBetween, holidayTargetOf, HolidayTarget } from '../../shared/utils/holidays'
+import { policyFor, minutesOf, isWorkingDay, PolicyRules } from './policy.service'
 
 const ymdOf = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -37,6 +38,53 @@ function computeStatus(workedHours: number, fullDayHours: number, halfDayHours: 
 
 function computeOvertimeHours(workedHours: number, threshold: number): number {
   return Math.max(0, Math.round((workedHours - threshold) * 100) / 100)
+}
+
+// The employee's own shift (if assigned for the day) sets the hours; otherwise their attendance policy does
+async function dayRules(employeeId: string, when: Date) {
+  const [policy, assigned] = await Promise.all([
+    policyFor(employeeId),
+    prisma.employeeShift.findFirst({ where: { employeeId, effectiveFrom: { lte: when }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: when } }] }, include: { shiftTemplate: true }, orderBy: { effectiveFrom: 'desc' } }),
+  ])
+  const shift = assigned?.shiftTemplate
+  return {
+    policy,
+    flexible: shift ? shift.shiftType === 'flexible' : policy.flexible,
+    startTime: shift?.startTime ?? policy.startTime,
+    endTime: shift?.endTime ?? policy.endTime,
+    graceIn: shift ? shift.graceLateMinutes : policy.graceInMinutes,
+    graceOut: shift ? shift.graceEarlyOutMinutes : policy.graceOutMinutes,
+    halfDayHours: shift?.halfDayHours ?? policy.halfDayHours,
+    fullDayHours: shift?.fullDayHours ?? policy.fullDayHours,
+    overtimeAfter: shift?.overtimeThresholdHours ?? policy.overtimeAfterHours,
+  }
+}
+
+// Late and early instances this month beyond the policy's allowance cost half or a full day of pay
+async function latePenalty(employeeId: string, recordId: string, date: Date, policy: PolicyRules) {
+  if (policy.latePenalty === 'none') return null
+  const first = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
+  const earlier = await prisma.attendanceRecord.count({
+    where: { employeeId, id: { not: recordId }, date: { gte: first, lte: date }, source: { not: 'regularisation' }, OR: [{ lateMinutes: { gt: 0 } }, { earlyOutMinutes: { gt: 0 } }] },
+  })
+  return earlier + 1 > policy.lateEarlyAllowedPerMonth ? policy.latePenalty : null
+}
+
+// Comp-off leave for working a weekly off or a holiday; the balance moves by the change, so repeated clock-outs never double-count
+async function grantCompOff(tenantId: string, employeeId: string, record: { id: string; date: Date; compOffDays: number | null }, workedHours: number, policy: PolicyRules) {
+  if (!policy.compOffEnabled || (await isWorkingDay(employeeId, tenantId, record.date))) return null
+  const days = workedHours >= policy.compOffFullDayHours ? 1 : workedHours >= policy.compOffHalfDayHours ? 0.5 : 0
+  const delta = days - (record.compOffDays ?? 0)
+  if (delta !== 0) {
+    const type = await prisma.leaveType.findFirst({ where: { tenantId, active: true, OR: [{ code: { in: ['COMP_OFF', 'CO', 'COMPOFF'] } }, { name: { contains: 'comp', mode: 'insensitive' } }] } })
+    if (!type) return days
+    await prisma.leaveBalance.upsert({
+      where: { employeeId_leaveTypeId: { employeeId, leaveTypeId: type.id } },
+      create: { employeeId, leaveTypeId: type.id, balanceDays: Math.max(0, delta), asOfDate: new Date() },
+      update: { balanceDays: { increment: delta } },
+    })
+  }
+  return days
 }
 
 function validateGeoFence(
@@ -68,6 +116,9 @@ export const attendanceService = {
     const [open, existing] = await Promise.all([findOpenRecord(employeeId, today), attendanceRepository.findTodayRecord(employeeId, today)])
     if (open) throw new AppError('You are already clocked in', 400)
     if (existing?.isLocked) throw new AppError('Attendance record is locked and cannot be modified', 400)
+    const rules = await dayRules(employeeId, new Date())
+    if (!rules.policy.allowWeb && (data.method || 'web') === 'web') throw new AppError('Your attendance policy does not allow clocking in from the web', 403)
+    if (rules.policy.requireGeofence && !(data.locationId && data.latitude != null && data.longitude != null)) throw new AppError('Your attendance policy needs your location to clock in', 400)
 
     if (data.locationId && data.latitude && data.longitude) {
       const location = await prisma.workLocation.findUnique({ where: { id: data.locationId } })
@@ -92,13 +143,18 @@ export const attendanceService = {
     if (existing?.checkInTime) {
       return prisma.attendanceRecord.update({ where: { id: existing.id }, data: { openSince: now, checkOutTime: null } })
     }
-    return attendanceRepository.createOrUpdateClockIn(employeeId, today, {
+    // First clock-in of the day: minutes late after the grace period (none for flexible hours)
+    const tz = await getTenantTimezone(tenantId)
+    const late = rules.flexible ? 0 : minutesOf(localTimeString(now, tz)) - (minutesOf(rules.startTime) + rules.graceIn)
+    const created = await attendanceRepository.createOrUpdateClockIn(employeeId, today, {
       checkInTime: now,
       checkInMethod: data.method || 'web',
       checkInLat: data.latitude,
       checkInLng: data.longitude,
       checkInLocationId: data.locationId,
     })
+    if (late > 0) return prisma.attendanceRecord.update({ where: { id: created.id }, data: { lateMinutes: late } })
+    return created
   },
 
   async clockOut(employeeId: string, tenantId: string, data: ClockOutDto) {
@@ -117,28 +173,15 @@ export const attendanceService = {
     const checkOut = new Date()
     const workedHours = Math.round(((record.workedHours ?? 0) + computeWorkedHours(record.openSince ?? record.checkInTime, checkOut)) * 1e6) / 1e6
 
-    const employee = await prisma.employee.findUnique({
-      where: { id: employeeId },
-      include: {
-        employeeShifts: {
-          where: {
-            effectiveFrom: { lte: new Date() },
-            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: new Date() } }],
-          },
-          include: { shiftTemplate: true },
-          orderBy: { effectiveFrom: 'desc' },
-          take: 1,
-        },
-      },
-    })
-
-    const shift = employee?.employeeShifts?.[0]?.shiftTemplate
-    const fullDayHours = shift?.fullDayHours ?? 8
-    const halfDayHours = shift?.halfDayHours ?? 4
-    const overtimeThreshold = shift?.overtimeThresholdHours ?? 8
-
-    const status = computeStatus(workedHours, fullDayHours, halfDayHours)
-    const overtimeHours = computeOvertimeHours(workedHours, overtimeThreshold)
+    const rules = await dayRules(employeeId, record.date)
+    const tz = await getTenantTimezone(tenantId)
+    let status = computeStatus(workedHours, rules.fullDayHours, rules.halfDayHours)
+    const overtimeHours = rules.policy.overtimeEnabled ? computeOvertimeHours(workedHours, rules.overtimeAfter) : 0
+    const earlyOutMinutes = rules.flexible ? 0 : Math.max(0, minutesOf(rules.endTime) - rules.graceOut - minutesOf(localTimeString(checkOut, tz)))
+    const penalty = (record.lateMinutes ?? 0) > 0 || earlyOutMinutes > 0 ? await latePenalty(employeeId, record.id, record.date, rules.policy) : null
+    if (penalty === 'full_day_lop') status = 'absent'
+    else if (penalty === 'half_day_lop') status = status === 'present' ? 'half_day' : 'absent'
+    const compOffDays = await grantCompOff(tenantId, employeeId, record, workedHours, rules.policy)
 
     const updated = await prisma.attendanceRecord.update({
       where: { id: record.id },
@@ -151,6 +194,9 @@ export const attendanceService = {
         workedHours,
         overtimeHours,
         status,
+        earlyOutMinutes: earlyOutMinutes || null,
+        penalty,
+        ...(compOffDays !== null && { compOffDays }),
       },
     })
 
@@ -246,6 +292,12 @@ export const attendanceService = {
   async raiseRegularisation(employeeId: string, tenantId: string, data: RegularisationDto) {
     const date = normaliseDateInput(data.date)
     const tz = await getTenantTimezone(tenantId)
+    const [policy, today] = await Promise.all([policyFor(employeeId), businessToday(tenantId)])
+    if (date > today) throw new AppError('You cannot regularise a future day', 400)
+    if ((today.getTime() - date.getTime()) / 86_400_000 > policy.regularisationDaysBack) throw new AppError(`Your attendance policy allows regularising up to ${policy.regularisationDaysBack} days back`, 400)
+    const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)), monthEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0))
+    const used = await prisma.attendanceRegularisation.count({ where: { employeeId, date: { gte: monthStart, lte: monthEnd }, status: { in: ['pending', 'approved'] } } })
+    if (used >= policy.regularisationPerMonth) throw new AppError(`Your attendance policy allows ${policy.regularisationPerMonth} regularisations a month`, 400)
 
     const record = await attendanceRepository.findByDate(employeeId, date)
     if (record?.isLocked) {
@@ -286,7 +338,9 @@ export const attendanceService = {
     const checkOut = zonedTimeToUtc(ymdOf(regDate), reg.actualOut!, tz)
 
     const workedHours = computeWorkedHours(checkIn, checkOut)
-    const status = workedHours >= 8 ? 'present' : workedHours >= 4 ? 'half_day' : 'absent'
+    const rules = await dayRules(reg.employeeId, regDate)
+    const status = computeStatus(workedHours, rules.fullDayHours, rules.halfDayHours)
+    const overtime = rules.policy.overtimeEnabled ? computeOvertimeHours(workedHours, rules.overtimeAfter) : 0
 
     await prisma.attendanceRecord.upsert({
       where: {
@@ -300,8 +354,11 @@ export const attendanceService = {
         checkOutTime: checkOut,
         openSince: null,
         workedHours,
-        overtimeHours: Math.max(0, workedHours - 8),
+        overtimeHours: overtime,
         status,
+        lateMinutes: null,
+        earlyOutMinutes: null,
+        penalty: null,
         source: 'regularisation',
         overrideReason: reg.reason ?? undefined,
         overrideBy: approverId,
@@ -313,7 +370,7 @@ export const attendanceService = {
         checkInTime: checkIn,
         checkOutTime: checkOut,
         workedHours,
-        overtimeHours: Math.max(0, workedHours - 8),
+        overtimeHours: overtime,
         status,
         source: 'regularisation',
         overrideReason: reg.reason ?? undefined,
@@ -346,6 +403,13 @@ export const attendanceService = {
   },
 
   async requestOvertime(employeeId: string, tenantId: string, data: OvertimeRequestDto) {
+    const policy = await policyFor(employeeId)
+    if (!policy.overtimeEnabled) throw new AppError('Your attendance policy does not pay overtime', 400)
+    if (policy.overtimeMaxHoursPerMonth != null) {
+      const d = normaliseDateInput(data.date)
+      const agg = await prisma.overtimeRequest.aggregate({ _sum: { overtimeHours: true }, where: { employeeId, status: { in: ['pending', 'approved'] }, date: { gte: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)), lte: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)) } } })
+      if ((agg._sum.overtimeHours ?? 0) + data.overtimeHours > policy.overtimeMaxHoursPerMonth) throw new AppError(`Your attendance policy caps overtime at ${policy.overtimeMaxHoursPerMonth} hours a month`, 400)
+    }
     return attendanceRepository.createOvertimeRequest(employeeId, {
       date: normaliseDateInput(data.date),
       overtimeHours: data.overtimeHours,
@@ -353,13 +417,14 @@ export const attendanceService = {
     })
   },
 
-  async approveOvertime(id: string, user: AccessUser, approvedRate: number = 1.5) {
+  async approveOvertime(id: string, user: AccessUser, rate?: number) {
     const { tenantId } = user
     const req = await prisma.overtimeRequest.findUnique({ where: { id }, include: { employee: { select: { tenantId: true } } } })
     if (!req || req.employee.tenantId !== tenantId) throw new AppError('Overtime request not found', 404)
     if (!user.employeeId) throw new AppError('Only employees with an employee record can approve requests', 403)
     const approverId = user.employeeId
     await assertCanApprove(user, req.employeeId, tenantId, { entityType: 'overtime_request', entityId: id })
+    const approvedRate = rate ?? (await policyFor(req.employeeId)).overtimeRate // the policy's rate unless the approver sets one
     if (typeof approvedRate !== 'number' || !Number.isFinite(approvedRate) || approvedRate < 1 || approvedRate > 5) {
       throw new AppError('Approved rate must be a number between 1 and 5', 400)
     }

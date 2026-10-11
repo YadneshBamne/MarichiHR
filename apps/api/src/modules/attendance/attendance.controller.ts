@@ -94,7 +94,7 @@ export const attendanceController = {
   }),
 
   approveOvertime: asyncHandler(async (req: Request, res: Response) => {
-    const approvedRate = req.body.approvedRate ?? 1.5
+    const approvedRate = req.body?.approvedRate
     const result = await attendanceService.approveOvertime(req.params['id'] as string, req.user!, approvedRate)
     res.json({ success: true, data: result })
   }),

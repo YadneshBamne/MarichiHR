@@ -54,6 +54,7 @@ model Tenant {
   masterValues     MasterValue[]
   customFieldDefs  CustomFieldDefinition[]
   employeeFieldSettings EmployeeFieldSetting[]
+  attendancePolicies    AttendancePolicy[]
   candidates       Candidate[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
@@ -725,6 +726,10 @@ model AttendanceRecord {
   checkOutLng       Float?
   workedHours       Float?
   overtimeHours     Float?
+  lateMinutes       Int? // after the policy's grace
+  earlyOutMinutes   Int?
+  penalty           String? // set by the attendance policy: half_day_lop | full_day_lop
+  compOffDays       Float? // comp-off granted for working this (non-working) day
   status            String    @default("present")
   isLocked          Boolean   @default(false)
   source            String    @default("auto")
@@ -1824,4 +1829,53 @@ model ProfileRequestSection {
 
   @@unique([requestId, section])
   @@map("profile_request_sections")
+}
+
+// Attendance policy (greytHR "attendance scheme"): office hours and the rules applied to each day, per employee
+// group. The first active policy (lowest priority number) whose filters all match a person applies to them; the
+// default policy catches everyone else. An employee's own shift assignment overrides the office hours only.
+model AttendancePolicy {
+  id                      String   @id @default(uuid())
+  tenantId                String
+  name                    String
+  priority                Int      @default(100)
+  isDefault               Boolean  @default(false)
+  active                  Boolean  @default(true)
+  // Who it applies to (empty = everyone); ids or master codes
+  orgUnitIds              String[] @default([])
+  workLocationIds         String[] @default([])
+  employeeCategories      String[] @default([])
+  employmentTypes         String[] @default([])
+  // Office hours
+  flexible                Boolean  @default(false) // only hours worked count, no start/end time
+  startTime               String   @default("09:00")
+  endTime                 String   @default("17:00")
+  graceInMinutes          Int      @default(10)
+  graceOutMinutes         Int      @default(10)
+  halfDayHours            Float    @default(4)
+  fullDayHours            Float    @default(8)
+  // Late arrival / early leaving
+  lateEarlyAllowedPerMonth Int     @default(3)
+  latePenalty             String   @default("none") // none | half_day_lop | full_day_lop (each instance beyond the allowance)
+  // Regularisation
+  regularisationDaysBack  Int      @default(7)
+  regularisationPerMonth  Int      @default(5)
+  // Overtime and comp-off
+  overtimeEnabled         Boolean  @default(true)
+  overtimeAfterHours      Float    @default(8)
+  overtimeRate            Float    @default(1.5)
+  overtimeMaxHoursPerMonth Float?
+  compOffEnabled          Boolean  @default(false) // working a weekly off or holiday earns comp-off leave
+  compOffHalfDayHours     Float    @default(4)
+  compOffFullDayHours     Float    @default(8)
+  // How people may mark attendance
+  allowWeb                Boolean  @default(true)
+  requireGeofence         Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, active])
+  @@map("attendance_policies")
 }
