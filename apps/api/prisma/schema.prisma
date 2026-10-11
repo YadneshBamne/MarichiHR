@@ -361,6 +361,7 @@ model Employee {
   identities         EmployeeIdentity[]
   positionHistory    EmployeePositionHistory[]
   documents          EmployeeDocument[]
+  profileRequests    ProfileRequest[]
 
   tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
   user                      User                       @relation(fields: [userId], references: [id])
@@ -1784,4 +1785,43 @@ model EmployeeDocument {
   @@index([tenantId, employeeId, active])
   @@index([tenantId, expiryDate])
   @@map("employee_documents")
+}
+
+// Self-service onboarding and data requests ("please fill in your family details and upload your licence"):
+// HR asks one or many people for sections of their record; each person fills them in and submits each section;
+// HR accepts it or sends it back with a note. Data goes straight into the record; review is the check on it.
+model ProfileRequest {
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  kind        String // onboarding | update
+  note        String?
+  dueDate     DateTime? @db.Date
+  status      String    @default("open") // open | completed | cancelled
+  requestedBy String
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  employee Employee                @relation(fields: [employeeId], references: [id])
+  sections ProfileRequestSection[]
+
+  @@index([tenantId, status])
+  @@index([employeeId, status])
+  @@map("profile_requests")
+}
+
+model ProfileRequestSection {
+  id          String    @id @default(uuid())
+  requestId   String
+  section     String // personal | contact | addresses | emergencyContacts | family | education | previousEmployment | identities | documents
+  status      String    @default("pending") // pending | submitted | accepted | rejected
+  reviewNote  String?
+  submittedAt DateTime?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+
+  request ProfileRequest @relation(fields: [requestId], references: [id])
+
+  @@unique([requestId, section])
+  @@map("profile_request_sections")
 }

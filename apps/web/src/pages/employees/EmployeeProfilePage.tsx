@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import api from '../../lib/api'
+import { RequestCard, NewRequestModal, type Req } from './RequestsPage'
 import { useEmployee, useArchiveEmployee } from '../../lib/hooks/useEmployees'
 import { useAuth } from '../../contexts/AuthContext'
 import Badge from '../../components/ui/Badge'
@@ -28,7 +31,13 @@ export default function EmployeeProfilePage() {
   const { label: master } = useMasters()
   const { data: rec } = useRecord(id!)
   const archiveEmployee = useArchiveEmployee()
-  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [params] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<Tab>((params.get('tab') as Tab) || 'overview')
+  const [asking, setAsking] = useState(false)
+  const qc = useQueryClient()
+  const isSelf = !!user?.employee?.id && user.employee.id === id
+  const { data: requests = [] } = useQuery({ queryKey: ['profile-requests', 'employee', id], enabled: isSelf || isHR, queryFn: async () => (await api.get('/profile-requests', { params: isSelf && !isHR ? { mine: '1', status: 'open' } : { employeeId: id, status: 'open' } })).data.data as Req[] })
+  const refreshRequests = () => { qc.invalidateQueries({ queryKey: ['profile-requests'] }); qc.invalidateQueries({ queryKey: ['record', id] }) }
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [archiveReason, setArchiveReason] = useState('')
   const ref = useReveal<HTMLDivElement>(employee?.id)
@@ -114,6 +123,14 @@ export default function EmployeeProfilePage() {
           </button>
         ))}
       </div>
+
+      {(requests.length > 0 || isHR) && (
+        <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+          {requests.map((r) => <RequestCard key={r.id} r={r} mode={isHR && !isSelf ? 'hr' : 'self'} onChange={refreshRequests} />)}
+          {isHR && !isSelf && employee.active && <div><button className="btn btn-ghost btn-sm" onClick={() => setAsking(true)}><Icon name="mail" size={13} /> {requests.some((r) => r.kind === 'onboarding') ? 'Ask for more details' : 'Start onboarding / ask for details'}</button></div>}
+        </div>
+      )}
+      {asking && <NewRequestModal employeeIds={[employee.id]} onClose={(ok) => { setAsking(false); if (ok) refreshRequests() }} />}
 
       {/* Tab content */}
       <div style={s.tabContent}>

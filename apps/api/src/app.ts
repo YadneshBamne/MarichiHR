@@ -22,6 +22,7 @@ import { grievancesRouter } from './modules/grievances/grievances.router'
 import { auditRouter } from './modules/audit/audit.router'
 import { reportsRouter } from './modules/reports/reports.router'
 import { incentivesRouter } from './modules/incentives/incentives.router'
+import { requestsRouter } from './modules/employees/requests.router'
 import { mastersRouter } from './modules/masters/masters.router'
 import { taxRouter } from './modules/tax/tax.router'
 import { recruitmentRouter } from './modules/recruitment/recruitment.router'
@@ -74,6 +75,7 @@ export function createApp() {
   app.use('/api/v1/reports', reportsRouter)
   app.use('/api/v1/incentives', authenticate, requireModule('payroll'), incentivesRouter)
   app.use('/api/v1/masters', mastersRouter)
+  app.use('/api/v1/profile-requests', requestsRouter)
   app.use('/api/v1/recruitment', recruitmentRouter)
   app.use('/api/v1/tax', authenticate, requireModule('payroll'), taxRouter)
   app.use('/api/v1/dashboard', dashboardRouter)

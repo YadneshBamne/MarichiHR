@@ -20,6 +20,7 @@ const AuditPage = lazy(() => import('./pages/reports/AuditPage'))
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
 const IncentivesPage = lazy(() => import('./pages/payroll/IncentivesPage'))
 const BulkDocumentsPage = lazy(() => import('./pages/employees/DocumentsTab').then((m) => ({ default: m.BulkDocumentsPage })))
+const RequestsPage = lazy(() => import('./pages/employees/RequestsPage'))
 const ImportEmployeesPage = lazy(() => import('./pages/employees/ImportEmployeesPage'))
 const TaxPage = lazy(() => import('./pages/payroll/TaxPage'))
 const RecruitmentPage = lazy(() => import('./pages/employees/RecruitmentPage'))
@@ -84,6 +85,8 @@ export default function App() {
                   <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                     <Route path="dashboard" element={page(<DashboardPage />)} />
                     <Route path="employees" element={page(guard(<EmployeeListPage />, { roles: DIRECTORY }))} />
+                    <Route path="requests" element={page(<RequestsPage />)} />
+                    <Route path="my-requests" element={page(<RequestsPage />)} />
                     <Route path="employees/import" element={page(guard(<ImportEmployeesPage />, { roles: ADMINS }))} />
                     <Route path="employees/documents" element={page(guard(<BulkDocumentsPage />, { roles: ADMINS }))} />
                     <Route path="employees/:id" element={page(<EmployeeProfilePage />)} />

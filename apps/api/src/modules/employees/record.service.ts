@@ -6,6 +6,7 @@ import { encryptField, decryptField, last4, lookupHash } from '../../shared/util
 import { assertMasters } from '../masters/masters.service'
 import { assertRefsInTenant } from './employees.service'
 import { RECORD_FIELDS, fieldByKey, FieldMode, DATE_FIELDS } from './record.catalog'
+import { openRequestSections } from './requests.service'
 
 // The full employee record (greytHR-style). Who sees and edits what:
 //  - HR admins: everything; system admins too
@@ -149,7 +150,12 @@ export async function getRecord(a: Actor, employeeId: string) {
     const v = (emp as any)[fd.key]
     values[fd.key] = v instanceof Date ? ymd(v) : v ?? null
   }
-  const canEdit = (key: string) => hr || (self && !!settings.fields.find((x) => x.key === key)?.employeeCanEdit)
+  // HR edits everything; the person edits what the form allows, plus whatever HR has asked them for right now (never locked fields)
+  const open = self && !hr ? await openRequestSections(a.tenantId, employeeId) : new Set<string>()
+  const canEdit = (key: string) => {
+    const fd = settings.fields.find((x) => x.key === key)
+    return hr || (self && !!fd && fd.mode !== 'hidden' && (fd.employeeCanEdit || (!fd.locked && (open.has(key) || open.has(fd.section)))))
+  }
   const sections = { addresses: addresses.length, family: family.length, emergencyContacts: contacts.length, education: education.length, previousEmployment: previous.length, identities: identities.length } as Record<string, number>
   // What the company requires that is still empty
   const missing = settings.fields.filter((x) => x.mode === 'mandatory' && (x.kind === 'section' ? (full || !x.sensitive) && !sections[x.key] : (full || !x.sensitive) && (values[x.key] == null || values[x.key] === '' || (Array.isArray(values[x.key]) && !(values[x.key] as unknown[]).length)))).map((x) => x.label)
@@ -179,12 +185,13 @@ const POSITION_KEYS = ['employmentType', 'employeeCategory'] // these go through
 export async function updateFields(a: Actor, employeeId: string, body: Record<string, unknown>, custom?: Record<string, unknown>) {
   const { emp, hr, self } = await access(a, employeeId)
   const settings = await fieldSettings(a.tenantId)
+  let open: Set<string> | undefined
   const data: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(body)) {
     const fd = settings.fields.find((x) => x.key === k)
     if (!fd || fd.kind === 'section') throw new AppError(`${k} is not a field of the record`, 400)
     if (POSITION_KEYS.includes(k)) throw new AppError(`${fd.label} changes with an effective date: use Change position`, 400)
-    if (!hr && !(self && fd.employeeCanEdit)) throw new AppError(`You cannot change ${fd.label}`, 403)
+    if (!hr && !(self && (fd.employeeCanEdit || (!fd.locked && (open ??= await openRequestSections(a.tenantId, employeeId)).has(fd.section))))) throw new AppError(`You cannot change ${fd.label}`, 403)
     if ((v === null || v === '' || (Array.isArray(v) && !v.length)) && fd.mode === 'mandatory') throw new AppError(`${fd.label} is required`, 400)
     if (fd.key === 'workEmail' && v !== emp.workEmail) throw new AppError('Change the work email from Login & access', 400)
     data[k] = DATE_FIELDS.has(k) && typeof v === 'string' ? day(v) : v === '' ? null : v
@@ -223,7 +230,7 @@ async function canEditSection(a: Actor, employeeId: string, section: string) {
   const { hr, self } = await access(a, employeeId)
   if (hr) return
   const s = (await fieldSettings(a.tenantId)).fields.find((x) => x.key === section)
-  if (!(self && s?.employeeCanEdit && s.mode !== 'hidden')) throw new AppError('You cannot change this part of the record', 403)
+  if (!(self && s && s.mode !== 'hidden' && (s.employeeCanEdit || (await openRequestSections(a.tenantId, employeeId)).has(section)))) throw new AppError('You cannot change this part of the record', 403)
 }
 
 function prep(section: Section, body: Record<string, any>) {
