@@ -6,15 +6,16 @@ import { FormField, inputStyle, selectStyle } from '../../components/ui/FormFiel
 import StructuresTab from './StructuresTab'
 import GradeBandsTab from './GradeBandsTab'
 import ContractsTab from './ContractsTab'
+import RevisionsTab from './RevisionsTab'
 import { card, th, td, empty, primaryBtn, ghostBtn, linkBtn, errorBox, footer } from './styles'
 
-type Tab = 'structures' | 'types' | 'bands' | 'contracts'
+type Tab = 'structures' | 'types' | 'bands' | 'contracts' | 'revisions'
 
 export default function SalarySetupPage() {
   const { hasRole } = useAuth()
   const canEdit = hasRole('hr_admin')
   const [tab, setTab] = useState<Tab>('structures')
-  const tabs: [Tab, string][] = [['structures', 'Structures & rules'], ['types', 'Structure types'], ['bands', 'Grade bands'], ['contracts', 'Contracts']]
+  const tabs: [Tab, string][] = [['structures', 'Structures & rules'], ['types', 'Structure types'], ['bands', 'Grade bands'], ['contracts', 'Contracts'], ['revisions', 'Salary revisions']]
 
   return (
     <div>
@@ -31,6 +32,7 @@ export default function SalarySetupPage() {
       {tab === 'types' && <StructureTypesTab canEdit={canEdit} />}
       {tab === 'bands' && <GradeBandsTab canEdit={canEdit} />}
       {tab === 'contracts' && <ContractsTab canEdit={canEdit} />}
+      {tab === 'revisions' && <RevisionsTab />}
     </div>
   )
 }

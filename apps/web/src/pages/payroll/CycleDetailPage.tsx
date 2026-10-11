@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query'
+import api from '../../lib/api'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useCycle, useCyclePayslips, useCycleAction, downloadCsv } from '../../lib/hooks/usePayroll'
@@ -32,6 +34,7 @@ export default function CycleDetailPage() {
   const { data: cycle, isLoading } = useCycle(id!)
   const { data: payslips = [] } = useCyclePayslips(id!)
   const action = useCycleAction(id!)
+  const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('payslips')
   const [error, setError] = useState('')
   const [runResult, setRunResult] = useState<any>(null)
@@ -106,6 +109,10 @@ export default function CycleDetailPage() {
     }
   }
 
+  if (canAct && ['approved', 'disbursed', 'locked'].includes(cycle.status) && !cycle.payslipsReleasedAt) {
+    actions.push(btn('Release payslips', 'release-payslips', { confirm: { title: 'Release payslips now?', body: 'Employees can see their payslips straight away (held payslips stay hidden). Otherwise they are released when you disburse.' } }))
+  }
+
   if (canAct && ['approved', 'disbursed', 'locked'].includes(cycle.status)) {
     const ghost = { padding: '9px 18px', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer', backgroundColor: 'var(--well)', color: 'var(--ink)', border: '1px solid var(--line)' } as const
     actions.push(<button key="bank-file" onClick={() => setShowBank(true)} style={ghost}>Bank file</button>)
@@ -121,7 +128,7 @@ export default function CycleDetailPage() {
           <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>{fmtPeriod(cycle.payPeriodStart, cycle.payPeriodEnd)}</h2>
           <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
             <Badge label={cycle.status} />
-            <span style={{ fontSize: 12, color: 'var(--faint)' }}>{cycle.cycleType}{cycle.disbursedAt ? ` · disbursed ${fmtDate(cycle.disbursedAt)}` : ''}</span>
+            <span style={{ fontSize: 12, color: 'var(--faint)' }}>{cycle.cycleType}{cycle.disbursedAt ? ` · disbursed ${fmtDate(cycle.disbursedAt)}` : ''}{cycle.payslipsReleasedAt ? ` · payslips released ${fmtDate(cycle.payslipsReleasedAt)}` : ''}</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
@@ -193,8 +200,11 @@ export default function CycleDetailPage() {
                     <td style={td}>{money(p.grossEarnings, p.currency)}</td>
                     <td style={td}>{money(p.totalDeductions, p.currency)}</td>
                     <td style={{ ...td, fontWeight: 500 }}>{money(p.netPay, p.currency)}</td>
-                    <td style={td}><Badge label={p.status} /></td>
-                    <td style={{ ...td, color: 'var(--brand)', fontSize: 12 }}>View →</td>
+                    <td style={td}><Badge label={p.status} />{p.withheld && <span className="pill warn" style={{ marginLeft: 4 }} title={p.withheldReason ?? ''}>held</span>}</td>
+                    <td style={{ ...td, fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {canAct && <button className="btn btn-ghost btn-sm" onClick={async (e) => { e.stopPropagation(); const reason = p.withheld ? undefined : prompt('Why hold this payslip from the employee?') ?? undefined; if (!p.withheld && !reason) return; try { await api.post(`/payroll/payslips/${p.id}/withhold`, { withheld: !p.withheld, ...(reason && { reason }) }); qc.invalidateQueries({ queryKey: ['payroll-payslips', id] }) } catch (err: any) { setError(err?.response?.data?.message || 'Could not change it') } }}>{p.withheld ? 'Release' : 'Hold'}</button>}
+                      <span style={{ color: 'var(--brand)', marginLeft: 6 }}>View →</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -158,8 +158,8 @@ export const payrollRepository = {
     return prisma.payslip.findMany({
       where: { payrollCycleId: cycleId },
       include: {
-        employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
-        lines: { select: { sourceRefType: true } },
+        employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, bankName: true, bankAccountNo: true, bankVerified: true } },
+        lines: { select: { sourceRefType: true, category: true, amount: true } },
       },
       orderBy: { employee: { employeeCode: 'asc' } },
     })
@@ -197,7 +197,7 @@ export const payrollRepository = {
 
   listReleasedPayslips(employeeId: string) {
     return prisma.payslip.findMany({
-      where: { employeeId, payrollCycle: { status: { in: ['disbursed', 'locked'] } } },
+      where: { employeeId, withheld: false, payrollCycle: { payslipsReleasedAt: { not: null } } },
       include: { payrollCycle: { select: { payPeriodStart: true, payPeriodEnd: true, status: true } } },
       orderBy: { payrollCycle: { payPeriodEnd: 'desc' } },
     })

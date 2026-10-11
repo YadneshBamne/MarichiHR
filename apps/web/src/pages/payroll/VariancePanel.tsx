@@ -9,6 +9,10 @@ const FLAG_LABEL: Record<string, string> = {
   manual_input: 'Manual input',
   new_in_cycle: 'New this cycle',
   missing_from_cycle: 'Missing from cycle',
+  zero_gross: 'Zero gross',
+  no_bank_details: 'No bank details',
+  bank_unverified: 'Bank not verified',
+  tax_over_45_percent: 'Tax over 45% of gross',
 }
 
 export default function VariancePanel({ cycleId, currency }: { cycleId: string; currency: string }) {
@@ -21,6 +25,7 @@ export default function VariancePanel({ cycleId, currency }: { cycleId: string; 
       <div style={{ fontSize: 13, color: 'var(--dim)', marginBottom: 12 }}>
         {data.flaggedCount} flagged · threshold ±{data.thresholdPct}% · {data.previousCycleId ? 'compared with previous cycle' : 'no previous cycle to compare'}
       </div>
+      {data.unapprovedInputs > 0 && <p className="pill warn" style={{ whiteSpace: 'normal', marginBottom: 12 }}>{data.unapprovedInputs} manual input{data.unapprovedInputs === 1 ? ' is' : 's are'} not approved and will be left out of pay. Approve them and re-run.</p>}
       <div style={{ backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>{['Employee', 'Net pay', 'Previous', 'Change', 'LWP days', 'Flags'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>

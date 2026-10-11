@@ -1,4 +1,5 @@
 import { payrollRepository as repo } from './payroll.repository'
+import { notify } from '../../infrastructure/notifications/notify'
 import { runPayrollEngine, EngineExtraLine } from './payroll.engine'
 import { PAYROLL_CONFIG } from './payroll.config'
 import { masterLabels } from '../masters/masters.service'
@@ -460,6 +461,11 @@ export const payrollService = {
       }
       if (ps.lwpDays > 0) flags.push('lwp_days')
       if (ps.netPay < 0) flags.push('negative_net')
+      if (!(ps.grossEarnings > 0)) flags.push('zero_gross')
+      if (!ps.employee.bankName || !ps.employee.bankAccountNo) flags.push('no_bank_details')
+      else if (!ps.employee.bankVerified) flags.push('bank_unverified')
+      const tax = ps.lines.filter((l) => l.category === 'TAX').reduce((s, l) => s + Number(l.amount), 0)
+      if (ps.grossEarnings > 0 && tax / ps.grossEarnings > 0.45) flags.push('tax_over_45_percent')
       if (ps.lines.some((l) => l.sourceRefType === 'payroll_input')) flags.push('manual_input')
 
       return {
@@ -483,8 +489,11 @@ export const payrollService = {
         flags: ['missing_from_cycle'],
       }))
 
+    // Inputs added to this run but not yet approved are left out of pay: say so before anyone approves
+    const unapprovedInputs = await prisma.payrollInput.count({ where: { payrollCycleId: cycleId, approvedBy: null } })
     return {
       cycleId,
+      unapprovedInputs,
       previousCycleId: prevCycle?.id ?? null,
       thresholdPct: PAYROLL_CONFIG.VARIANCE_THRESHOLD * 100,
       flaggedCount: rows.filter((r) => r.flags.length > 0).length + missing.length,
@@ -498,6 +507,8 @@ export const payrollService = {
     const cycle = await getCycleOrThrow(cycleId, tenantId)
     if (cycle.status !== 'review') throw new AppError(`Cycle must be in review to approve (currently ${cycle.status})`, 400)
     if ((await repo.countPayslips(cycleId)) === 0) throw new AppError('No payslips to approve', 400)
+    const negative = await prisma.payslip.count({ where: { payrollCycleId: cycleId, netPay: { lt: 0 } } })
+    if (negative) throw new AppError(`${negative} payslip${negative === 1 ? ' has' : 's have'} negative net pay; fix them and re-run before approving`, 400)
 
     await repo.updateCycle(cycleId, { status: 'approved', approvedBy: userId, approvedAt: new Date() })
     await repo.setPayslipStatus(cycleId, 'approved')
@@ -564,6 +575,7 @@ export const payrollService = {
       }
     }
     await repo.createAudit({ tenantId, userId, action: 'PAYROLL_CYCLE_DISBURSED', entityType: 'payroll_cycle', entityId: cycleId })
+    if (!cycle.payslipsReleasedAt) await payrollService.releasePayslips(cycleId, tenantId, userId)
 
     await eventBus.publish(tenantId, 'payroll.cycle.disbursed', { payrollCycleId: cycleId, disbursedBy: userId })
     const payslips = await repo.listCyclePayslips(cycleId)
@@ -611,6 +623,30 @@ export const payrollService = {
     return approved
   },
 
+  // ─── PAYSLIP RELEASE ──────────────────────────────────────
+  // Payroll can show payslips as soon as a run is approved (or wait: disbursing releases them). Held payslips stay hidden.
+  async releasePayslips(cycleId: string, tenantId: string, userId: string) {
+    const cycle = await getCycleOrThrow(cycleId, tenantId)
+    if (!['approved', 'disbursed', 'locked'].includes(cycle.status)) throw new AppError(`Payslips can be released once the run is approved (currently ${cycle.status})`, 400)
+    if (cycle.payslipsReleasedAt) throw new AppError('Payslips for this run are already released', 400)
+    const claimed = await prisma.payrollCycle.updateMany({ where: { id: cycleId, payslipsReleasedAt: null }, data: { payslipsReleasedAt: new Date() } })
+    if (!claimed.count) throw new AppError('Payslips for this run are already released', 400)
+    const slips = await prisma.payslip.findMany({ where: { payrollCycleId: cycleId, withheld: false }, select: { employee: { select: { userId: true } } } })
+    await repo.createAudit({ tenantId, userId, action: 'PAYSLIPS_RELEASED', entityType: 'payroll_cycle', entityId: cycleId, newValue: { count: slips.length } })
+    const month = new Date(cycle.payPeriodStart).toISOString().slice(0, 7)
+    await notify({ tenantId, userIds: slips.map((s) => s.employee.userId), type: 'payslip.released', title: `Your payslip for ${month} is ready`, body: 'Open My payslips to view or download it', link: '/payroll', entityType: 'payroll_cycle', entityId: cycleId, eventId: `payslips:${cycleId}` })
+    return { released: slips.length }
+  },
+
+  async withholdPayslip(payslipId: string, tenantId: string, userId: string, withheld: boolean, reason?: string) {
+    const ps = await repo.findPayslipById(payslipId)
+    if (!ps || ps.employee.tenantId !== tenantId) throw new AppError('Payslip not found', 404)
+    if (withheld && !reason) throw new AppError('Give a reason for holding this payslip', 400)
+    await prisma.payslip.update({ where: { id: payslipId }, data: { withheld, withheldReason: withheld ? reason : null } })
+    await repo.createAudit({ tenantId, userId, action: withheld ? 'PAYSLIP_WITHHELD' : 'PAYSLIP_UNHELD', entityType: 'payslip', entityId: payslipId, newValue: { reason: reason ?? null } })
+    return { withheld }
+  },
+
   // ─── PAYSLIP ACCESS ───────────────────────────────────────
   listMyPayslips(employeeId: string) {
     if (!employeeId) return []
@@ -624,7 +660,7 @@ export const payrollService = {
     const isStaff = user.roleIds.some((r) => PAYROLL_STAFF_ROLES.includes(r))
     if (isStaff) return payslip
 
-    const released = ['disbursed', 'locked'].includes(payslip.payrollCycle.status)
+    const released = !!payslip.payrollCycle.payslipsReleasedAt && !payslip.withheld
     if (payslip.employeeId !== user.employeeId || !released) throw new AppError('Payslip not found', 404)
 
     // Employees never see employer-side contribution lines

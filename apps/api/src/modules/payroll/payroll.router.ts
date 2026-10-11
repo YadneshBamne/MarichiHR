@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { asyncHandler } from '../../shared/utils/asyncHandler'
+import { payrollService } from './payroll.service'
 import { Router, Request, Response, NextFunction } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission } from '../../middleware/rbac.middleware'
@@ -37,6 +40,12 @@ payrollRouter.post('/cycles/:id/approve', requirePermission('payroll:run'), payr
 payrollRouter.post('/cycles/:id/finance-approve', requirePermission('payroll:disburse'), payrollController.financeApprove)
 payrollRouter.post('/cycles/:id/reopen', requirePermission('payroll:run'), payrollController.reopen)
 payrollRouter.post('/cycles/:id/disburse', requirePermission('payroll:disburse'), payrollController.disburse)
+payrollRouter.post('/cycles/:id/release-payslips', requirePermission('payroll:run'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await payrollService.releasePayslips(String(req.params.id), req.user!.tenantId, req.user!.userId) })
+}))
+payrollRouter.post('/payslips/:id/withhold', requirePermission('payroll:run'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ withheld: z.boolean(), reason: z.string().trim().min(2).max(300).optional() }).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await payrollService.withholdPayslip(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body.withheld, req.body.reason) })
+}))
 
 // ─── EXPORTS ──────────────────────────────────────────────────
 payrollRouter.get('/cycles/:id/bank-file/preview', requirePermission('payroll:disburse'), payrollStaffOnly, payrollController.bankFilePreview)
