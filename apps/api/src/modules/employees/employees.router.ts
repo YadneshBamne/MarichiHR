@@ -16,6 +16,7 @@ import { profile360 } from './profile360.service'
 import { recordRouter } from './record.router'
 import { documentsRouter } from './documents.router'
 import { importEmployees, issueCredentials, IMPORT_COLUMNS } from './import.service'
+import { importData, DATA_IMPORTS, type DataImportType } from './data-import.service'
 import {
   AccessSchema,
   CreateEmployeeSchema,
@@ -83,6 +84,15 @@ const ImportSchema = z.object({ body: z.object({
 }).strict() })
 employeeRouter.post('/import', requireRoles('hr_admin', 'system_admin'), validate(ImportSchema), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await importEmployees(req.user!, req.body) })
+}))
+// Leave balances, bank details and contracts for people already here; each type needs the permission its own screen needs
+const DataImportSchema = z.object({ params: z.object({ type: z.enum(Object.keys(DATA_IMPORTS) as [DataImportType, ...DataImportType[]]) }), body: z.object({ rows: z.array(z.record(z.string().max(40), z.string().max(200))).min(1).max(2000), dryRun: z.boolean() }).strict() })
+const DATA_IMPORT_PERMISSION: Record<DataImportType, string> = { leave_balances: 'leave:configure', bank_details: 'employees:write', contracts: 'salary:write' }
+employeeRouter.post('/import/:type', validate(DataImportSchema), (req, res, next) => requirePermission(DATA_IMPORT_PERMISSION[req.params.type as DataImportType] as any)(req, res, next), asyncHandler(async (req, res) => {
+  const type = req.params.type as DataImportType
+  const allowed = new Set<string>(DATA_IMPORTS[type])
+  const rows = req.body.rows.map((r: Record<string, string>) => Object.fromEntries(Object.entries(r).filter(([k]) => allowed.has(k))))
+  res.json({ success: true, data: await importData(req.user!, type, { rows, dryRun: req.body.dryRun }) })
 }))
 employeeRouter.post('/access/bulk', requireRoles('hr_admin', 'system_admin'), validate(z.object({ body: z.object({ employeeIds: z.array(z.string().uuid()).min(1).max(500) }).strict() })), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await issueCredentials(req.user!, req.body.employeeIds) })

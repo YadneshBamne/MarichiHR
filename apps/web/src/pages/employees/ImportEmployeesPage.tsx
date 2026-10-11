@@ -6,6 +6,7 @@ import PageHeader from '../../components/ui/PageHeader'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import DataImportCard from './DataImportCard'
 
 const COLUMNS = ['employee_id', 'first_name', 'last_name', 'work_email', 'hire_date', 'department', 'job_title', 'manager', 'employment_type', 'work_location', 'personal_email', 'mobile', 'date_of_birth', 'gender', 'nationality', 'tax_country'] as const
 const REQUIRED = ['first_name', 'last_name', 'work_email', 'hire_date', 'department']
@@ -90,7 +91,7 @@ export default function ImportEmployeesPage() {
 
   return (
     <div ref={root}>
-      <PageHeader title="Import employees" sub="Add many people at once from a spreadsheet"
+      <PageHeader title="Import" sub="Add many people at once from a spreadsheet, then their balances, bank details and contracts"
         actions={<Link to="/employees" className="btn btn-ghost btn-sm"><Icon name="chevronLeft" size={14} /> Employees</Link>} />
       <div className="dgrid">
         <section data-card className="card span-8" style={{ padding: 22, display: 'grid', gap: 16, alignContent: 'start' }}>
@@ -117,6 +118,7 @@ export default function ImportEmployeesPage() {
         </section>
         <IdSeries />
       </div>
+      <DataImportCard />
 
       {result && (
         <section data-card className="card" style={{ padding: 20, marginTop: 18 }}>
