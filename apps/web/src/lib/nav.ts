@@ -22,7 +22,6 @@ export const ROLE = {
   APPROVERS: ['manager', 'hr_admin', 'system_admin'],
   DIRECTORY: ['manager', 'hr_admin', 'system_admin', 'payroll_admin', 'compliance_officer'],
 }
-const soon = (phase: string, blurb: string, features: string[]) => ({ phase, blurb, features })
 
 export const SECTIONS: NavSection[] = [
   {

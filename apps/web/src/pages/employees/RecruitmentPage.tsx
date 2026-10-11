@@ -337,7 +337,7 @@ export function CandidatePage() {
           <h3 style={{ fontSize: 15, marginBottom: 12 }}>Interviews</h3>
           {!c.interviews.length ? <p className="dim">No interviews yet.</p> : (
             <div style={{ display: 'grid', gap: 10 }}>
-              {c.interviews.map((i) => (
+              {c.interviews.map((i: Interview) => (
                 <div key={i.id} className="well" style={{ padding: 14, display: 'grid', gap: 6 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                     <strong>{i.interviewer}</strong>

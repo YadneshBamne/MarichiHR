@@ -87,7 +87,7 @@ export default function AuditPage() {
                       <div className="dim" style={{ fontSize: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                         <span>{human(e.entityType)} · {e.entityId}</span>
                         {link && <Link to={link} className="link">Open record</Link>}
-                        <button className="link" onClick={() => setF({ from: '', to: '', userId: '', action: '', entityType: e.entityType })}>All {human(e.entityType).toLowerCase()} changes</button>
+                        <button className="link" onClick={() => setF({ from: '', to: '', userId: '', action: '', entityType: e.entityType, entityId: '' })}>All {human(e.entityType).toLowerCase()} changes</button>
                         {e.userAgent && <span title={e.userAgent} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{e.userAgent}</span>}
                       </div>
                     </div>
