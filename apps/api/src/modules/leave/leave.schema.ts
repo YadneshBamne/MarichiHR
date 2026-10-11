@@ -16,6 +16,7 @@ const leaveTypeFields = {
   carryForwardExpiryMonths: z.number().int().min(1).max(60).nullable(),
   allowNegative: z.boolean(),
   encashable: z.boolean(),
+  encashMaxDays: z.number().min(0).max(366).nullable(),
   halfDayAllowed: z.boolean(),
   hourlyAllowed: z.boolean(),
   leaveUnit: z.enum(['day', 'hour']),

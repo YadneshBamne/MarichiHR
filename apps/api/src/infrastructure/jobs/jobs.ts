@@ -9,6 +9,7 @@ import { attendanceService } from '../../modules/attendance/attendance.service'
 import { announcementService } from '../../modules/announcements/announcements.service'
 import { applyDuePositionChanges } from '../../modules/employees/record.service'
 import { sendExpiryReminders } from '../../modules/employees/documents.service'
+import { autoYearEnd } from '../../modules/leave/yearend.service'
 
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
@@ -72,6 +73,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '0 6 * * *',
     description: 'Remind the person and HR 30 days, 7 days and on the day a document or ID expires (once each)',
     run: (t) => perTenant(t, (id) => sendExpiryReminders(id)),
+  },
+  'leave-year-end': {
+    pattern: '30 1 * * *',
+    description: 'On the first day of the leave year, carry forward, encash and lapse the leave left from the year that ended (once)',
+    run: (t) => perTenant(t, (id) => autoYearEnd(id), 'leave'),
   },
   'leave-accrual': {
     pattern: '0 2 1 * *',

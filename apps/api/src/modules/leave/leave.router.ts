@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { asyncHandler } from '../../shared/utils/asyncHandler'
+import { yearEndService } from './yearend.service'
 import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission, requireRoles } from '../../middleware/rbac.middleware'
@@ -52,3 +55,10 @@ leaveRouter.post('/contracts/:id/activate', requirePermission('salary:write'), v
 leaveRouter.post('/contracts/:id/cancel', requirePermission('salary:write'), validate(ContractTransitionSchema), contractController.cancel)
 leaveRouter.post('/contracts/cron/auto-activate', requirePermission('system:configure'), contractController.triggerAutoActivate)
 leaveRouter.post('/contracts/cron/auto-expire', requirePermission('system:configure'), contractController.triggerAutoExpire)
+
+// ─── LEAVE YEAR END (carry forward, encash, lapse; preview, run, roll back) ────
+leaveRouter.get('/year-end', requirePermission('leave:configure'), asyncHandler(async (req, res) => res.json({ success: true, data: await yearEndService.preview(req.user!.tenantId) })))
+leaveRouter.post('/year-end/run', requirePermission('leave:configure'), asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await yearEndService.run(req.user!.tenantId, req.user!) })))
+leaveRouter.post('/year-end/:id/rollback', requirePermission('leave:configure'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await yearEndService.rollback(req.user!, String(req.params.id)) })
+}))

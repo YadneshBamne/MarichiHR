@@ -538,6 +538,7 @@ model LeaveType {
   carryForwardExpiryMonths    Int?
   allowNegative               Boolean   @default(false)
   encashable                  Boolean   @default(false)
+  encashMaxDays               Float? // year end: most days paid out; the rest beyond carry-forward lapses
   halfDayAllowed              Boolean   @default(true)
   hourlyAllowed               Boolean   @default(false)
   leaveUnit                   String    @default("day")
@@ -1937,4 +1938,23 @@ model ApprovalDelegation {
 
   @@index([tenantId, toUserId, active])
   @@map("approval_delegations")
+}
+
+// Leave year end: unused leave is carried forward (up to each type's limit), encashed (up to its limit) or lapses.
+// Each run keeps the change it made to every balance, so it can be rolled back without undoing leave taken since.
+model LeaveYearEndRun {
+  id           String    @id @default(uuid())
+  tenantId     String
+  yearEnd      DateTime  @db.Date // last day of the leave year that closed
+  status       String    @default("done") // done | rolled_back
+  automatic    Boolean   @default(false)
+  ranBy        String?
+  ranAt        DateTime  @default(now())
+  rolledBackBy String?
+  rolledBackAt DateTime?
+  rows         Json // [{ employeeId, leaveTypeId, available, carried, encashed, lapsed, dBalance, dUsed }]
+  totals       Json
+
+  @@index([tenantId, yearEnd])
+  @@map("leave_year_end_runs")
 }

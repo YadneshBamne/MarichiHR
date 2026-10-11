@@ -11,7 +11,7 @@ export const LEAVE_APPROVAL_SLA_HOURS = 24
 // Explicit whitelist of configurable leave-type columns (never spread a request body into Prisma)
 const LEAVE_TYPE_FIELDS = [
   'name', 'category', 'isPaid', 'isStatutory', 'statutoryCountry', 'accrualType', 'accrualAmount', 'accrualDayOfMonth',
-  'carryForward', 'carryForwardMax', 'carryForwardExpiryMonths', 'allowNegative', 'encashable', 'halfDayAllowed',
+  'carryForward', 'carryForwardMax', 'carryForwardExpiryMonths', 'allowNegative', 'encashable', 'encashMaxDays', 'halfDayAllowed',
   'hourlyAllowed', 'leaveUnit', 'approvalLevels', 'requiresHrForStatutory', 'attachmentRequiredAfterDays', 'sandwichRule',
 ] as const
 function pickLeaveTypeFields(body: Record<string, unknown>) {

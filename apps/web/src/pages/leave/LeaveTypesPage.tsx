@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import YearEndPanel from './YearEndPanel'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
 import { errMsg } from '../../lib/hooks/useSalary'
@@ -12,7 +13,7 @@ const ACCRUALS: [string, string][] = [['manual', 'Manual allocation'], ['monthly
 type Form = Record<string, any>
 const BLANK: Form = {
   name: '', code: '', category: 'annual', isPaid: true, accrualType: 'manual', accrualAmount: '', carryForward: false, carryForwardMax: '',
-  carryForwardExpiryMonths: '', allowNegative: false, encashable: false, halfDayAllowed: true, approvalLevels: 1, attachmentRequiredAfterDays: '',
+  carryForwardExpiryMonths: '', allowNegative: false, encashable: false, encashMaxDays: '', halfDayAllowed: true, approvalLevels: 1, attachmentRequiredAfterDays: '',
   sandwichRule: false, isStatutory: false, statutoryCountry: '',
 }
 const num = (v: any) => (v === '' || v == null ? null : Number(v))
@@ -37,7 +38,7 @@ export default function LeaveTypesPage() {
     const body: Form = {
       name: f.name.trim(), category: f.category, isPaid: f.isPaid, accrualType: f.accrualType, accrualAmount: num(f.accrualAmount),
       carryForward: f.carryForward, carryForwardMax: f.carryForward ? num(f.carryForwardMax) : null,
-      carryForwardExpiryMonths: f.carryForward ? num(f.carryForwardExpiryMonths) : null, allowNegative: f.allowNegative, encashable: f.encashable,
+      carryForwardExpiryMonths: f.carryForward ? num(f.carryForwardExpiryMonths) : null, allowNegative: f.allowNegative, encashable: f.encashable, encashMaxDays: f.encashable ? num(f.encashMaxDays) : null,
       halfDayAllowed: f.halfDayAllowed, approvalLevels: Number(f.approvalLevels), attachmentRequiredAfterDays: num(f.attachmentRequiredAfterDays),
       sandwichRule: f.sandwichRule, isStatutory: f.isStatutory, statutoryCountry: f.isStatutory && f.statutoryCountry ? f.statutoryCountry.toUpperCase() : null,
     }
@@ -93,6 +94,8 @@ export default function LeaveTypesPage() {
       </div>
       {error && !form && <div style={errorBox}>{error}</div>}
 
+      <YearEndPanel />
+
       <Modal open={!!form} onClose={() => setForm(null)} title={form?.id ? 'Edit leave type' : 'New leave type'} width={620}>
         {form && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -119,7 +122,7 @@ export default function LeaveTypesPage() {
               {check('isPaid', 'Paid leave')}
               {check('halfDayAllowed', 'Half days allowed')}
               {check('allowNegative', 'Allow negative balance')}
-              {check('encashable', 'Encashable on exit')}
+              {check('encashable', 'Encashable (exit and year end)')}
               {check('sandwichRule', 'Sandwich rule (count weekends between)')}
               {check('carryForward', 'Carry forward unused days')}
               {check('isStatutory', 'Statutory leave')}
@@ -129,6 +132,9 @@ export default function LeaveTypesPage() {
                 <FormField label="Carry forward max (days)"><input style={inputStyle} type="number" min={0} value={form.carryForwardMax} onChange={(e) => set('carryForwardMax', e.target.value)} /></FormField>
                 <FormField label="Carried days expire after (months)"><input style={inputStyle} type="number" min={1} value={form.carryForwardExpiryMonths} onChange={(e) => set('carryForwardExpiryMonths', e.target.value)} /></FormField>
               </div>
+            )}
+            {form.encashable && (
+              <FormField label="Most days paid out at year end (empty = no limit)"><input style={{ ...inputStyle, maxWidth: 200 }} type="number" min={0} value={form.encashMaxDays} onChange={(e) => set('encashMaxDays', e.target.value)} /></FormField>
             )}
             {form.isStatutory && (
               <FormField label="Statutory country (ISO code)"><input style={{ ...inputStyle, maxWidth: 120 }} maxLength={2} value={form.statutoryCountry} onChange={(e) => set('statutoryCountry', e.target.value.toUpperCase())} /></FormField>
