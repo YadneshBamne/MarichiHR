@@ -65,6 +65,7 @@ export default function EmployeeListPage() {
         actions={<>
           <SearchField value={q} onChange={setQ} placeholder="Search by name, email or code" width={280} />
           {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/import')}><Icon name="download" size={16} /> Import</button>}
+          {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/documents')}><Icon name="file" size={16} /> Documents</button>}
           {isHR && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add member</button>}
         </>}
       >

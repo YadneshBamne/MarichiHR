@@ -10,13 +10,14 @@ import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
 import Profile360 from './Profile360'
+import DocumentsTab from './DocumentsTab'
 import { useRecord, FieldsCard, ListSection, IdentitySection, PositionHistory, CustomFieldsCard, MissingBanner } from './RecordSections'
 import { useMasters } from '../../lib/hooks/useMasters'
 
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
 
-type Tab = 'overview' | 'work' | 'personal' | 'family' | 'qualifications' | 'identity' | 'skills' | 'resume' | 'chatter' | 'access'
+type Tab = 'documents' | 'overview' | 'work' | 'personal' | 'family' | 'qualifications' | 'identity' | 'skills' | 'resume' | 'chatter' | 'access'
 
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -51,7 +52,7 @@ export default function EmployeeProfilePage() {
     { key: 'work', label: 'Job' },
     ...(rec?.can.seeSensitive ? [{ key: 'family' as Tab, label: 'Family' }] : []),
     { key: 'qualifications', label: 'Education & experience' },
-    ...(rec?.can.seeSensitive ? [{ key: 'identity' as Tab, label: 'Identity' }] : []),
+    ...(rec?.can.seeSensitive ? [{ key: 'identity' as Tab, label: 'Identity' }, { key: 'documents' as Tab, label: 'Documents' }] : []),
     { key: 'skills', label: `Skills (${employee.skills?.length || 0})` },
     { key: 'resume', label: `Resume (${employee.resumeLines?.length || 0})` },
     { key: 'chatter', label: 'Chatter' },
@@ -179,6 +180,8 @@ export default function EmployeeProfilePage() {
         )}
 
         {activeTab === 'identity' && rec && <IdentitySection rec={rec} />}
+
+        {activeTab === 'documents' && <DocumentsTab employeeId={employee.id} />}
 
         {activeTab === 'skills' && (
           <div>

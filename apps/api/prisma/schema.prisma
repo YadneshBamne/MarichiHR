@@ -360,6 +360,7 @@ model Employee {
   previousEmployment EmployeePreviousEmployment[]
   identities         EmployeeIdentity[]
   positionHistory    EmployeePositionHistory[]
+  documents          EmployeeDocument[]
 
   tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
   user                      User                       @relation(fields: [userId], references: [id])
@@ -1757,4 +1758,30 @@ model EmployeeFieldSetting {
 
   @@unique([tenantId, field])
   @@map("employee_field_settings")
+}
+
+// Files on a person (CV, ID scans, licences, letters, certificates), stored privately in the document storage
+model EmployeeDocument {
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  category    String // master: document_category
+  title       String
+  fileKey     String
+  fileName    String
+  mimeType    String
+  size        Int
+  expiryDate  DateTime? @db.Date
+  visibility  String    @default("employee") // employee (the person and HR) | hr (HR only)
+  uploadedBy  String
+  active      Boolean   @default(true)
+  archivedBy  String?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([tenantId, employeeId, active])
+  @@index([tenantId, expiryDate])
+  @@map("employee_documents")
 }
