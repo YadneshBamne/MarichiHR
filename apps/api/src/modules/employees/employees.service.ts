@@ -6,6 +6,7 @@ import { insertRows } from '../../infrastructure/database/insertRows'
 import { buildMeta } from '../../shared/utils/pagination'
 import { prisma } from '../../infrastructure/database/prisma'
 import bcrypt from 'bcryptjs'
+import { assertMasters } from '../masters/masters.service'
 import crypto from 'crypto'
 import { UpdateEmployeeSchema } from './employees.schema'
 import { encryptField, decryptField, last4 } from '../../shared/utils/crypto'
@@ -234,6 +235,7 @@ export const employeeService = {
       prisma.role.findFirst({ where: { tenantId, name: 'employee' } }),
       prisma.leaveType.findMany({ where: { tenantId, active: true }, select: { id: true } }),
       data.resourceCalendarId ? null : prisma.resourceCalendar.findFirst({ where: { tenantId, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
+      assertMasters(tenantId, { employment_type: data.employmentType ?? 'full_time', gender: data.gender, nationality: data.nationality, relationship: data.emergencyContactRelation }),
     ])
     if (existingUser) {
       throw new AppError('An employee with this email already exists', 409)
@@ -297,6 +299,13 @@ export const employeeService = {
     ) as UpdateEmployeeDto
 
     if (safeData.managerId === id) throw new AppError('An employee cannot be their own manager', 400)
+    // Only values that change are checked, so records holding a since-retired value can still be edited
+    await assertMasters(tenantId, {
+      employment_type: safeData.employmentType !== employee.employmentType ? safeData.employmentType : undefined,
+      gender: safeData.gender !== employee.gender ? safeData.gender : undefined,
+      nationality: safeData.nationality !== employee.nationality ? safeData.nationality : undefined,
+      relationship: safeData.emergencyContactRelation !== employee.emergencyContactRelation ? safeData.emergencyContactRelation : undefined,
+    })
     await assertRefsInTenant(tenantId, {
       orgUnitId: safeData.orgUnitId,
       jobPositionId: safeData.jobPositionId,
@@ -327,6 +336,7 @@ export const employeeService = {
   },
 
   async updateBank(id: string, tenantId: string, userId: string, dto: { bankName: string; bankAccountNo: string; bankIfscSwift?: string }) {
+    await assertMasters(tenantId, { bank: dto.bankName })
     const employee = await employeeRepository.findById(id, tenantId)
     if (!employee) throw new AppError('Employee not found', 404)
 

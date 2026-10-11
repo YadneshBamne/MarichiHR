@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { AppError } from '../../shared/utils/AppError'
 import { employeeRepository } from './employees.repository'
 import { employeeService, accessService } from './employees.service'
+import { ensureDefaults } from '../masters/masters.service'
 
 // Bulk employee import from a spreadsheet (the browser turns the CSV into rows of header -> text).
 // A dry run checks every row and says what would happen; the real run creates any missing departments, positions
@@ -26,7 +27,7 @@ export interface Credential { name: string; employeeCode: string; email: string;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
-const TYPES: Record<string, string> = { fulltime: 'full_time', parttime: 'part_time', contractor: 'contractor', contract: 'contractor', intern: 'intern', internship: 'intern' }
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 
 // YYYY-MM-DD, or day-first DD/MM/YYYY or DD-MM-YYYY (as typed in India and Zambia); null if not a real date
 export function parseDate(v: string): string | null {
@@ -48,13 +49,17 @@ async function pool<T>(items: T[], limit: number, fn: (t: T) => Promise<void>) {
 
 export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun: boolean; createMissing: boolean; grantLogin: boolean }): Promise<ImportResult> {
   const t = actor.tenantId
-  const [units, positions, locations, existing, root] = await Promise.all([
+  await ensureDefaults(t)
+  const [units, positions, locations, existing, root, masters] = await Promise.all([
     prisma.orgUnit.findMany({ where: { tenantId: t, active: true }, select: { id: true, name: true } }),
     prisma.jobPosition.findMany({ where: { tenantId: t }, select: { id: true, title: true, orgUnitId: true } }),
     prisma.workLocation.findMany({ where: { tenantId: t }, select: { id: true, name: true } }),
     prisma.employee.findMany({ where: { tenantId: t }, select: { id: true, employeeCode: true, workEmail: true, active: true, user: { select: { email: true } } } }),
     prisma.orgUnit.findFirst({ where: { tenantId: t, parentId: null, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
+    prisma.masterValue.findMany({ where: { tenantId: t, active: true, list: { in: ['employment_type', 'gender', 'nationality'] } }, select: { list: true, code: true, label: true } }),
   ])
+  // A spreadsheet may hold a master's code or its label, in any case or spacing ("Full time", "full-time", "FULL_TIME")
+  const master = (list: string, input: string) => masters.find((m) => m.list === list && (norm(m.code) === norm(input) || norm(m.label) === norm(input)))?.code ?? null
   const byName = <X extends { id: string }>(list: X[], name: (x: X) => string) => {
     const m = new Map<string, X[]>()
     list.forEach((x) => m.set(key(name(x)), [...(m.get(key(name(x))) ?? []), x]))
@@ -90,8 +95,12 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
     if (r.date_of_birth && !dob) errors.push('date_of_birth is not a valid date')
     if (r.personal_email && !EMAIL.test(r.personal_email)) errors.push('personal_email is not an email')
     if (r.tax_country && !/^[A-Za-z]{2}$/.test(r.tax_country)) errors.push('tax_country must be a 2-letter country code (ZM, IN…)')
-    const type = r.employment_type ? TYPES[r.employment_type.toLowerCase().replace(/[^a-z]/g, '')] : 'full_time'
-    if (!type) errors.push('employment_type must be full time, part time, contractor or intern')
+    const type = r.employment_type ? master('employment_type', r.employment_type) : 'full_time'
+    if (!type) errors.push(`employment_type "${r.employment_type}" is not in your Employment type list`)
+    const gender = r.gender ? master('gender', r.gender) : null
+    if (r.gender && !gender) errors.push(`gender "${r.gender}" is not in your Gender list`)
+    const nationality = r.nationality ? master('nationality', r.nationality) : null
+    if (r.nationality && !nationality) errors.push(`nationality "${r.nationality}" is not in your Nationality list`)
 
     let code = r.employee_id?.toUpperCase() ?? ''
     if (code) {
@@ -124,7 +133,7 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
       else if (input.createMissing) { if (!willCreate.locations.has(key(r.work_location))) willCreate.locations.set(key(r.work_location), r.work_location) }
       else errors.push(`no work location called "${r.work_location}"`)
     }
-    return { n, r, errors, email, code, hireDate, dob, type, unitId, unitName, positionId, locationId, managerRef: key(r.manager ?? ''), employeeId: undefined as string | undefined }
+    return { n, r, errors, email, code, hireDate, dob, type, gender, nationality, unitId, unitName, positionId, locationId, managerRef: key(r.manager ?? ''), employeeId: undefined as string | undefined }
   })
 
   // Managers: someone already in the company (email or employee ID) or another row in this file
@@ -192,7 +201,7 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
           employeeCode: p.code, firstName: p.r.first_name!, lastName: p.r.last_name!, workEmail: p.email, hireDate: p.hireDate!, orgUnitId: p.unitId!,
           jobPositionId: p.positionId ?? undefined, workLocationId: p.locationId ?? undefined, managerId, employmentType: p.type as any,
           personalEmail: p.r.personal_email || undefined, mobilePersonal: p.r.mobile || undefined, dateOfBirth: p.dob ?? undefined,
-          gender: p.r.gender || undefined, nationality: p.r.nationality || undefined, taxJurisdiction: p.r.tax_country?.toUpperCase() || undefined,
+          gender: p.gender ?? undefined, nationality: p.nationality ?? undefined, taxJurisdiction: p.r.tax_country?.toUpperCase() || undefined,
         }, actor.userId)
         p.employeeId = (employee as any).id
         const row = result.rows.find((x) => x.row === p.n)!

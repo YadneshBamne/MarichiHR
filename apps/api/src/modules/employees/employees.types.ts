@@ -35,7 +35,7 @@ export interface CreateEmployeeDto {
   resourceCalendarId?: string
   workLocationId?: string
   hireDate: string
-  employmentType: 'full_time' | 'part_time' | 'contractor' | 'intern'
+  employmentType: string // code from the employment_type master
   taxJurisdiction?: string
   dateOfBirth?: string
   gender?: string
@@ -50,6 +50,7 @@ export interface CreateEmployeeDto {
 }
 
 export interface UpdateEmployeeDto {
+  employmentType?: string
   firstName?: string
   lastName?: string
   orgUnitId?: string

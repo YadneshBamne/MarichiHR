@@ -11,7 +11,7 @@ const id = z.object({ id: z.string().uuid() })
 const holidayBody = {
   name: z.string().trim().min(1).max(80),
   date,
-  type: z.enum(['national', 'regional', 'religious', 'company']).optional(),
+  type: z.string().trim().min(1).max(40).optional(), // holiday_type master
   isOptional: z.boolean().optional(),
 }
 const calendarBody = {

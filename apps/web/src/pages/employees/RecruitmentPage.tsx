@@ -10,6 +10,8 @@ import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 import { fmtDate } from '../../lib/format'
 import { flattenUnits } from '../workplace/AnnouncementsPage'
+import MasterSelect from '../../components/ui/MasterSelect'
+import { useMasters } from '../../lib/hooks/useMasters'
 
 interface Opening { id: string; title: string; description: string; orgUnitId: string; orgUnit: string | null; employmentType: string; openings: number; salaryMin: number | null; salaryMax: number | null; currency: string; hiringManagerId: string | null; hiringManager: string | null; status: string; closedReason: string | null; requestedBy: string | null; requestedByUserId: string; createdAt: string; canManage: boolean; pipeline: Record<string, number> | null }
 interface Cand { id: string; openingId: string; opening?: string; firstName: string; lastName: string; stage: string; source: string; summary: string | null; resumeUrl: string | null; rating: number | null; email?: string; phone?: string | null; rejectionReason?: string | null; referredBy?: string | null; offerCtcAnnual?: number | null; offerJoiningDate?: string | null; offerStatus?: string | null; offerNote?: string | null; hiredEmployeeId?: string | null; interviews?: any; feedbackIn?: number; canManage?: boolean }
@@ -24,6 +26,7 @@ const range = (o: Opening) => o.salaryMin || o.salaryMax ? `${[o.salaryMin, o.sa
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 export default function RecruitmentPage() {
+  const { label: ml } = useMasters()
   const { hasRole } = useAuth()
   const isHR = hasRole('hr_admin')
   const canOpen = isHR || hasRole('manager')
@@ -51,7 +54,7 @@ export default function RecruitmentPage() {
                 <thead><tr><th>Position</th><th>Department</th><th>Hiring manager</th><th>Pipeline</th><th>Status</th></tr></thead>
                 <tbody>{mine.map((o) => (
                   <tr key={o.id} data-row>
-                    <td><Link to={`/recruitment/${o.id}`} className="link" style={{ fontWeight: 600 }}>{o.title}</Link><div className="dim" style={{ fontSize: 12 }}>{o.openings} seat{o.openings > 1 ? 's' : ''} · {label(o.employmentType)}</div></td>
+                    <td><Link to={`/recruitment/${o.id}`} className="link" style={{ fontWeight: 600 }}>{o.title}</Link><div className="dim" style={{ fontSize: 12 }}>{o.openings} seat{o.openings > 1 ? 's' : ''} · {ml('employment_type', o.employmentType)}</div></td>
                     <td>{o.orgUnit ?? '—'}</td>
                     <td>{o.hiringManager ?? '—'}</td>
                     <td style={{ fontSize: 12 }}>{o.pipeline ? PIPELINE.map((s) => <span key={s} title={s} style={{ marginRight: 8 }}><span className="dim">{s.slice(0, 1).toUpperCase()}</span> {o.pipeline![s]}</span>) : '—'}</td>
@@ -66,7 +69,7 @@ export default function RecruitmentPage() {
               {data.filter((o) => o.status === 'open').map((o) => (
                 <section key={o.id} data-card className="card span-4" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><strong style={{ fontSize: 16 }}>{o.title}</strong><Icon name="briefcase" size={16} /></div>
-                  <div className="dim" style={{ fontSize: 13 }}>{[o.orgUnit, label(o.employmentType), range(o)].filter(Boolean).join(' · ')}</div>
+                  <div className="dim" style={{ fontSize: 13 }}>{[o.orgUnit, ml('employment_type', o.employmentType), range(o)].filter(Boolean).join(' · ')}</div>
                   {o.description && <p style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 84, overflow: 'hidden' }}>{o.description}</p>}
                   <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
                     <button className="btn btn-honey btn-sm" onClick={() => setReferring(o)}><Icon name="user" size={14} /> Refer someone</button>
@@ -108,7 +111,7 @@ function OpeningModal({ onClose, edit }: { onClose: () => void; edit?: Opening }
         <label className="field"><span>Position title</span><input className="input" required minLength={2} value={f.title} onChange={set('title')} /></label>
         <label className="field"><span>Department</span><select className="input" required value={f.orgUnitId} onChange={set('orgUnitId')}><option value="">Choose…</option>{units.map((u) => <option key={u.id} value={u.id}>{'  '.repeat(u.depth)}{u.name}</option>)}</select></label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <label className="field"><span>Type</span><select className="input" value={f.employmentType} onChange={set('employmentType')}>{['full_time', 'part_time', 'contractor', 'intern'].map((t) => <option key={t} value={t}>{label(t)}</option>)}</select></label>
+          <label className="field"><span>Type</span><MasterSelect list="employment_type" className="input" value={f.employmentType} onChange={(v) => setF({ ...f, employmentType: v })} /></label>
           <label className="field"><span>Seats</span><input className="input" type="number" min={1} max={500} value={f.openings} onChange={set('openings')} /></label>
           <label className="field"><span>Salary from (yearly)</span><input className="input" type="number" min={0} value={f.salaryMin} onChange={set('salaryMin')} /></label>
           <label className="field"><span>Salary to (yearly)</span><input className="input" type="number" min={0} value={f.salaryMax} onChange={set('salaryMax')} /></label>
@@ -146,7 +149,7 @@ function CandidateModal({ opening, referral, onClose }: { opening: { id: string;
           <label className="field"><span>Phone</span><input className="input" value={f.phone} onChange={set('phone')} /></label>
         </div>
         <label className="field"><span>CV link (Drive, Dropbox, LinkedIn…)</span><input className="input" type="url" placeholder="https://" value={f.resumeUrl} onChange={set('resumeUrl')} /></label>
-        {!referral && <label className="field"><span>Source</span><select className="input" value={f.source} onChange={set('source')}>{['direct', 'job_board', 'careers', 'agency', 'other'].map((s) => <option key={s} value={s}>{label(s)}</option>)}</select></label>}
+        {!referral && <label className="field"><span>Source</span><MasterSelect list="source_of_hire" className="input" value={f.source} onChange={(v) => setF({ ...f, source: v })} /></label>}
         <label className="field"><span>{referral ? 'Why they would be great' : 'Notes'}</span><textarea className="input" rows={3} maxLength={2000} value={f.summary} onChange={set('summary')} /></label>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={save.isPending}>{referral ? 'Send referral' : 'Add'}</button></div>
       </form>
@@ -190,6 +193,7 @@ function MyReferrals() {
 }
 
 export function OpeningPage() {
+  const { label: ml } = useMasters()
   const { id = '' } = useParams()
   const { hasRole, user } = useAuth()
   const isHR = hasRole('hr_admin')
@@ -208,7 +212,7 @@ export function OpeningPage() {
   const status = (s: string, closedReason?: string) => act.mutate(async () => { await api.patch(`/recruitment/openings/${id}`, { status: s, ...(closedReason ? { closedReason } : {}) }); toast('Updated') })
   return (
     <div ref={root}>
-      <PageHeader title={o.title} sub={<>{[o.orgUnit, label(o.employmentType), `${o.openings} seat${o.openings > 1 ? 's' : ''}`, range(o), o.hiringManager && `hiring manager ${o.hiringManager}`].filter(Boolean).join(' · ')} <span className={`pill ${OPEN_STATUS[o.status]}`} style={{ marginLeft: 6 }}>{label(o.status)}</span></>}
+      <PageHeader title={o.title} sub={<>{[o.orgUnit, ml('employment_type', o.employmentType), `${o.openings} seat${o.openings > 1 ? 's' : ''}`, range(o), o.hiringManager && `hiring manager ${o.hiringManager}`].filter(Boolean).join(' · ')} <span className={`pill ${OPEN_STATUS[o.status]}`} style={{ marginLeft: 6 }}>{label(o.status)}</span></>}
         actions={<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Link to="/recruitment" className="btn btn-ghost btn-sm"><Icon name="chevronLeft" size={14} /> All openings</Link>
           {o.canManage && o.status === 'open' && <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Add candidate</button>}
@@ -257,11 +261,12 @@ export function OpeningPage() {
 }
 
 function CandCard({ c }: { c: Cand }) {
+  const { label: ml } = useMasters()
   return (
     <Link to={`/recruitment/candidates/${c.id}`} className="card row-link" style={{ padding: 10, display: 'block', boxShadow: 'none' }}>
       <div style={{ fontWeight: 600, fontSize: 14 }}>{c.firstName} {c.lastName}</div>
       <div className="dim" style={{ fontSize: 12, display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-        <span>{label(c.source)}</span>
+        <span>{ml('source_of_hire', c.source)}</span>
         {c.rating ? <span>{'★'.repeat(c.rating)}</span> : null}
         {c.interviews ? <span>{c.feedbackIn}/{c.interviews} feedback</span> : null}
         {c.offerStatus && <span className={`pill ${c.offerStatus === 'accepted' ? 'ok' : c.offerStatus === 'declined' ? 'danger' : 'warn'}`}>offer {c.offerStatus}</span>}
@@ -272,6 +277,7 @@ function CandCard({ c }: { c: Cand }) {
 }
 
 export function CandidatePage() {
+  const { label: ml } = useMasters()
   const { id = '' } = useParams()
   const { hasRole, user } = useAuth()
   const isHR = hasRole('hr_admin')
@@ -297,7 +303,7 @@ export function CandidatePage() {
           {c.email && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Icon name="mail" size={14} /> <a className="link" href={`mailto:${c.email}`}>{c.email}</a></div>}
           {c.phone && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Icon name="phone" size={14} /> {c.phone}</div>}
           {c.resumeUrl && <a className="btn btn-ghost btn-sm" href={c.resumeUrl} target="_blank" rel="noopener noreferrer"><Icon name="file" size={14} /> Open CV</a>}
-          <div className="dim" style={{ fontSize: 13 }}>Source: {label(c.source)}{c.referredBy ? ` · referred by ${c.referredBy}` : ''}</div>
+          <div className="dim" style={{ fontSize: 13 }}>Source: {ml('source_of_hire', c.source)}{c.referredBy ? ` · referred by ${c.referredBy}` : ''}</div>
           {c.summary && <p style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{c.summary}</p>}
           {c.rejectionReason && <p className="pill danger" style={{ whiteSpace: 'normal' }}>Rejected: {c.rejectionReason}</p>}
           {c.canManage && (

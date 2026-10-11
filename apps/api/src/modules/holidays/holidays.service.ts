@@ -1,4 +1,5 @@
 import { prisma } from '../../infrastructure/database/prisma'
+import { assertMasters } from '../masters/masters.service'
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser } from '../../shared/utils/access'
 import { normaliseDateInput } from '../../shared/utils/businessDate'
@@ -34,6 +35,11 @@ function checkDates(year: number, holidays: HolidayIn[], existing: Date[] = []) 
 
 const audit = (user: AccessUser, action: string, entityId: string, newValue?: any) =>
   prisma.auditLog.create({ data: { tenantId: user.tenantId, userId: user.userId, action, entityType: 'holiday_calendar', entityId, newValue } })
+
+// Every holiday type used must be an active value of the company's holiday_type master
+async function holidayTypes(tenantId: string, holidays: { type?: string | null }[]) {
+  for (const type of new Set(holidays.map((h) => h.type).filter(Boolean) as string[])) await assertMasters(tenantId, { holiday_type: type })
+}
 
 export const holidayService = {
   async list(user: AccessUser, year: number) {
@@ -73,6 +79,7 @@ export const holidayService = {
   },
 
   async createCalendar(user: AccessUser, body: CalendarIn) {
+    await holidayTypes(user.tenantId, body.holidays ?? [])
     await assertLocation(user.tenantId, body.workLocationId)
     checkDates(body.year, body.holidays ?? [])
     const cal = await prisma.holidayCalendar.create({
@@ -119,6 +126,7 @@ export const holidayService = {
     const cal = await calendarOf(user, id)
     const existing = await prisma.holiday.findMany({ where: { calendarId: id, active: true }, select: { date: true } })
     checkDates(cal.year, holidays, existing.map((e) => e.date))
+    await holidayTypes(user.tenantId, holidays)
     await prisma.holiday.createMany({ data: holidays.map((h) => ({ calendarId: id, name: h.name, date: normaliseDateInput(h.date), type: h.type ?? 'national', isOptional: h.isOptional ?? false })) })
     await audit(user, 'HOLIDAYS_ADDED', id, { holidays })
     return prisma.holiday.findMany({ where: { calendarId: id, active: true }, orderBy: { date: 'asc' } })
@@ -134,7 +142,7 @@ export const holidayService = {
     const data: Record<string, unknown> = {}
     if (body.name !== undefined) data.name = body.name
     if (body.date !== undefined) data.date = normaliseDateInput(body.date)
-    if (body.type !== undefined) data.type = body.type
+    if (body.type !== undefined) { await holidayTypes(user.tenantId, [body as HolidayIn]); data.type = body.type }
     if (body.isOptional !== undefined) data.isOptional = body.isOptional
     const updated = await prisma.holiday.update({ where: { id: h.id }, data })
     await audit(user, 'HOLIDAY_UPDATED', h.calendarId, { holidayId: h.id, ...body })

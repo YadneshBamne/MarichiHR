@@ -4,6 +4,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { AccessUser } from '../../shared/utils/access'
 import { employeeService } from '../employees/employees.service'
 import { incentiveService } from '../incentives/incentives.service'
+import { assertMasters } from '../masters/masters.service'
 
 // Recruitment. Who may do what:
 //  - openings: HR creates them open; a manager requests one (pending_approval) that an HR admin other than the
@@ -84,6 +85,7 @@ async function checkOpeningRefs(user: AccessUser, b: Partial<OpeningBody>) {
     b.hiringManagerId ? prisma.employee.findFirst({ where: { id: b.hiringManagerId, tenantId: t, active: true } }) : true,
   ])
   if (!unit || !pos || !loc || !mgr) throw new AppError('Department, position, location or hiring manager not found', 404)
+  await assertMasters(user.tenantId, { employment_type: b.employmentType })
   if (b.salaryMin != null && b.salaryMax != null && b.salaryMin > b.salaryMax) throw new AppError('The salary range is upside down', 400)
 }
 
@@ -181,6 +183,7 @@ export const recruitmentService = {
     if (o.status !== 'open') throw new AppError('This opening is not taking candidates', 400)
     if (!referral && !manages(user, o)) throw new AppError('Only HR or the hiring manager can add candidates; use Refer instead', 403)
     if (referral && !user.employeeId) throw new AppError('Only employees can refer candidates', 403)
+    if (!referral) await assertMasters(user.tenantId, { source_of_hire: b.source })
     const email = b.email.trim().toLowerCase()
     if (await prisma.candidate.findFirst({ where: { openingId, tenantId: user.tenantId, email: { equals: email, mode: 'insensitive' } } })) {
       throw new AppError('This person is already a candidate for this opening', 409)

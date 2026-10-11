@@ -51,6 +51,7 @@ model Tenant {
   incentiveTypes   IncentiveType[]
   incentives       Incentive[]
   jobOpenings      JobOpening[]
+  masterValues     MasterValue[]
   candidates       Candidate[]
   skillTypes           SkillType[]
   salaryStructureTypes SalaryStructureType[]
@@ -1534,4 +1535,27 @@ model StatutoryTable {
 
   @@unique([code, effectiveFrom])
   @@map("statutory_tables")
+}
+
+// Masters: every company-editable choice list (gender, relationship, document type, exit reason...). The catalog of
+// lists and their default values lives in code (modules/masters/masters.catalog.ts); rows are created per company on
+// first use. `code` is stable (stored on records and used by logic and integrations); `label` is the company's wording.
+model MasterValue {
+  id        String   @id @default(uuid())
+  tenantId  String
+  list      String
+  code      String
+  label     String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  isSystem  Boolean  @default(false) // shipped default: label editable, code fixed
+  meta      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, list, code])
+  @@index([tenantId, list, active])
+  @@map("master_values")
 }

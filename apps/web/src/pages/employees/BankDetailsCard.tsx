@@ -3,11 +3,14 @@ import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle } from '../../components/ui/FormField'
 import { useUpdateBank, useVerifyBank } from '../../lib/hooks/useEmployees'
+import MasterSelect from '../../components/ui/MasterSelect'
+import { useMasters } from '../../lib/hooks/useMasters'
 
 export default function BankDetailsCard({ employee }: { employee: any }) {
   const update = useUpdateBank(employee.id)
   const verify = useVerifyBank(employee.id)
   const [editing, setEditing] = useState(false)
+  const { label: master } = useMasters()
   const [form, setForm] = useState({ bankName: '', bankAccountNo: '', bankIfscSwift: '' })
   const [error, setError] = useState('')
   const [verifyError, setVerifyError] = useState('')
@@ -53,7 +56,7 @@ export default function BankDetailsCard({ employee }: { employee: any }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           {hasDetails ? (
             <div>
-              <div style={{ fontSize: 15, fontWeight: 500 }}>{employee.bankName} <span style={{ color: 'var(--dim)', fontWeight: 400 }}>•••• {employee.bankAccountLast4}</span></div>
+              <div style={{ fontSize: 15, fontWeight: 500 }}>{master('bank', employee.bankName)} <span style={{ color: 'var(--dim)', fontWeight: 400 }}>•••• {employee.bankAccountLast4}</span></div>
               {employee.bankIfscSwift && <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 2 }}>{employee.bankIfscSwift}</div>}
             </div>
           ) : (
@@ -77,7 +80,7 @@ export default function BankDetailsCard({ employee }: { employee: any }) {
 
       <Modal open={editing} onClose={() => setEditing(false)} title="Bank details" width={440}>
         <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <FormField label="Bank name" required><input style={inputStyle} value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} required /></FormField>
+          <FormField label="Bank" required><MasterSelect list="bank" value={form.bankName} onChange={(v) => setForm({ ...form, bankName: v })} placeholder="Choose a bank" required style={inputStyle} className="" /></FormField>
           <FormField label="Account number" required>
             <input style={inputStyle} inputMode="numeric" autoComplete="off" pattern="\d{6,34}" title="6 to 34 digits" placeholder={hasDetails ? 'Enter the full number to replace' : ''} value={form.bankAccountNo} onChange={(e) => setForm({ ...form, bankAccountNo: e.target.value })} required />
           </FormField>

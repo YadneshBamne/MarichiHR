@@ -8,12 +8,12 @@ import Modal from '../../components/ui/Modal'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import MasterSelect from '../../components/ui/MasterSelect'
 
 interface Holiday { id: string; name: string; date: string; type: string; isOptional: boolean }
 interface Calendar { id: string; name: string; year: number; countryCode: string | null; workLocationId: string | null; workLocation: string | null; appliesToMe: boolean; holidays: Holiday[] }
 type NewHoliday = { name: string; date: string; type?: string; isOptional?: boolean }
 
-const TYPES = ['national', 'regional', 'religious', 'company'] as const
 const fmt = (d: string, o: Intl.DateTimeFormatOptions) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', ...o })
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
@@ -153,7 +153,7 @@ function HolidayRow({ h, past, canManage, busy, onSave, onRemove }: { h: Holiday
         <td><input className="input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} style={{ height: 34 }} aria-label="Date" /></td>
         <td><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={{ height: 34 }} aria-label="Name" /></td>
         <td>
-          <select className="input" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} style={{ height: 34 }} aria-label="Type">{TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          <MasterSelect list="holiday_type" className="input" value={f.type} onChange={(v) => setF({ ...f, type: v })} style={{ height: 34 }} />
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginTop: 4 }}><input type="checkbox" checked={f.isOptional} onChange={(e) => setF({ ...f, isOptional: e.target.checked })} /> Optional</label>
         </td>
         <td style={{ whiteSpace: 'nowrap' }}>

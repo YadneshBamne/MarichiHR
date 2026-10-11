@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { assertMasters, masterLabels } from '../masters/masters.service'
 import { prisma } from '../../infrastructure/database/prisma'
 import { eventBus } from '../../infrastructure/events/eventBus'
 import { AppError } from '../../shared/utils/AppError'
@@ -57,7 +58,7 @@ async function transition(id: string, tenantId: string, from: string[], data: Pr
 
 export const exitsService = {
   async initiate(user: AccessUser, body: {
-    employeeId: string; exitType: 'resignation' | 'termination'; reason: string; noticeDate: string; lastWorkingDate: string
+    employeeId: string; exitType: string; reason: string; noticeDate: string; lastWorkingDate: string
     shortfallAction?: 'recover' | 'buyout' | 'waive'; clearance: { IT: string; FINANCE: string; ADMIN: string; MANAGER?: string }
   }) {
     const { tenantId } = user
@@ -91,7 +92,10 @@ export const exitsService = {
     const noticePeriodDays = contract?.noticePeriodDays ?? 0
     const noticeServedDays = daysBetween(noticeDate, lastWorkingDate)
     const shortfallDays = Math.max(0, noticePeriodDays - noticeServedDays)
-    const shortfallAction = body.shortfallAction ?? (body.exitType === 'resignation' ? 'recover' : 'buyout')
+    // Short notice is recovered when the employee ended it (resignation-like types) and bought out when the employer did
+    await assertMasters(tenantId, { exit_type: body.exitType })
+    const endedBy = ((await masterLabels(tenantId, 'exit_type')).get(body.exitType)?.meta as any)?.endedBy ?? (body.exitType === 'resignation' ? 'employee' : 'employer')
+    const shortfallAction = body.shortfallAction ?? (endedBy === 'employee' ? 'recover' : 'buyout')
 
     const exit = await prisma.employeeExit.create({
       data: {

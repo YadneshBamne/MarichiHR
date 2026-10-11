@@ -4,6 +4,8 @@ import { FormField, inputStyle, selectStyle } from '../../components/ui/FormFiel
 import { useEmployees } from '../../lib/hooks/useEmployees'
 import { useAssignableUsers, useInitiateExit } from '../../lib/hooks/useExits'
 import { primaryBtn } from './ExitsPage'
+import MasterSelect from '../../components/ui/MasterSelect'
+import { useMasters } from '../../lib/hooks/useMasters'
 
 const DEPTS = [
   { key: 'IT', label: 'IT (assets, accounts)' },
@@ -21,6 +23,10 @@ export default function InitiateExitModal({ open, onClose, onCreated }: Props) {
   const [f, setF] = useState({ employeeId: '', exitType: 'resignation', noticeDate: '', lastWorkingDate: '', reason: '', shortfallAction: '' })
   const [clearance, setClearance] = useState<Record<string, string>>({ IT: '', FINANCE: '', ADMIN: '', MANAGER: '' })
   const [error, setError] = useState('')
+  const [reasonCode, setReasonCode] = useState('')
+  const { values, label: master } = useMasters()
+  // Who ended employment decides the default for short notice (exit types carry it in their master meta)
+  const endedBy = values('exit_type').find((t) => t.code === f.exitType)?.meta?.endedBy ?? (f.exitType === 'resignation' ? 'employee' : 'employer')
 
   const employees: any[] = empRes?.data ?? []
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }))
@@ -55,14 +61,11 @@ export default function InitiateExitModal({ open, onClose, onCreated }: Props) {
           </select>
         </FormField>
         <FormField label="Exit type" required>
-          <select style={selectStyle} value={f.exitType} onChange={(e) => set('exitType', e.target.value)}>
-            <option value="resignation">Resignation</option>
-            <option value="termination">Termination</option>
-          </select>
+          <MasterSelect list="exit_type" className="" style={selectStyle} value={f.exitType} onChange={(v) => set('exitType', v)} />
         </FormField>
         <FormField label="Notice shortfall">
           <select style={selectStyle} value={f.shortfallAction} onChange={(e) => set('shortfallAction', e.target.value)}>
-            <option value="">Default ({f.exitType === 'resignation' ? 'recover from employee' : 'pay in lieu'})</option>
+            <option value="">Default ({endedBy === 'employee' ? 'recover from employee' : 'pay in lieu'})</option>
             <option value="recover">Recover from employee</option>
             <option value="buyout">Pay in lieu (buyout)</option>
             <option value="waive">Waive</option>
@@ -73,6 +76,9 @@ export default function InitiateExitModal({ open, onClose, onCreated }: Props) {
         </FormField>
         <FormField label="Last working day" required>
           <input type="date" style={inputStyle} value={f.lastWorkingDate} min={f.noticeDate || undefined} onChange={(e) => set('lastWorkingDate', e.target.value)} />
+        </FormField>
+        <FormField label="Main reason">
+          <MasterSelect list="exit_reason" className="" style={selectStyle} value={reasonCode} placeholder="Choose…" onChange={(v) => { setReasonCode(v); if (!f.reason.trim() || f.reason === master('exit_reason', reasonCode)) set('reason', master('exit_reason', v)) }} />
         </FormField>
         <FormField label="Reason" required style={{ gridColumn: '1 / -1' }}>
           <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={f.reason} onChange={(e) => set('reason', e.target.value)} />

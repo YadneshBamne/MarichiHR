@@ -8,12 +8,13 @@ import Modal from '../../components/ui/Modal'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import { useMasters, type MasterListData, type MasterValue } from '../../lib/hooks/useMasters'
 
 // One place for every list the rest of the product picks from. Departments, positions, locations and expense
 // categories are edited here; the others link to the screen that already manages them.
 interface Unit { id: string; name: string; type: string; parentId: string | null; costCenter: string | null; headcount: number }
 interface Overview { units: Unit[]; counts: Record<string, number> }
-type Tab = 'overview' | 'departments' | 'positions' | 'locations' | 'expenses'
+type Tab = 'overview' | 'lists' | 'departments' | 'positions' | 'locations' | 'expenses'
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
 export default function MastersPage() {
@@ -23,7 +24,10 @@ export default function MastersPage() {
   const root = useReveal<HTMLDivElement>(tab)
   const has = hasApp
   const c = o?.counts ?? {}
+  const { lists } = useMasters()
+  const listCount = lists.length || undefined
   const cards: { label: string; n?: number; sub: string; go: Tab | string; app?: string }[] = [
+    { label: 'Dropdown lists', n: listCount, sub: 'Gender, relationship, documents, banks, exit reasons and every other choice', go: 'lists' },
     { label: 'Departments', n: c.departments, sub: 'Org structure, cost centres', go: 'departments' },
     { label: 'Job positions', n: c.positions, sub: 'Titles and grade per department', go: 'positions' },
     { label: 'Work locations', n: c.locations, sub: 'Offices, sites and clock-in geofences', go: 'locations' },
@@ -39,7 +43,7 @@ export default function MastersPage() {
     <div ref={root}>
       <PageHeader title="Masters" sub="Every list your people, payroll and policies are built on">
         <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-          {([['overview', 'All masters'], ['departments', 'Departments'], ['positions', 'Job positions'], ['locations', 'Work locations'], ...(has('expenses') ? [['expenses', 'Expense categories']] : [])] as [Tab, string][]).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+          {([['overview', 'All masters'], ['lists', 'Dropdown lists'], ['departments', 'Departments'], ['positions', 'Job positions'], ['locations', 'Work locations'], ...(has('expenses') ? [['expenses', 'Expense categories']] : [])] as [Tab, string][]).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
         </div>
       </PageHeader>
       {tab === 'overview' && (
@@ -53,6 +57,7 @@ export default function MastersPage() {
           })}
         </div>
       )}
+      {tab === 'lists' && <ListsEditor />}
       {tab === 'departments' && <Departments units={o?.units ?? []} />}
       {tab === 'positions' && <Positions units={o?.units ?? []} />}
       {tab === 'locations' && <Locations />}
@@ -250,5 +255,80 @@ function ExpenseCategories() {
         </Modal>
       )}
     </section>
+  )
+}
+
+// Every company-editable dropdown list: pick a list, then add, rename, retire/restore or move values
+function ListsEditor() {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const { lists, isLoading } = useMasters(true)
+  const [key, setKey] = useState('gender')
+  const [adding, setAdding] = useState('')
+  const [editing, setEditing] = useState<{ id: string; label: string } | null>(null)
+  const list = lists.find((l) => l.key === key)
+  const refresh = () => qc.invalidateQueries({ queryKey: ['masters'] })
+  const act = useMutation({ mutationFn: async (f: () => Promise<unknown>) => f(), onSuccess: refresh, onError: (e) => toast(errMsg(e), 'error') })
+  const groups = [...new Set(lists.map((l) => l.group))]
+  const move = (v: MasterValue, dir: -1 | 1) => {
+    const ids = list!.values.map((x) => x.id)
+    const i = ids.indexOf(v.id), j = i + dir
+    if (j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    act.mutate(() => api.put(`/masters/${key}/order`, { ids }))
+  }
+  if (isLoading) return <div className="skeleton" style={{ height: 240, borderRadius: 18 }} />
+  return (
+    <div className="lists-editor" style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+      <style>{'@media (max-width: 720px) { .lists-editor { grid-template-columns: 1fr !important } }'}</style>
+      <nav data-card className="card" style={{ padding: 10, display: 'grid', gap: 10 }} aria-label="Lists">
+        {groups.map((g) => (
+          <div key={g} style={{ display: 'grid', gap: 2 }}>
+            <span className="dim" style={{ fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', padding: '4px 8px' }}>{g}</span>
+            {lists.filter((l: MasterListData) => l.group === g).map((l) => (
+              <button key={l.key} className="row-link" aria-current={l.key === key} onClick={() => { setKey(l.key); setEditing(null); setAdding('') }}
+                style={{ textAlign: 'left', border: 0, borderRadius: 10, padding: '6px 8px', font: 'inherit', fontSize: 13, cursor: 'pointer', background: l.key === key ? 'var(--night)' : 'transparent', color: l.key === key ? 'var(--night-ink)' : 'inherit', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{l.name}</span><span style={{ opacity: 0.6 }}>{l.values.filter((v) => v.active).length}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      {list && (
+        <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 12, minWidth: 0 }}>
+          <div><h3 style={{ fontSize: 17 }}>{list.name}</h3>{list.description && <p className="dim" style={{ fontSize: 13 }}>{list.description}</p>}</div>
+          <form onSubmit={(e) => { e.preventDefault(); if (adding.trim()) act.mutate(async () => { await api.post(`/masters/${key}`, { label: adding.trim() }); setAdding(''); toast('Added') }) }} style={{ display: 'flex', gap: 8 }}>
+            <input id="master-add" className="input" placeholder={`Add to ${list.name.toLowerCase()}…`} value={adding} maxLength={80} onChange={(e) => setAdding(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+            <button className="btn btn-primary btn-sm" disabled={!adding.trim() || act.isPending}><Icon name="plus" size={14} /> Add</button>
+          </form>
+          {!list.values.length ? <p className="dim" style={{ fontSize: 13 }}>Nothing here yet. Add your first value above.</p> : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="tbl" style={{ width: '100%', minWidth: 460 }}>
+                <thead><tr><th>Label</th><th>Code</th><th>Status</th><th /></tr></thead>
+                <tbody>{list.values.map((v, i) => (
+                  <tr key={v.id} style={{ opacity: v.active ? 1 : 0.55 }}>
+                    <td>{editing?.id === v.id ? (
+                      <form onSubmit={(e) => { e.preventDefault(); act.mutate(async () => { await api.patch(`/masters/${key}/${v.id}`, { label: editing.label.trim() }); setEditing(null); toast('Renamed') }) }} style={{ display: 'flex', gap: 6 }}>
+                        <input className="input" autoFocus value={editing.label} maxLength={80} onChange={(e) => setEditing({ ...editing, label: e.target.value })} style={{ height: 32, minWidth: 0 }} />
+                        <button className="btn btn-primary btn-sm" disabled={!editing.label.trim()}>Save</button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                      </form>
+                    ) : <strong style={{ fontWeight: 600 }}>{v.label}</strong>}</td>
+                    <td className="dim" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>{v.code}{v.isSystem && <span title="Shipped with MarichiHR: the label can change, the code stays"> · default</span>}</td>
+                    <td><span className={`pill ${v.active ? 'ok' : 'mute'}`}>{v.active ? 'active' : 'retired'}</span></td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-ghost btn-sm" aria-label="Move up" disabled={i === 0} onClick={() => move(v, -1)}>↑</button>
+                      <button className="btn btn-ghost btn-sm" aria-label="Move down" disabled={i === list.values.length - 1} onClick={() => move(v, 1)}>↓</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ id: v.id, label: v.label })}>Rename</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => act.mutate(() => api.patch(`/masters/${key}/${v.id}`, { active: !v.active }))}>{v.active ? 'Retire' : 'Restore'}</button>
+                    </td>
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          )}
+          <p className="dim" style={{ fontSize: 12 }}>Retired values stay on the records that already use them but can't be picked for new ones. Codes never change, so reports and integrations keep working after a rename.</p>
+        </section>
+      )}
+    </div>
   )
 }

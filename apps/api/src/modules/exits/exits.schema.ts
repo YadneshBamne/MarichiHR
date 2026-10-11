@@ -8,7 +8,7 @@ export const DEPARTMENTS = ['IT', 'FINANCE', 'ADMIN', 'MANAGER'] as const
 export const InitiateExitSchema = z.object({
   body: z.object({
     employeeId: z.string().uuid(),
-    exitType: z.enum(['resignation', 'termination']),
+    exitType: z.string().trim().min(1).max(40), // exit_type master
     reason: z.string().trim().min(1).max(1000),
     noticeDate: dateString,
     lastWorkingDate: dateString,

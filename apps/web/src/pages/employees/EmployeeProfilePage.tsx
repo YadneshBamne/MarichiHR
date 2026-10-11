@@ -10,6 +10,7 @@ import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
 import Profile360 from './Profile360'
+import { useMasters } from '../../lib/hooks/useMasters'
 
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
@@ -22,6 +23,7 @@ export default function EmployeeProfilePage() {
   const { isHR, hasRole, user } = useAuth()
   const canManageAccess = hasRole('hr_admin') || hasRole('system_admin')
   const { data: employee, isLoading } = useEmployee(id!)
+  const { label: master } = useMasters()
   const archiveEmployee = useArchiveEmployee()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
@@ -71,7 +73,7 @@ export default function EmployeeProfilePage() {
           </div>
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
             <Badge label={employee.employmentStatus} />
-            <Badge label={employee.employmentType} />
+            <Badge label={master('employment_type', employee.employmentType)} />
           </div>
         </div>
 
@@ -121,7 +123,7 @@ export default function EmployeeProfilePage() {
             <InfoRow label="Work Location" value={employee.workLocation ? `${employee.workLocation.name}, ${employee.workLocation.city}` : undefined} />
             <InfoRow label="Manager" value={employee.manager?.user?.fullName} />
             <InfoRow label="Hire Date" value={employee.hireDate ? dateOnly(employee.hireDate)! : undefined} />
-            <InfoRow label="Employment Type" value={employee.employmentType?.replace(/_/g, ' ')} />
+            <InfoRow label="Employment Type" value={master('employment_type', employee.employmentType)} />
             <InfoRow label="Tax Jurisdiction" value={employee.taxJurisdiction} />
             <InfoRow label="Probation End" value={employee.probationEndDate ? dateOnly(employee.probationEndDate)! : undefined} />
             <InfoRow label="Resource Calendar" value={employee.resourceCalendar?.name} />
@@ -159,11 +161,11 @@ export default function EmployeeProfilePage() {
             <InfoRow label="Personal Email" value={employee.personalEmail} />
             <InfoRow label="Personal Mobile" value={employee.mobilePersonal} />
             <InfoRow label="Date of Birth" value={employee.dateOfBirth ? dateOnly(employee.dateOfBirth)! : undefined} />
-            <InfoRow label="Gender" value={employee.gender} />
-            <InfoRow label="Nationality" value={employee.nationality} />
+            <InfoRow label="Gender" value={master('gender', employee.gender)} />
+            <InfoRow label="Nationality" value={master('nationality', employee.nationality)} />
             <InfoRow label="Emergency Contact" value={employee.emergencyContactName} />
             <InfoRow label="Emergency Phone" value={employee.emergencyContactPhone} />
-            <InfoRow label="Relationship" value={employee.emergencyContactRelation} />
+            <InfoRow label="Relationship" value={master('relationship', employee.emergencyContactRelation)} />
           </div>
         )}
 

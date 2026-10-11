@@ -15,7 +15,7 @@ const openingFields = {
   orgUnitId: z.string().uuid(),
   jobPositionId: uuidOrNull,
   workLocationId: uuidOrNull,
-  employmentType: z.enum(['full_time', 'part_time', 'contractor', 'intern']),
+  employmentType: z.string().trim().min(1).max(40), // employment_type master
   openings: z.number().int().min(1).max(500),
   salaryMin: money.nullable(),
   salaryMax: money.nullable(),
@@ -32,7 +32,7 @@ const candidateFields = {
   resumeUrl: z.string().trim().url().max(500).refine((u) => /^https?:\/\//i.test(u), 'Use an http(s) link').nullable().optional(),
   summary: z.string().trim().max(2000).nullable().optional(),
 }
-const AddCandidate = z.object({ params: id, body: z.object({ ...candidateFields, source: z.enum(['direct', 'job_board', 'careers', 'agency', 'other']).optional() }).strict() })
+const AddCandidate = z.object({ params: id, body: z.object({ ...candidateFields, source: z.string().trim().min(1).max(40).optional() }).strict() })
 const Refer = z.object({ params: id, body: z.object(candidateFields).strict() })
 const UpdateCandidate = z.object({ params: id, body: z.object({
   stage: z.enum(['applied', 'screening', 'interview', 'rejected', 'withdrawn']).optional(),

@@ -1,6 +1,7 @@
 import { payrollRepository as repo } from './payroll.repository'
 import { runPayrollEngine, EngineExtraLine } from './payroll.engine'
 import { PAYROLL_CONFIG } from './payroll.config'
+import { masterLabels } from '../masters/masters.service'
 import { statutoryFor, indiaFyStart, indiaMonthsLeft, StatutoryContext } from '../tax/statutory'
 import { CreateCycleDto, AddPayrollInputDto } from './payroll.types'
 import { AppError } from '../../shared/utils/AppError'
@@ -721,7 +722,7 @@ async function evaluateBankEligibility(cycleId: string, tenantId: string) {
   const cycle = await getCycleOrThrow(cycleId, tenantId)
   assertExportable(cycle)
 
-  const payslips = await repo.listPayslipsForExport(cycleId)
+  const [payslips, banks] = await Promise.all([repo.listPayslipsForExport(cycleId), masterLabels(tenantId, 'bank')])
   const included: { employeeCode: string; name: string; bankName: string; accountNumber: string; branchSwift: string; accountLast4: string; amount: number; currency: string }[] = []
   const excluded: { employeeCode: string; name: string; reason: string }[] = []
 
@@ -741,7 +742,7 @@ async function evaluateBankEligibility(cycleId: string, tenantId: string) {
       continue
     }
     included.push({
-      employeeCode: e.employeeCode, name, bankName: e.bankName, accountNumber, branchSwift: e.bankIfscSwift ?? '',
+      employeeCode: e.employeeCode, name, bankName: banks.get(e.bankName)?.label ?? e.bankName, accountNumber, branchSwift: e.bankIfscSwift ?? '',
       accountLast4: last4(accountNumber), amount: p.netPay, currency: p.currency,
     })
   }

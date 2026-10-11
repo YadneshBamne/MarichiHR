@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useCreateEmployee, useOrgTree, useJobPositions, useWorkLocations, useEmployees } from '../../lib/hooks/useEmployees'
 import { TemporaryPassword } from '../../components/company/AccessCard'
 import { COUNTRIES } from '../../components/company/CompanyParts'
+import MasterSelect from '../../components/ui/MasterSelect'
 
 interface Props { open: boolean; onClose: () => void }
 
@@ -111,9 +112,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
               <option value="">None</option>{locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}{l.city ? ` (${l.city})` : ''}</option>)}
             </select></div>
           <div className="field"><label htmlFor="ce-type">Employment type</label>
-            <select id="ce-type" className="input select" value={form.employmentType} onChange={(e) => set('employmentType', e.target.value)}>
-              <option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contractor">Contractor</option><option value="intern">Intern</option>
-            </select></div>
+            <MasterSelect id="ce-type" list="employment_type" value={form.employmentType} onChange={(v) => set('employmentType', v)} /></div>
           <div className="field"><label htmlFor="ce-hire">Start date</label><input id="ce-hire" className="input" type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></div>
           <div className="field"><label htmlFor="ce-tax">Tax country</label>
             <select id="ce-tax" className="input select" value={form.taxJurisdiction} onChange={(e) => set('taxJurisdiction', e.target.value)}>
