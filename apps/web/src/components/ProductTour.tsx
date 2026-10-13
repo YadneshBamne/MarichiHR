@@ -11,7 +11,7 @@ type Step = { target?: string; title: string; body: string; roles?: string[] }
 
 const STEPS: Step[] = [
   { title: 'Welcome to {company}', body: 'Your attendance, leave, pay and approvals in one place. This quick tour shows you around; it takes about a minute and you can skip it any time.' },
-  { target: 'sidebar', title: 'Navigation', body: 'Every module you have access to is in this sidebar, grouped the usual way: Employees, Time & Attendance, Payroll & Expenses and more. Collapse it with the arrow, or press Ctrl + \\.' },
+  { target: 'sidebar', title: 'Navigation', body: 'Every module you have access to is in this sidebar, grouped the usual way: Employees, Time & Attendance, Payroll & Expenses and more. Point at it to see the names; it folds back to icons when you move away..' },
   { target: 'search', title: 'Jump anywhere', body: 'Search finds any page or action. Press Ctrl K (⌘ K on Mac) from anywhere in the app.' },
   { target: 'kpis', title: 'Your numbers', body: 'The figures that matter for your role, updated live. Click a tile to open the details.' },
   { target: 'approvals-card', title: 'Approvals', body: 'Leave, attendance and expense requests from your team land here. Open the inbox to approve or reject.', roles: ['manager', 'hr_admin', 'system_admin'] },
