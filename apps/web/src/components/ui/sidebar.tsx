@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useState } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import { Menu, X } from 'lucide-react'
 
-// Hover-expanding sidebar (after Aceternity's sidebar): a 60px icon rail on desktop that widens to 300px (the page
-// narrows with it) while the pointer or keyboard focus is inside it, and a top bar with a full-screen menu on small screens. Styled by the
+// Hover-expanding sidebar (after Aceternity's sidebar): a 60px icon rail on desktop that widens to 300px while the
+// pointer or keyboard focus is inside it, and a top bar with a full-screen menu on small screens. Styled by the
 // .sb-* classes in styles/theme.css.
 
 const cn = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
@@ -87,13 +87,6 @@ export const DesktopSidebar = ({ className, children, ...props }: React.Componen
 
 export const MobileSidebar = ({ className, children, start }: { className?: string; children: React.ReactNode; start?: React.ReactNode }) => {
   const { open, setOpen } = useSidebar()
-  // The full-screen menu is the only thing that scrolls while it is open (phones only; on desktop `open` means hover)
-  useEffect(() => {
-    if (!open || !window.matchMedia('(max-width: 1023px)').matches) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [open])
   return (
     <div className="sb-mobile-bar">
       {start}
