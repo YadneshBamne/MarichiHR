@@ -216,6 +216,7 @@ button.oc-name { cursor: pointer; }
 .dim { color: var(--dim); }
 .num { font-variant-numeric: tabular-nums; }
 .scroll-y { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.sidebar .scroll-y { overscroll-behavior: contain; } /* reaching the end of the menu never scrolls the page behind */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
