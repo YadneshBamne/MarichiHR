@@ -102,6 +102,9 @@ const TAG = `p20-${Date.now()}`
   // ─── COMPUTE ────────────────────────────────────────────────
   r = await api(finance, 'POST', `/exits/${exit.id}/compute`, {})
   check('payroll_admin cannot compute (403)', r.status === 403, r.data)
+  // The 10 allocated days plus any automatic credit (this month's accrual) are what is left to encash
+  const pre = await prisma.leaveBalance.findUnique({ where: { employeeId_leaveTypeId: { employeeId: leaver.emp.id, leaveTypeId: annual.id } } })
+  const left = round2(pre.balanceDays - pre.usedDays - pre.pendingDays - pre.encashedDays)
   r = await api(admin, 'POST', `/exits/${exit.id}/compute`, { recoveries: [{ description: 'Unreturned laptop', amount: 500 }] })
   const fnf = r.body
   check('HR computes: status computed', r.status === 200 && fnf.status === 'computed' && fnf.computedBy === admin.userId, r.data)
@@ -111,7 +114,7 @@ const TAG = `p20-${Date.now()}`
   const basicExpected = round2((8000 * wd('01', 12)) / wd('01', 31))
   check(`salary prorated by the payroll engine: BASIC ${basicExpected} (8000 × ${wd('01', 12)}/${wd('01', 31)} weekdays)`, L('BASIC')?.amount === basicExpected && L('BASIC').section === 'salary', L('BASIC'))
   check('salary carries PAYE and NAPSA from the engine', !!L('PAYE_ZM') && L('PAYE_ZM').kind === 'deduction' && !!L('NAPSA_EMP'), fnf.lines.map((l) => l.code))
-  check('leave encashment: 10 days × 266.67 = 2666.7', L('ENCASH_ANNUAL')?.amount === 2666.7 && L('ENCASH_ANNUAL').quantity === 10, L('ENCASH_ANNUAL'))
+  check(`leave encashment: ${left} days × 266.67 = ${round2(left * 266.67)}`, left >= 10 && L('ENCASH_ANNUAL')?.amount === round2(left * 266.67) && L('ENCASH_ANNUAL').quantity === left, L('ENCASH_ANNUAL'))
   check('notice shortfall recovery: 7 × 266.67 = 1866.69 (deduction)', L('NOTICE_RECOVERY')?.amount === 1866.69 && L('NOTICE_RECOVERY').kind === 'deduction', L('NOTICE_RECOVERY'))
   const reimb = fnf.lines.filter((l) => l.section === 'reimbursement')
   check('pending approved reimbursement included (300)', reimb.length === 1 && reimb[0].amount === 300 && reimb[0].sourceRefId === claim.id, reimb)
@@ -148,7 +151,7 @@ const TAG = `p20-${Date.now()}`
   const paidClaim = await prisma.reimbursementClaim.findUnique({ where: { id: claim.id } })
   check('reimbursement marked paid by the settlement', paidClaim.status === 'paid' && !!paidClaim.paidAt && !paidClaim.paidInCycleId, paidClaim.status)
   const bal = await prisma.leaveBalance.findUnique({ where: { employeeId_leaveTypeId: { employeeId: leaver.emp.id, leaveTypeId: annual.id } } })
-  check('encashed days recorded on the leave balance (10)', bal.encashedDays === 10, bal)
+  check(`encashed days recorded on the leave balance (${left})`, bal.encashedDays === left, bal)
   const events = (await prisma.domainEvent.findMany({ where: { tenantId: admin.tenantId, createdAt: { gte: new Date(exit.createdAt) } }, select: { eventType: true, payload: true } }))
     .filter((e) => e.payload.exitId === exit.id || e.payload.employeeId === leaver.emp.id || e.payload.contractId === contract.id).map((e) => e.eventType)
   check('domain events recorded', ['exit.initiated', 'exit.clearance.signed', 'exit.clearance.completed', 'fnf.computed', 'fnf.approved', 'fnf.paid', 'contract.expired', 'employee.archived'].every((t) => events.includes(t)), events)

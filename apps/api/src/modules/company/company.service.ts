@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { creditLeave } from '../leave/credits.service'
 import { Prisma } from '@prisma/client'
 import { prisma } from '../../infrastructure/database/prisma'
 import { AppError } from '../../shared/utils/AppError'
@@ -34,6 +35,8 @@ export const companyService = {
     const [slug, passwordHash] = await Promise.all([freeSlug(body.companyName), google ? null : bcrypt.hash(body.password!, 12)])
     const { tenantId } = await bootstrapCompany({ companyName: body.companyName.trim(), slug, email, fullName: body.fullName, passwordHash, googleSub: google?.sub, avatarUrl: google?.picture })
     const [tenant, owner] = await Promise.all([prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } }), authRepository.findUserByEmail(email, tenantId)])
+    // The founder's leave (this month's accrual, this year's lump sums) without delaying the sign-up response
+    void creditLeave(tenantId).catch((e) => console.error('[signup] leave credit failed:', e?.message))
     return { workspace: tenant.slug, ...(await completeLogin(owner!, tenant)) }
   },
 
@@ -70,6 +73,7 @@ export const companyService = {
     const before = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { modules: true } })
     const t = await prisma.tenant.update({ where: { id: tenantId }, data: { modules: clean } })
     forgetTenantModules(tenantId)
+    if (clean.includes('leave') && !before?.modules.includes('leave')) void creditLeave(tenantId).catch((e) => console.error('[apps] leave credit failed:', e?.message))
     await prisma.auditLog.create({ data: { tenantId, userId, action: 'APPS_CHANGED', entityType: 'tenant', entityId: tenantId, oldValue: { modules: before?.modules ?? [] }, newValue: { modules: clean } } })
     return shape(t)
   },

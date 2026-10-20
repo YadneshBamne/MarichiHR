@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { setupStatus } from './setup.service'
 import { z } from 'zod'
 import { authenticate } from '../../middleware/auth.middleware'
 import { requireRoles } from '../../middleware/rbac.middleware'
@@ -40,6 +41,9 @@ companyRouter.get('/', asyncHandler(async (req, res) => {
 const admins = requireRoles('system_admin', 'hr_admin')
 companyRouter.patch('/', admins, validate(UpdateCompanySchema), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await companyService.update(req.user!.tenantId, req.user!.userId, req.body) })
+}))
+companyRouter.get('/setup-status', admins, asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await setupStatus(req.user!.tenantId) })
 }))
 companyRouter.put('/modules', requireRoles('system_admin'), validate(SetModulesSchema), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await companyService.setModules(req.user!.tenantId, req.user!.userId, req.body.modules) })

@@ -66,7 +66,7 @@ export default function EmployeeListPage() {
           <SearchField value={q} onChange={setQ} placeholder="Search by name, email or code" width={280} />
           {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/import')}><Icon name="download" size={16} /> Import</button>}
           {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/documents')}><Icon name="file" size={16} /> Documents</button>}
-          {isHR && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add member</button>}
+          {isHR && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add employee</button>}
         </>}
       >
         <div className="chips">
@@ -87,7 +87,7 @@ export default function EmployeeListPage() {
           <div style={{ padding: 14 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton" style={{ height: 38, marginBottom: 10 }} />)}</div>
         ) : employees.length === 0 ? (
           <EmptyState icon={<Icon name="users" size={24} />} title={search || unit ? 'No one matches' : 'No people yet'} body={search || unit ? 'Try a different search or team.' : 'Add your first team member to get started.'}
-            action={isHR && !search && !unit ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add member</button> : undefined} />
+            action={isHR && !search && !unit ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add employee</button> : undefined} />
         ) : (
           <table className="tbl" style={{ minWidth: 860 }}>
             <thead>

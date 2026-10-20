@@ -20,7 +20,7 @@ const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
 export default function MastersPage() {
   const { hasApp } = useAuth()
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'overview')
   const { data: o } = useQuery({ queryKey: ['masters'], queryFn: async () => (await api.get('/employees/masters')).data.data as Overview })
   const root = useReveal<HTMLDivElement>(tab)
   const has = hasApp

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import api from '../../lib/api'
 import { useStructures, useStructureTypes, useRuleCategories, useSalaryWrite, checkRule, errMsg } from '../../lib/hooks/useSalary'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
@@ -32,6 +34,12 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
   }
 
   if (isLoading) return <div style={empty}>Loading...</div>
+  if (structures.length === 0 && canEdit) return (
+    <>
+      <StarterCard onCustom={() => setStructureForm({ structureTypeId: '', name: '', code: '', countryCode: '', description: '' })} />
+      {structureForm && <StructureModal form={structureForm} onClose={() => setStructureForm(null)} onSaved={(id) => { setStructureForm(null); setSelectedId(id) }} />}
+    </>
+  )
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
@@ -249,5 +257,34 @@ function RuleModal({ form: initial, onClose }: { form: any; onClose: () => void 
       {error && <div style={errorBox}>{error}</div>}
       <div style={footer}><button style={ghostBtn} onClick={onClose}>Cancel</button><button style={primaryBtn} disabled={!ready || write.isPending} onClick={save}>{write.isPending ? 'Validating...' : 'Save rule'}</button></div>
     </Modal>
+  )
+}
+
+// A new company starts here: the ready-made structure for its country, created in one click (everything editable after)
+function StarterCard({ onCustom }: { onCustom: () => void }) {
+  const qc = useQueryClient()
+  const { data } = useQuery({ queryKey: ['salary', 'starter'], queryFn: async () => (await api.get('/salary/structures/starter')).data.data as { country: string | null; name: string; description: string; rules: { code: string; name: string; category: string; formula: string }[] } })
+  const create = useMutation({ mutationFn: () => api.post('/salary/structures/starter'), onSuccess: () => { qc.invalidateQueries({ queryKey: ['salary'] }); qc.invalidateQueries({ queryKey: ['setup-status'] }) } })
+  if (!data) return <div style={empty}>Loading...</div>
+  return (
+    <div className="card" style={{ padding: 20, display: 'grid', gap: 12 }}>
+      <div>
+        <h3 style={{ fontSize: 16 }}>Start with a ready-made structure</h3>
+        <p className="dim" style={{ fontSize: 13, margin: '4px 0 0' }}>Payroll needs a salary structure: the rules that turn a contract's monthly wage into earnings, deductions, tax and net pay. Create <b>{data.name}</b> now and adjust it later, or build your own.</p>
+      </div>
+      <p style={{ fontSize: 13, margin: 0 }}>{data.description}</p>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="tbl" style={{ width: '100%', minWidth: 480 }}>
+          <thead><tr><th>Rule</th><th>Category</th><th>How it is calculated</th></tr></thead>
+          <tbody>{data.rules.map((r) => <tr key={r.code}><td>{r.name}</td><td className="dim">{r.category}</td><td style={{ fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 12 }}>{r.formula}</td></tr>)}</tbody>
+        </table>
+      </div>
+      {create.error && <div style={errorBox}>{errMsg(create.error)}</div>}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? 'Creating…' : `Create ${data.name}`}</button>
+        <button className="btn btn-ghost" onClick={onCustom}>Build my own</button>
+      </div>
+      <p className="dim" style={{ fontSize: 12, margin: 0 }}>Next: give each person a contract (Contracts tab) with their monthly wage and this structure. Payroll skips anyone without a running contract.</p>
+    </div>
   )
 }

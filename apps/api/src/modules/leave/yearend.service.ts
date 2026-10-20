@@ -24,6 +24,11 @@ export async function lastYearEnd(tenantId: string, asOf = new Date()) {
   return new Date(Date.UTC(y, startMonth, 1) - 86_400_000) // the day before this leave year began
 }
 
+const startedAfter = async (tenantId: string, yearEnd: Date) => {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { createdAt: true } })
+  return !!t && t.createdAt.getTime() > yearEnd.getTime() + 86_400_000
+}
+
 export async function computeYearEnd(tenantId: string) {
   const newYearStart = new Date((await lastYearEnd(tenantId)).getTime() + 86_400_000)
   const [balances, credits] = await Promise.all([
@@ -64,7 +69,10 @@ export const yearEndService = {
   async preview(tenantId: string) {
     const [yearEnd, rows, done] = await Promise.all([lastYearEnd(tenantId), computeYearEnd(tenantId), prisma.leaveYearEndRun.findMany({ where: { tenantId }, orderBy: { ranAt: 'desc' }, take: 10 })])
     const alreadyRun = done.some((r) => r.status === 'done' && ymd(r.yearEnd) === ymd(yearEnd))
-    return { yearEnd: ymd(yearEnd), alreadyRun, rows, totals: totalsOf(rows), runs: done.map((r) => ({ id: r.id, yearEnd: ymd(r.yearEnd), status: r.status, automatic: r.automatic, ranAt: r.ranAt, rolledBackAt: r.rolledBackAt, totals: r.totals })) }
+    // A company that started after that date has no earlier leave year to close
+    const firstYear = await startedAfter(tenantId, yearEnd)
+    const nextYearEnd = new Date(Date.UTC(yearEnd.getUTCFullYear() + 1, yearEnd.getUTCMonth() + 1, 1) - 86_400_000)
+    return { yearEnd: ymd(yearEnd), alreadyRun, firstYear, nextYearEnd: ymd(nextYearEnd), rows, totals: totalsOf(rows), runs: done.map((r) => ({ id: r.id, yearEnd: ymd(r.yearEnd), status: r.status, automatic: r.automatic, ranAt: r.ranAt, rolledBackAt: r.rolledBackAt, totals: r.totals })) }
   },
 
   // `who` is null for the automatic run
@@ -72,6 +80,7 @@ export const yearEndService = {
     const yearEnd = await lastYearEnd(tenantId)
     const existing = await prisma.leaveYearEndRun.findFirst({ where: { tenantId, yearEnd, status: 'done' } })
     if (existing) throw new AppError(`The leave year ending ${ymd(yearEnd)} has already been closed`, 409)
+    if (await startedAfter(tenantId, yearEnd)) throw new AppError(`Nothing to close: your company started after ${ymd(yearEnd)}. Your first leave year closes by itself when it ends.`, 400)
     const rows = await computeYearEnd(tenantId)
     const run = await prisma.$transaction(async (tx) => {
       for (const r of rows) {
@@ -119,6 +128,7 @@ export const yearEndService = {
 // Daily job: on the first day of the leave year, close the year that just ended (once)
 export async function autoYearEnd(tenantId: string) {
   const yearEnd = await lastYearEnd(tenantId)
+  if (await startedAfter(tenantId, yearEnd)) return 0
   const firstDay = new Date(yearEnd.getTime() + 86_400_000)
   if (ymd(firstDay) !== ymd(new Date())) return 0
   if (await prisma.leaveYearEndRun.findFirst({ where: { tenantId, yearEnd, status: { in: ['done', 'rolled_back'] } } })) return 0

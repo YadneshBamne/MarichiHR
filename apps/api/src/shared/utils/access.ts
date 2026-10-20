@@ -54,10 +54,11 @@ async function targetInTenant(user: AccessUser, targetEmployeeId: string) {
   return target && target.tenantId === user.tenantId ? target : null
 }
 
-// Self, hr_admin, or anyone above the target in the reporting chain
+// Self, hr_admin, system_admin (manages logins and roles; pay and bank stay hidden), or anyone above the target in
+// the reporting chain
 export async function canAccessProfile(user: AccessUser, targetEmployeeId: string): Promise<boolean> {
   if (!(await targetInTenant(user, targetEmployeeId))) return false
-  if (isSelf(user, targetEmployeeId) || hasRole(user, 'hr_admin')) return true
+  if (isSelf(user, targetEmployeeId) || hasRole(user, 'hr_admin', 'system_admin')) return true
   return user.employeeId ? isReportingChainOf(user.employeeId, targetEmployeeId) : false
 }
 
@@ -81,7 +82,8 @@ export async function assertCompensationAccess(user: AccessUser, targetEmployeeI
   if (!(await canAccessCompensation(user, targetEmployeeId))) throw new AppError('Not found', 404)
 }
 
-// Approval authority: the owner's direct manager, or hr_admin. Never the owner — except an hr_admin whose own
+// Approval authority: the owner's manager (direct, or a manager higher up the same reporting line: skip-level), or
+// hr_admin. Never the owner — except an hr_admin whose own
 // record has no manager (top of the chain), which is logged. `entity` identifies the request for that log.
 export async function assertCanApprove(
   user: AccessUser,
@@ -109,7 +111,7 @@ export async function assertCanApprove(
   }
 
   const isDirectManager = !!user.employeeId && owner.managerId === user.employeeId
-  if (!isDirectManager && !isHR) {
-    throw new AppError('Only the requester\'s manager or HR can approve this request', 403)
-  }
+  if (isDirectManager || isHR) return
+  const isSkipLevel = !!user.employeeId && hasRole(user, 'manager') && (await isReportingChainOf(user.employeeId, requestEmployeeId))
+  if (!isSkipLevel) throw new AppError('Only the requester\'s managers or HR can approve this request', 403)
 }

@@ -80,15 +80,15 @@ export default function CycleDetailPage() {
     if (cycle.status === 'draft' && cycle.attendanceLockedAt) actions.push(btn('Run payroll', 'run', { primary: true }))
     if (cycle.status === 'review') {
       actions.push(btn('Re-run payroll', 'run'))
-      actions.push(btn('Approve (HR)', 'approve', { primary: true, confirm: { title: 'Approve payroll?', body: 'You are approving all payslips in this cycle. A different user must give finance approval.' } }))
+      actions.push(btn('Approve (HR)', 'approve', { primary: true, disabled: !hasRole('hr_admin'), title: hasRole('hr_admin') ? '' : 'The HR approval must come from an HR admin', confirm: { title: 'Approve payroll?', body: 'You are approving all payslips in this cycle. A Payroll admin then gives the finance approval.' } }))
     }
     if (cycle.status === 'approved') {
       actions.push(btn('Reopen', 'reopen', { danger: true, confirm: { title: 'Reopen cycle?', body: 'This clears all approvals and returns the cycle to review.' } }))
       if (!cycle.financeApprovedBy) {
         actions.push(btn('Finance approve', 'finance-approve', {
           primary: true,
-          disabled: isMakerOfApproval,
-          title: isMakerOfApproval ? 'Finance approval must come from a different user than the HR approver' : '',
+          disabled: isMakerOfApproval || !hasRole('payroll_admin'),
+          title: !hasRole('payroll_admin') ? 'Waiting for a Payroll admin: finance approval needs someone with the Payroll admin role (give it in their Login & access tab)' : isMakerOfApproval ? 'Finance approval must come from a different user than the HR approver' : '',
           confirm: { title: 'Finance approve?', body: 'Confirm the totals are correct. Next step is disbursement.' },
         }))
       } else {
@@ -131,7 +131,11 @@ export default function CycleDetailPage() {
             <span style={{ fontSize: 12, color: 'var(--faint)' }}>{cycle.cycleType}{cycle.disbursedAt ? ` · disbursed ${fmtDate(cycle.disbursedAt)}` : ''}{cycle.payslipsReleasedAt ? ` · payslips released ${fmtDate(cycle.payslipsReleasedAt)}` : ''}</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
+        <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
+          {cycle.status === 'approved' && !cycle.financeApprovedBy && !hasRole('payroll_admin') && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for a Payroll admin to give the finance approval</span>}
+          {cycle.status === 'review' && !hasRole('hr_admin') && <span className="pill info" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for an HR admin to approve</span>}
+        </div>
       </div>
 
       {/* Stepper */}

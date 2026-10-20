@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import SetupChecklist from '../../components/company/SetupChecklist'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCycles, useMyPayslips, downloadPayslipPdf } from '../../lib/hooks/usePayroll'
@@ -80,7 +81,10 @@ export default function PayrollPage() {
       {tab === 'cycles' && isStaff && (
         <section data-card className="card" style={{ padding: '6px 10px', marginTop: 'var(--gap)', overflowX: 'auto' }}>
           {isLoading ? <div style={{ padding: 14 }}>{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 38, marginBottom: 10 }} />)}</div> : cycles.length === 0 ? (
-            <EmptyState icon={<Icon name="wallet" size={24} />} title="No payroll cycles yet" body="Create a cycle for a pay period, lock attendance, then run the calculation." action={canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined} />
+            <div style={{ padding: 14, display: 'grid', gap: 14 }}>
+              {(hasRole('hr_admin') || hasRole('system_admin')) && <SetupChecklist app="payroll" title="Before your first payroll" compact />}
+              <EmptyState icon={<Icon name="wallet" size={24} />} title="No payroll cycles yet" body="Create a cycle for a pay period, lock attendance, then run the calculation. An HR admin approves it, then a Payroll admin gives the finance approval and pays." action={canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined} />
+            </div>
           ) : (
             <table className="tbl" style={{ minWidth: 640 }}>
               <thead><tr><th>Pay period</th><th>Type</th><th>Payslips</th><th>Status</th><th /></tr></thead>

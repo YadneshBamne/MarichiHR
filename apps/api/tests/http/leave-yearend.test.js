@@ -16,6 +16,7 @@ const sign = (u, roles) => ({ token: jwt.sign({ userId: u.userId, tenantId: u.te
   const owner = { token: r.body.accessToken }
   const tenant = await prisma.tenant.findFirst({ where: { users: { some: { email } } } })
   const root = await prisma.orgUnit.findFirst({ where: { tenantId: tenant.id, parentId: null } })
+  await prisma.tenant.update({ where: { id: tenant.id }, data: { createdAt: new Date('2020-01-01') } }) // a company with a year to close
   const B = (await api(owner, 'POST', '/employees', { firstName: 'Bea', lastName: TAG, workEmail: `bea.${TAG}@example.com`, orgUnitId: root.id, hireDate: '2025-01-05', employmentType: 'full_time' })).body.employee
   const tB = sign(B, ['employee'])
   const type = async (code) => prisma.leaveType.findFirst({ where: { tenantId: tenant.id, code } })

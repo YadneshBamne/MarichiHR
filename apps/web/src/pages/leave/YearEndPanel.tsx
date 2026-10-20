@@ -7,7 +7,7 @@ import { fmtDate } from '../../lib/format'
 
 // Leave year end: what will be carried forward, encashed and lapsed for each person, then run it (or roll back the last run)
 interface Row { employeeId: string; leaveTypeId: string; employee: string; employeeCode: string; leaveType: string; available: number; carried: number; encashed: number; lapsed: number }
-interface Data { yearEnd: string; alreadyRun: boolean; rows: Row[]; totals: { people: number; carried: number; encashed: number; lapsed: number }; runs: { id: string; yearEnd: string; status: string; automatic: boolean; ranAt: string; rolledBackAt: string | null; totals: any }[] }
+interface Data { yearEnd: string; alreadyRun: boolean; firstYear?: boolean; nextYearEnd?: string; rows: Row[]; totals: { people: number; carried: number; encashed: number; lapsed: number }; runs: { id: string; yearEnd: string; status: string; automatic: boolean; ranAt: string; rolledBackAt: string | null; totals: any }[] }
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
 export default function YearEndPanel() {
@@ -25,6 +25,12 @@ export default function YearEndPanel() {
   if (isLoading || !data) return <div className="skeleton" style={{ height: 120, borderRadius: 14, marginTop: 20 }} />
   const latest = data.runs.find((r) => r.status === 'done')
   const rows = data.rows.filter((r) => r.available !== 0)
+  if (data.firstYear) return (
+    <section className="card" style={{ padding: 20, marginTop: 20, display: 'grid', gap: 6 }}>
+      <h3 style={{ fontSize: 16 }}>Leave year end</h3>
+      <p className="dim" style={{ fontSize: 13, margin: 0 }}>Nothing to close yet: this is your company's first leave year. On {data.nextYearEnd ? fmtDate(data.nextYearEnd) : 'the last day of the year'} unused days carry forward up to each type's limit, are paid out up to its encashment limit, and the rest lapse. It runs by itself the next morning.</p>
+    </section>
+  )
   return (
     <section className="card" style={{ padding: 20, marginTop: 20, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

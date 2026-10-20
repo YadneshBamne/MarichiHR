@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import SetupChecklist from '../components/company/SetupChecklist'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
@@ -145,7 +146,7 @@ function TeamRows({ d }: { d: any }) {
             ))}
           </div>
         )}
-        {t.people.length === 0 ? <Empty icon="users" text={t.scope === 'company' ? 'No employees yet. Add your first people from Employees.' : 'Nobody reports to you yet.'} /> : (
+        {t.people.length === 0 ? <Empty icon="users" text={t.scope === 'company' ? 'Nobody else here yet. Add your people from Employees.' : 'Nobody reports to you yet.'} /> : (
           <ul style={{ listStyle: 'none', marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
             {t.people.map((p: any) => (
               <li key={p.id}>
@@ -229,12 +230,6 @@ function WeekLeave({ week, label }: { week: any; label: string }) {
 function CompanyRows({ d }: { d: any }) {
   const c = d.company
   const max = Math.max(1, ...c.departments.map((x: any) => x.count))
-  const checklist: [boolean, string, string, string][] = [
-    [c.headcount > 1, 'Add your employees', `${c.headcount} on the books`, '/employees'],
-    [c.noLogin === 0, 'Give everyone a login', c.noLogin ? `${c.noLogin} without a login yet` : 'Everyone can sign in', '/employees'],
-    [d.apps.length > 0, 'Choose your apps', `${d.apps.length} installed`, '/settings/apps'],
-    [true, 'Company profile', 'Name, logo, country, currency', '/settings/company'],
-  ]
   return (
     <div className="dgrid row">
       <section data-card className="card span-6" style={{ padding: 22 }}>
@@ -251,18 +246,7 @@ function CompanyRows({ d }: { d: any }) {
         )}
       </section>
       <section data-card className="card span-6" style={{ padding: 22 }}>
-        <CardHead title="Workspace setup" to="/settings" />
-        <ul style={{ listStyle: 'none', marginTop: 12 }}>
-          {checklist.map(([done, title, sub, to]) => (
-            <li key={title} style={{ borderTop: '1px solid var(--line)' }}>
-              <Link to={to} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0' }}>
-                <span style={{ width: 26, height: 26, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: done ? 'var(--honey)' : 'transparent', border: done ? 'none' : '1.5px solid var(--line-2)' }}>{done && <Icon name="check" size={13} stroke={2.4} />}</span>
-                <span style={{ flex: 1 }}><span style={{ display: 'block', fontSize: 13.5, fontWeight: 500 }}>{title}</span><span className="dim" style={{ fontSize: 12 }}>{sub}</span></span>
-                <Icon name="chevronRight" size={15} className="muted" />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <SetupChecklist />
         {d.apps.includes('exits') && c.exitsOpen > 0 && <Link to="/exits" className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}><Icon name="door" size={13} /> {c.exitsOpen} exit{c.exitsOpen === 1 ? '' : 's'} in progress</Link>}
       </section>
     </div>

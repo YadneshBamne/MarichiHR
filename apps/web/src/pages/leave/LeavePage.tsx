@@ -85,6 +85,7 @@ export default function LeavePage() {
                       {b.pendingDays > 0 && <span style={{ color: 'var(--warn)' }}>{b.pendingDays.toFixed(1)} pending</span>}
                       <span style={{ marginLeft: 'auto' }}>{available.toFixed(1)} available</span>
                     </div>
+                    <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>{creditHint(b.leaveType)}</div>
                     {!b.leaveType?.isPaid && (
                       <div style={s.unpaidTag}>Unpaid</div>
                     )}
@@ -180,4 +181,13 @@ const s: Record<string, React.CSSProperties> = {
   tr: { borderBottom: '1px solid var(--well)' },
   td: { padding: '12px 16px', fontSize: '13px', color: 'var(--ink)' },
   cancelBtn: { padding: '5px 12px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' },
+}
+
+// How each type's days arrive, so a 0 balance is never a mystery
+function creditHint(t?: { isPaid?: boolean; accrualType?: string | null; accrualAmount?: number | null }) {
+  if (!t) return ''
+  if (!t.isPaid) return 'Unpaid leave: no balance needed'
+  if (t.accrualType === 'monthly_prorate') return `${t.accrualAmount ?? 0} days added on the 1st of each month`
+  if (t.accrualType === 'annual_lumpsum') return `${t.accrualAmount ?? 0} days a year, credited at the start of the leave year`
+  return 'Given by HR when needed: use Request Allocation'
 }
