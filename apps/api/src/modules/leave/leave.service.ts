@@ -1,4 +1,6 @@
 import { leaveRepository } from './leave.repository'
+import { notify, userIdOfEmployee } from '../../infrastructure/notifications/notify'
+import { creditLeave } from './credits.service'
 import { startApproval, actOnApproval, closeApproval } from '../approvals/approvals.service'
 import { ApplyLeaveDto, ApproveLeaveDto, RejectLeaveDto, LeaveAllocationRequestDto, ManualAllocationDto } from './leave.types'
 import { AppError } from '../../shared/utils/AppError'
@@ -283,19 +285,22 @@ export const leaveService = {
       throw new AppError('Approved days must be a positive number', 400)
     }
 
-    await leaveRepository.approveAllocationRequest(id, approverId, approvedDays, note)
-
-    await leaveRepository.createAllocation({
+    // Claim the request first so two approvers can never both credit it
+    const claimed = await prisma.leaveAllocationRequest.updateMany({ where: { id, status: 'pending' }, data: { status: 'approved', approverId, approvedDays, approvalNote: note, actionedAt: new Date() } })
+    if (!claimed.count) throw new AppError('Request already processed', 400)
+    const allocation = await leaveRepository.createAllocation({
       employeeId: request.employeeId,
       leaveTypeId: request.leaveTypeId,
       daysAllocated: approvedDays,
       validFrom: new Date().toISOString(),
       reason: `Allocation request approved: ${request.reason}`,
     }, approverId)
-
+    await prisma.leaveAllocationRequest.update({ where: { id }, data: { resultingAllocationId: allocation.id } })
     await leaveRepository.updateBalance(request.employeeId, request.leaveTypeId, {
       balanceDays: approvedDays,
     })
+    const userId = await userIdOfEmployee(tenantId, request.employeeId)
+    if (userId) await notify({ tenantId, userIds: [userId], type: 'leave.allocation.approved', title: `${request.leaveType.name}: ${approvedDays} day${approvedDays === 1 ? '' : 's'} added`, body: note ? `Your request was approved: ${note}` : 'Your allocation request was approved.', link: '/leave', eventId: `alloc:${id}` })
 
     return leaveRepository.findAllocationRequestById(id)
   },
@@ -309,7 +314,11 @@ export const leaveService = {
     await assertCanApprove(user, request.employeeId, tenantId, { entityType: 'leave_allocation_request', entityId: id })
     if (request.status !== 'pending') throw new AppError('Request already processed', 400)
 
-    return leaveRepository.rejectAllocationRequest(id, approverId, note)
+    const claimed = await prisma.leaveAllocationRequest.updateMany({ where: { id, status: 'pending' }, data: { status: 'rejected', approverId, approvalNote: note, actionedAt: new Date() } })
+    if (!claimed.count) throw new AppError('Request already processed', 400)
+    const userId = await userIdOfEmployee(tenantId, request.employeeId)
+    if (userId) await notify({ tenantId, userIds: [userId], type: 'leave.allocation.rejected', title: `${request.leaveType.name} request not approved`, body: note || 'Your allocation request was rejected.', link: '/leave', eventId: `alloc:${id}` })
+    return leaveRepository.findAllocationRequestById(id)
   },
 
   async manualAllocation(tenantId: string, data: ManualAllocationDto, approvedBy: string) {
@@ -330,55 +339,10 @@ export const leaveService = {
     return leaveRepository.listAllocations(employeeId)
   },
 
-  // Monthly accrual, safe to re-run: one 'accrual' allocation per employee, leave type and tenant-local month
+  // Monthly accruals and annual lump sums due today (see credits.service); safe to re-run
   async runMonthlyAccrual(tenantId: string) {
-    const today = await businessToday(tenantId)
-    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
-    const nextMonthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1))
-    const monthLabel = monthStart.toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-    let credited = 0
-
-    const leaveTypes = await prisma.leaveType.findMany({
-      where: { tenantId, active: true, accrualType: 'monthly_prorate' },
-    })
-
-    const employees = await prisma.employee.findMany({
-      where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, hireDate: { lte: today } },
-    })
-
-    for (const employee of employees) {
-      for (const leaveType of leaveTypes) {
-        if (!leaveType.accrualAmount) continue
-
-        const already = await prisma.leaveAllocation.findFirst({
-          where: { employeeId: employee.id, leaveTypeId: leaveType.id, allocationType: 'accrual', validFrom: { gte: monthStart, lt: nextMonthStart } },
-          select: { id: true },
-        })
-        if (already) continue
-
-        await prisma.leaveAllocation.create({
-          data: {
-            employeeId: employee.id,
-            leaveTypeId: leaveType.id,
-            allocationType: 'accrual',
-            daysAllocated: leaveType.accrualAmount,
-            validFrom: monthStart,
-            reason: `Monthly accrual — ${monthLabel}`,
-            approvedBy: 'system',
-            status: 'approved',
-          },
-        })
-
-        await leaveRepository.updateBalance(employee.id, leaveType.id, {
-          balanceDays: leaveType.accrualAmount,
-        })
-
-        credited++
-      }
-    }
-
-    console.log(`Leave accrual: ${credited} balance entries credited for tenant ${tenantId} (${monthLabel})`)
-    return credited
+    const r = await creditLeave(tenantId)
+    return r.monthly + r.lumpSum
   },
 
   // Hourly job: a pending level-1 approval past its deadline is escalated once to HR and the skip-level manager

@@ -43,9 +43,12 @@ const sign = (u, roles) => ({ token: jwt.sign({ userId: u.userId, tenantId: u.te
   r = await api(owner, 'POST', '/leave/year-end/run')
   const runId = r.body?.id
   check('HR closes the year', r.status === 201 && r.body.totals.carried >= 12 && r.body.totals.encashed >= 3, r.data)
+  // Automatic credits for the new leave year (this month's accrual, this year's lump sum) are kept out of the closing
+  const newYear = async (lt) => (await prisma.leaveAllocation.aggregate({ where: { employeeId: B.id, leaveTypeId: lt.id, allocationType: { in: ['annual', 'accrual'] } }, _sum: { daysAllocated: true } }))._sum.daysAllocated ?? 0
+  const nA = await newYear(annual), nS = await newYear(sick)
   let a = await bal(annual), s = await bal(sick)
-  check('annual: 10 carried + 1 still pending = 11, used reset, 3 encashed, 2 lapsed', a.balanceDays === 11 && a.usedDays === 0 && a.pendingDays === 1 && a.encashedDays === 3 && a.lapsedDays === 2, a)
-  check('sick: nothing carried, 8 lapsed', s.balanceDays === 0 && s.lapsedDays === 8, s)
+  check('annual: 10 carried + 1 still pending = 11, used reset, 3 encashed, 2 lapsed', Math.abs(a.balanceDays - (11 + nA)) < 0.01 && a.usedDays === 0 && a.pendingDays === 1 && a.encashedDays === 3 && a.lapsedDays === 2, a)
+  check('sick: nothing carried, 8 lapsed (the new year credit is kept)', Math.abs(s.balanceDays - nS) < 0.01 && s.lapsedDays === 8, { s, nS })
   r = await api(owner, 'POST', '/leave/year-end/run')
   check('a year closes once (409)', r.status === 409, r.status)
   check('payroll and HR are told what to encash', !!(await prisma.notification.findFirst({ where: { tenantId: tenant.id, type: 'leave.encashment' } })))
@@ -57,7 +60,7 @@ const sign = (u, roles) => ({ token: jwt.sign({ userId: u.userId, tenantId: u.te
   check('employees cannot roll back (403)', r.status === 403, r.status)
   r = await api(owner, 'POST', `/leave/year-end/${runId}/rollback`)
   a = await bal(annual); s = await bal(sick)
-  check('rollback restores the balances and keeps the day taken since', r.status === 200 && a.balanceDays === 20 && a.usedDays === 5 && a.encashedDays === 0 && a.lapsedDays === 0 && s.balanceDays === 10 && s.usedDays === 2, { a, s })
+  check('rollback restores the balances and keeps the day taken since', r.status === 200 && Math.abs(a.balanceDays - (20 + await newYear(annual))) < 0.01 && a.usedDays === 5 && a.encashedDays === 0 && a.lapsedDays === 0 && Math.abs(s.balanceDays - (10 + await newYear(sick))) < 0.01 && s.usedDays === 2, { a, s })
   r = await api(owner, 'POST', `/leave/year-end/${runId}/rollback`)
   check('…once (400)', r.status === 400, r.status)
 

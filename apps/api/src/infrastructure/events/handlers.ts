@@ -4,6 +4,7 @@ import { normaliseDateInput } from '../../shared/utils/businessDate'
 import { audienceUsers } from '../../shared/utils/audience'
 import { runAutomations } from '../../modules/automation/automation.service'
 import { queueWebhooks } from '../../modules/automation/integrations.service'
+import { creditLeave } from '../../modules/leave/credits.service'
 
 // Consumers of domain_events, run by the domain-events worker. Each handler must be safe to run twice:
 // notifications dedupe on (eventId, userId, type) and data fixes are idempotent.
@@ -23,6 +24,13 @@ const toHR = (type: string, title: string, body: (p: any) => string, link?: (p: 
 }
 
 export const EVENT_HANDLERS: Record<string, Handler[]> = {
+  // A new person gets this month's accrual and the share of this year's lump sums at once (idempotent)
+  'employee.created': [
+    async (e) => {
+      const t = await prisma.tenant.findUnique({ where: { id: e.tenantId }, select: { modules: true } })
+      if (t?.modules.includes('leave')) await creditLeave(e.tenantId, { employeeId: e.payload.employeeId })
+    },
+  ],
   // A new grievance: HR admins learn the ticket, category and severity, never who raised it
   'grievance.raised': [
     async (e) => {

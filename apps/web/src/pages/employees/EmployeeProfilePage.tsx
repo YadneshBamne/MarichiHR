@@ -14,18 +14,19 @@ import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
 import Profile360 from './Profile360'
 import DocumentsTab from './DocumentsTab'
+import LeaveBalancesPanel from '../leave/LeaveBalancesPanel'
 import { useRecord, FieldsCard, ListSection, IdentitySection, PositionHistory, CustomFieldsCard, MissingBanner } from './RecordSections'
 import { useMasters } from '../../lib/hooks/useMasters'
 
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
 
-type Tab = 'documents' | 'overview' | 'work' | 'personal' | 'family' | 'qualifications' | 'identity' | 'skills' | 'resume' | 'chatter' | 'access'
+type Tab = 'leave' | 'documents' | 'overview' | 'work' | 'personal' | 'family' | 'qualifications' | 'identity' | 'skills' | 'resume' | 'chatter' | 'access'
 
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isHR, hasRole, user } = useAuth()
+  const { isHR, hasRole, hasApp, user } = useAuth()
   const canManageAccess = hasRole('hr_admin') || hasRole('system_admin')
   const { data: employee, isLoading } = useEmployee(id!)
   const { label: master } = useMasters()
@@ -65,6 +66,7 @@ export default function EmployeeProfilePage() {
     { key: 'skills', label: `Skills (${employee.skills?.length || 0})` },
     { key: 'resume', label: `Resume (${employee.resumeLines?.length || 0})` },
     { key: 'chatter', label: 'Chatter' },
+    ...(hasRole('hr_admin') && hasApp('leave') ? [{ key: 'leave' as Tab, label: 'Leave balances' }] : []),
     ...(canManageAccess ? [{ key: 'access' as Tab, label: 'Login & access' }] : []),
   ]
 
@@ -199,6 +201,7 @@ export default function EmployeeProfilePage() {
         {activeTab === 'identity' && rec && <IdentitySection rec={rec} />}
 
         {activeTab === 'documents' && <DocumentsTab employeeId={employee.id} />}
+        {activeTab === 'leave' && hasRole('hr_admin') && <LeaveBalancesPanel employeeId={employee.id} name={fullName} />}
 
         {activeTab === 'skills' && (
           <div>

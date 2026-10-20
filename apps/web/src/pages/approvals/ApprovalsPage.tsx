@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import LeaveApprovalsPanel from '../leave/LeaveApprovalsPanel'
+import { AllocationRequestsPanel, usePendingAllocationRequests } from '../leave/LeaveBalancesPanel'
 import ApprovalsPanel from '../attendance/ApprovalsPanel'
 import { WaitingForMe, Monitor, ChainsSetup, usePendingChain } from './ApprovalChainsPanel'
 import { usePendingLeaveApprovals } from '../../lib/hooks/useLeave'
@@ -22,7 +23,8 @@ export default function ApprovalsPage() {
   const { data: pendingReg = [] } = useAttPendingReg(isManager && att)
   const { data: pendingOT = [] } = useAttPendingOT(isManager && att)
 
-  const leaveCount = Array.isArray(pendingLeave) ? pendingLeave.length : 0
+  const { data: pendingAlloc = [] } = usePendingAllocationRequests(isManager && lv)
+  const leaveCount = (Array.isArray(pendingLeave) ? pendingLeave.length : 0) + pendingAlloc.length
   const attendanceCount = (Array.isArray(pendingReg) ? pendingReg.length : 0) + (Array.isArray(pendingOT) ? pendingOT.length : 0)
   const totalCount = leaveCount + attendanceCount + chainPending.length
 
@@ -64,7 +66,7 @@ export default function ApprovalsPage() {
       {activeTab === 'mine' && <WaitingForMe />}
       {activeTab === 'monitor' && hr && <Monitor />}
       {activeTab === 'chains' && hr && <ChainsSetup />}
-      {activeTab === 'leave' && lv && isManager && <LeaveApprovalsPanel />}
+      {activeTab === 'leave' && lv && isManager && <><LeaveApprovalsPanel /><AllocationRequestsPanel /></>}
       {activeTab === 'attendance' && att && isManager && <ApprovalsPanel />}
       {!lv && !att && <div className="card" style={{ padding: 40, textAlign: 'center' }}><div className="display" style={{ fontSize: 22 }}>Nothing to approve here yet</div><p className="dim" style={{ marginTop: 6, fontSize: 13 }}>Approvals come from the Leave and Attendance apps. Expense approvals live in Expenses.</p></div>}
     </div>

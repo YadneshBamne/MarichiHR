@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { yearEndService } from './yearend.service'
+import { balancesService } from './balances.service'
 import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission, requireRoles } from '../../middleware/rbac.middleware'
@@ -37,11 +38,29 @@ leaveRouter.post('/requests/:id/cancel', requirePermission('leave:write'), leave
 leaveRouter.get('/calendar/team', requirePermission('leave:read'), requireRoles('manager', 'hr_admin', 'system_admin'), leaveController.getTeamCalendar)
 
 // ─── ALLOCATION REQUESTS ──────────────────────────────────────
-leaveRouter.post('/allocation-requests', requirePermission('leave:write'), leaveController.requestAllocation)
-leaveRouter.post('/allocation-requests/:id/approve', requirePermission('leave:approve'), leaveController.approveAllocationRequest)
-leaveRouter.post('/allocation-requests/:id/reject', requirePermission('leave:approve'), leaveController.rejectAllocationRequest)
+leaveRouter.get('/allocation-requests/pending', requirePermission('leave:approve'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await balancesService.pendingRequests(req.user!) })
+}))
+const halfDays = (max: number) => z.number().positive().max(max).refine((d) => Number.isInteger(d * 2), 'Use whole or half days')
+const AllocId = z.object({ id: z.string().uuid() })
+leaveRouter.post('/allocation-requests', requirePermission('leave:write'), validate(z.object({ body: z.object({ leaveTypeId: z.string().uuid(), requestedDays: halfDays(366), reason: z.string().trim().min(3).max(500), supportingRefType: z.string().max(50).optional(), supportingRefId: z.string().max(100).optional() }).strict() })), leaveController.requestAllocation)
+leaveRouter.post('/allocation-requests/:id/approve', requirePermission('leave:approve'), validate(z.object({ params: AllocId, body: z.object({ approvedDays: halfDays(366), note: z.string().trim().max(500).optional() }).strict() })), leaveController.approveAllocationRequest)
+leaveRouter.post('/allocation-requests/:id/reject', requirePermission('leave:approve'), validate(z.object({ params: AllocId, body: z.object({ note: z.string().trim().min(2).max(500) }).strict() })), leaveController.rejectAllocationRequest)
 
 // ─── HR ONLY ──────────────────────────────────────────────────
+// One person's balances for every type, credit history, and manual adjustments with a reason
+const EmpId = z.object({ employeeId: z.string().uuid() })
+leaveRouter.get('/admin/balances/:employeeId', requirePermission('leave:configure'), validate(z.object({ params: EmpId })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await balancesService.forEmployee(req.user!, String(req.params.employeeId)) })
+}))
+leaveRouter.post('/admin/balances/:employeeId/adjust', requirePermission('leave:configure'), validate(z.object({ params: EmpId, body: z.object({
+  leaveTypeId: z.string().uuid(),
+  days: z.number().refine((d) => d !== 0 && Math.abs(d) <= 366 && Number.isInteger(d * 2), 'Days must be a non-zero whole or half number up to 366'),
+  reason: z.string().trim().min(3).max(300),
+  allowNegative: z.boolean().optional(),
+}).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await balancesService.adjust(req.user!, String(req.params.employeeId), req.body) })
+}))
 leaveRouter.post('/allocations/manual', requirePermission('leave:configure'), leaveController.manualAllocation)
 leaveRouter.post('/accrual/run', requirePermission('leave:configure'), leaveController.triggerAccrual)
 

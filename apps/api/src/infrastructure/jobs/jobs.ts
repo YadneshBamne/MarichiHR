@@ -92,8 +92,8 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     run: (t) => perTenant(t, (id) => autoYearEnd(id), 'leave'),
   },
   'leave-accrual': {
-    pattern: '0 2 1 * *',
-    description: 'Monthly leave accrual (once per employee, leave type and month)',
+    pattern: '0 2 * * *',
+    description: 'Leave credits due: monthly accrual (once per person, type and month) and yearly lump sums (once per leave year, pro-rated for joiners)',
     run: (t) => perTenant(t, (id) => leaveService.runMonthlyAccrual(id), 'leave'),
   },
 }

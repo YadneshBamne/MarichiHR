@@ -2,12 +2,14 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { notify, userIdsWithRole } from '../../infrastructure/notifications/notify'
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser } from '../../shared/utils/access'
+import { creditLeave } from './credits.service'
 
 // Leave year end. For every active person and paid leave type, what is left (balance − used − pending) is:
 //   1. carried forward, up to the type's carry-forward limit (nothing if the type doesn't carry forward)
 //   2. encashed from what remains, up to the type's encashment limit (nothing if not encashable)
 //   3. lapsed: the rest
-// Pending days stay reserved. A negative balance (types that allow it) carries forward as it is.
+// Pending days stay reserved. A negative balance (types that allow it) carries forward as it is. Monthly and yearly
+// credits already given for the new leave year are kept aside: they are neither carried, encashed nor lapsed.
 // The leave year starts on the company's fiscal-year start month. The run records the change it made to each
 // balance, so a rollback subtracts exactly that and keeps any leave taken since.
 
@@ -23,13 +25,20 @@ export async function lastYearEnd(tenantId: string, asOf = new Date()) {
 }
 
 export async function computeYearEnd(tenantId: string) {
-  const balances = await prisma.leaveBalance.findMany({
-    where: { employee: { tenantId, active: true }, leaveType: { tenantId, active: true, isPaid: true } },
-    include: { leaveType: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } },
-  })
+  const newYearStart = new Date((await lastYearEnd(tenantId)).getTime() + 86_400_000)
+  const [balances, credits] = await Promise.all([
+    prisma.leaveBalance.findMany({
+      where: { employee: { tenantId, active: true }, leaveType: { tenantId, active: true, isPaid: true } },
+      include: { leaveType: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } },
+    }),
+    // Automatic credits that already belong to the new leave year stay out of the closing (never carried or lapsed)
+    prisma.leaveAllocation.groupBy({ by: ['employeeId', 'leaveTypeId'], where: { employee: { tenantId }, allocationType: { in: ['annual', 'accrual'] }, validFrom: { gte: newYearStart } }, _sum: { daysAllocated: true } }),
+  ])
+  const fresh = new Map(credits.map((c) => [`${c.employeeId}|${c.leaveTypeId}`, c._sum.daysAllocated ?? 0]))
   return balances.map((b) => {
     const lt = b.leaveType
-    const available = round(b.balanceDays - b.usedDays - b.pendingDays)
+    const newYear = fresh.get(`${b.employeeId}|${b.leaveTypeId}`) ?? 0
+    const available = round(b.balanceDays - b.usedDays - b.pendingDays - newYear)
     let carried = 0, encashed = 0, lapsed = 0
     if (available < 0) carried = available
     else {
@@ -38,7 +47,7 @@ export async function computeYearEnd(tenantId: string) {
       encashed = lt.encashable ? Math.min(rest, lt.encashMaxDays ?? rest) : 0
       lapsed = rest - encashed
     }
-    const newBalance = round(carried + b.pendingDays)
+    const newBalance = round(carried + b.pendingDays + newYear)
     return {
       employeeId: b.employeeId, leaveTypeId: b.leaveTypeId, employee: `${b.employee.firstName} ${b.employee.lastName}`, employeeCode: b.employee.employeeCode, leaveType: lt.name,
       available, carried: round(carried), encashed: round(encashed), lapsed: round(lapsed), dBalance: round(newBalance - b.balanceDays), dUsed: round(-b.usedDays),
@@ -73,6 +82,8 @@ export const yearEndService = {
       }
       return tx.leaveYearEndRun.create({ data: { tenantId, yearEnd, automatic: !who, ranBy: who?.userId ?? null, rows: rows as any, totals: totalsOf(rows) } })
     }, { timeout: 60_000 })
+    // The new leave year's lump sums can now be credited on top of what was carried forward
+    await creditLeave(tenantId)
     await prisma.auditLog.create({ data: { tenantId, userId: who?.userId ?? null, action: 'LEAVE_YEAR_CLOSED', entityType: 'leave_year_end', entityId: run.id, newValue: { yearEnd: ymd(yearEnd), ...totalsOf(rows) } } })
     // Encashed days are paid through payroll: let the payroll team know what to add
     const encashed = rows.filter((r) => r.encashed > 0)
