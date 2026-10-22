@@ -1,5 +1,4 @@
 import { payrollRepository as repo } from './payroll.repository'
-import { notify } from '../../infrastructure/notifications/notify'
 import { runPayrollEngine, EngineExtraLine } from './payroll.engine'
 import { PAYROLL_CONFIG } from './payroll.config'
 import { masterLabels } from '../masters/masters.service'
@@ -8,6 +7,7 @@ import { CreateCycleDto, AddPayrollInputDto } from './payroll.types'
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
+import { notify, userIdsWithRole } from '../../infrastructure/notifications/notify'
 import { verifiedExemption } from '../tax/declarations.service'
 import { renderPayslipHtml, generatePayslipPdf } from './payslip.pdf'
 import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
@@ -38,6 +38,18 @@ function eachDay(start: string, end: string): string[] {
 const isWorking = (day: string, cal: Set<number>) => cal.has((toDate(day).getUTCDay() + 6) % 7)
 
 type SkipReason = { employeeId: string; employeeCode: string; name: string; reason: string }
+
+// Extra sign-off: a payroll whose net total is above the company's threshold needs a System admin's sign-off
+export async function signoffThreshold(tenantId: string) {
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { payrollSignoffAbove: true } })
+  return t?.payrollSignoffAbove == null ? null : Number(t.payrollSignoffAbove)
+}
+async function needsSignoff(cycleId: string, tenantId: string) {
+  const threshold = await signoffThreshold(tenantId)
+  if (threshold == null) return false
+  const sum = await prisma.payslip.aggregate({ where: { payrollCycleId: cycleId }, _sum: { netPay: true } })
+  return Number(sum._sum.netPay ?? 0) > threshold
+}
 
 async function getCycleOrThrow(cycleId: string, tenantId: string) {
   const cycle = await repo.findCycleById(cycleId)
@@ -323,9 +335,12 @@ export const payrollService = {
       // The screen explains the two-approver rule when the company has only one Payroll admin
       prisma.userRole.count({ where: { role: { tenantId, name: 'payroll_admin' }, user: { tenantId, active: true } } }),
     ])
+    const threshold = await signoffThreshold(tenantId)
     return {
       ...cycle,
       payrollAdmins,
+      signoffThreshold: threshold,
+      signoffRequired: threshold != null && round2(Number(totals._sum.netPay ?? 0)) > threshold,
       totals: {
         payslips: totals._count,
         gross: round2(Number(totals._sum.grossEarnings ?? 0)),
@@ -532,6 +547,10 @@ export const payrollService = {
     }
 
     await repo.updateCycle(cycleId, { financeApprovedBy: userId, financeApprovedAt: new Date() })
+    if (await needsSignoff(cycleId, tenantId)) {
+      const admins = (await userIdsWithRole(tenantId, 'system_admin')).filter((x) => x !== userId && x !== cycle.approvedBy)
+      await notify({ tenantId, userIds: admins, type: 'payroll.signoff', title: 'A payroll needs your sign-off', body: `${cycle.payPeriodStart.toISOString().slice(0, 7)} is above the sign-off amount`, link: '/approvals?tab=signoff', entityType: 'payroll_cycle', entityId: cycleId })
+    }
     await repo.createAudit({ tenantId, userId, action: 'PAYROLL_CYCLE_FINANCE_APPROVED', entityType: 'payroll_cycle', entityId: cycleId })
     return getCycleOrThrow(cycleId, tenantId)
   },
@@ -555,6 +574,7 @@ export const payrollService = {
     const cycle = await getCycleOrThrow(cycleId, tenantId)
     if (cycle.status !== 'approved') throw new AppError(`Cycle must be approved to disburse (currently ${cycle.status})`, 400)
     if (!cycle.approvedBy || !cycle.financeApprovedBy) throw new AppError('Both approvals (two different Payroll admins) are required before disbursement', 400)
+    if (!cycle.signoffBy && (await needsSignoff(cycleId, tenantId))) throw new AppError('This payroll is above the sign-off amount: a System admin must sign it off first', 400)
 
     // Reimbursement claims on this cycle's payslips must not already have been paid elsewhere — checked before anything changes
     const reimbLines = await prisma.payslipLine.findMany({

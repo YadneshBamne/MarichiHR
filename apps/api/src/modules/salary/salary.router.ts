@@ -31,7 +31,7 @@ salaryRouter.get('/structures/starter', requirePermission('salary:read'), salary
   res.json({ success: true, data: starterFor(t?.primaryCountry) })
 }))
 salaryRouter.post('/structures/starter', requirePermission('salary:write'), asyncHandler(async (req, res) => {
-  res.status(201).json({ success: true, data: await createStarterStructure(req.user!.tenantId, req.user!.userId) })
+  res.status(201).json({ success: true, data: await createStarterStructure(req.user!.tenantId, req.user!.userId, req.body?.kind === 'contractor' ? 'contractor' : 'employee') })
 }))
 salaryRouter.get('/structures/:id', requirePermission('salary:read'), salaryStaff, salaryController.getStructureById)
 salaryRouter.post('/structures', requirePermission('salary:write'), validate(CreateStructureSchema), salaryController.createStructure)

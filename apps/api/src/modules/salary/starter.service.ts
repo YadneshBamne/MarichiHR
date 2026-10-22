@@ -45,17 +45,34 @@ const TEMPLATES: Record<string, { name: string; description: string; rules: Rule
   },
 }
 
+// Contractors are paid a fee with tax withheld at a flat rate: no PAYE, pension or health contributions
+const CONTRACTOR: Record<string, { name: string; description: string; rules: Rule[] }> = {
+  ZM: { name: 'Zambia Contractor Fee', description: 'The monthly fee, less withholding tax at the rate in the statutory tables (confirm it with ZRA).', rules: [
+    { code: 'FEE', name: 'Contractor fee', cat: 'BASIC', formula: 'result = contract.wageMonthly' },
+    { code: 'GROSS', name: 'Gross fee', cat: 'GROSS', formula: 'result = categories.BASIC' },
+    { code: 'WHT_ZM', name: 'Withholding tax', cat: 'TAX', formula: 'result = zm_withholding(categories.GROSS)' },
+    { code: 'NET', name: 'Net Pay', cat: 'NET', formula: 'result = categories.GROSS - categories.DED - categories.TAX' },
+  ] },
+  IN: { name: 'India Contractor Fee', description: 'The monthly fee, less TDS under section 194J at the rate in the statutory tables (confirm it).', rules: [
+    { code: 'FEE', name: 'Professional fee', cat: 'BASIC', formula: 'result = contract.wageMonthly' },
+    { code: 'GROSS', name: 'Gross fee', cat: 'GROSS', formula: 'result = categories.BASIC' },
+    { code: 'TDS_194J', name: 'TDS (194J)', cat: 'TAX', formula: 'result = in_tds_194j(categories.GROSS)' },
+    { code: 'NET', name: 'Net Pay', cat: 'NET', formula: 'result = categories.GROSS - categories.DED - categories.TAX' },
+  ] },
+}
+
 export function starterFor(country?: string | null) {
   const key = country && TEMPLATES[country] ? country : 'DEFAULT'
   const t = TEMPLATES[key]
   return { country: key === 'DEFAULT' ? null : key, name: t.name, description: t.description, rules: t.rules.map((r) => ({ code: r.code, name: r.name, category: r.cat, formula: r.formula ?? `fixed ${r.fixed}` })) }
 }
 
-export async function createStarterStructure(tenantId: string, userId: string) {
+export async function createStarterStructure(tenantId: string, userId: string, kind: 'employee' | 'contractor' = 'employee') {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { primaryCountry: true } })
+  if (kind === 'contractor' && !(tenant?.primaryCountry && CONTRACTOR[tenant.primaryCountry])) throw new AppError('A contractor structure is ready for Zambia and India; set the company country first', 400)
   const key = tenant?.primaryCountry && TEMPLATES[tenant.primaryCountry] ? tenant.primaryCountry : 'DEFAULT'
-  const t = TEMPLATES[key]
-  const code = `${key === 'DEFAULT' ? 'STD' : key}-MONTHLY-STARTER`
+  const t = kind === 'contractor' ? CONTRACTOR[key] : TEMPLATES[key]
+  const code = `${key === 'DEFAULT' ? 'STD' : key}-${kind === 'contractor' ? 'CONTRACTOR' : 'MONTHLY'}-STARTER`
   const existing = await prisma.salaryStructure.findFirst({ where: { tenantId, code } })
   if (existing) throw new AppError('The starter structure already exists; edit it under Structures & rules', 409)
   const cats = new Map((await prisma.salaryRuleCategory.findMany({ select: { id: true, code: true } })).map((c) => [c.code, c.id]))

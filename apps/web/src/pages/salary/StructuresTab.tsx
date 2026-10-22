@@ -42,6 +42,8 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
   )
 
   return (
+    <>
+    {canEdit && !structures.some((s: any) => /CONTRACTOR-STARTER$/.test(s.code)) && <ContractorStarter />}
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 240px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }}>
@@ -101,6 +103,7 @@ export default function StructuresTab({ canEdit }: { canEdit: boolean }) {
       {structureForm && <StructureModal form={structureForm} onClose={() => setStructureForm(null)} onSaved={(id) => { setStructureForm(null); setSelectedId(id) }} />}
       {ruleForm && <RuleModal form={ruleForm} onClose={() => setRuleForm(null)} />}
     </div>
+    </>
   )
 }
 
@@ -261,6 +264,19 @@ function RuleModal({ form: initial, onClose }: { form: any; onClose: () => void 
 }
 
 // A new company starts here: the ready-made structure for its country, created in one click (everything editable after)
+// Contractors are paid a fee with tax withheld (Zambia and India)
+function ContractorStarter() {
+  const qc = useQueryClient()
+  const create = useMutation({ mutationFn: () => api.post('/salary/structures/starter', { kind: 'contractor' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['salary'] }) })
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ flex: '1 1 300px', fontSize: 13 }}>Paying contractors? Add a <b>contractor structure</b>: their fee less withholding tax, with no PAYE or pension. Rates are in Tax &amp; compliance › Rates (marked to confirm).</span>
+      {create.error && <span style={{ color: 'var(--danger)', fontSize: 13 }}>{errMsg(create.error)}</span>}
+      <button className="btn btn-ghost btn-sm" disabled={create.isPending} onClick={() => create.mutate()}>Add contractor structure</button>
+    </div>
+  )
+}
+
 function StarterCard({ onCustom }: { onCustom: () => void }) {
   const qc = useQueryClient()
   const { data } = useQuery({ queryKey: ['salary', 'starter'], queryFn: async () => (await api.get('/salary/structures/starter')).data.data as { country: string | null; name: string; description: string; rules: { code: string; name: string; category: string; formula: string }[] } })

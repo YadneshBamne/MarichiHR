@@ -32,6 +32,7 @@ model Tenant {
   onboardedAt     DateTime?
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
+  payrollSignoffAbove Decimal? @db.Decimal(18, 2) // a payroll whose net total is above this needs a System admin's sign-off
   updatedAt       DateTime @updatedAt
 
   users                User[]
@@ -1015,6 +1016,8 @@ model PayrollCycle {
   approvedAt         DateTime?
   financeApprovedBy  String?
   financeApprovedAt  DateTime?
+  signoffBy         String? // System admin sign-off above the company's threshold
+  signoffAt         DateTime?
   disbursedAt        DateTime?
   payslipsReleasedAt DateTime? // employees see their payslips from this moment (disbursing releases them if not done earlier)
   bankFileUrl        String?

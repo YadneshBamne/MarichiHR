@@ -92,7 +92,7 @@ export default function CycleDetailPage() {
           confirm: { title: 'Give the second approval?', body: 'Confirm the totals are correct. Next step is disbursement.' },
         }))
       } else {
-        actions.push(btn('Disburse', 'disburse', { primary: true, confirm: { title: 'Disburse payroll?', body: 'Payslips are released to employees and the cycle becomes immutable. This cannot be undone.' } }))
+        actions.push(btn('Disburse', 'disburse', { primary: true, disabled: (cycle as any).signoffRequired && !(cycle as any).signoffBy, title: (cycle as any).signoffRequired && !(cycle as any).signoffBy ? 'Waiting for a System admin to sign off (the payroll is above the sign-off amount)' : '', confirm: { title: 'Disburse payroll?', body: 'Payslips are released to employees and the cycle becomes immutable. This cannot be undone.' } }))
       }
     }
   }
@@ -134,6 +134,7 @@ export default function CycleDetailPage() {
         <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
           {cycle.status === 'approved' && !cycle.financeApprovedBy && isMakerOfApproval && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for a second Payroll admin to give the second approval</span>}
+          {cycle.status === 'approved' && !!cycle.financeApprovedBy && (cycle as any).signoffRequired && !(cycle as any).signoffBy && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Above the sign-off amount ({(cycle as any).signoffThreshold?.toLocaleString()}): waiting for a System admin's sign-off</span>}
           {['review', 'approved'].includes(cycle.status) && !cycle.financeApprovedBy && (cycle as any).payrollAdmins < 2 && <span className="pill danger" style={{ whiteSpace: 'normal', textAlign: 'right', maxWidth: 380 }}>Every payroll needs approvals from two different Payroll admins, and this company has only {(cycle as any).payrollAdmins}. Give a second person the Payroll admin role in their Login &amp; access tab.</span>}
         </div>
       </div>

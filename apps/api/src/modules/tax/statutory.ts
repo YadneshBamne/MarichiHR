@@ -58,6 +58,10 @@ export function statutoryFunctions(ctx: StatutoryContext, warn: (w: string) => v
     napsa_employer: (gross: number) => napsa(gross, 'employerRate'),
     nhima_employee: (basic: number) => nhima(basic, 'employeeRate'),
     nhima_employer: (basic: number) => nhima(basic, 'employerRate'),
+    // Contractors: a flat withholding on the fee (rates marked to confirm in the statutory tables)
+    zm_withholding: (fee: number) => round2(Math.max(0, Number(fee)) * table(ctx, 'ZM_WHT_CONTRACTOR').rate),
+    // ponytail: monthly rate on each payment; the 194J annual threshold is not tracked across the year
+    in_tds_194j: (fee: number) => round2(Math.max(0, Number(fee)) * table(ctx, 'IN_TDS_194J').rate),
     // India, new regime, cumulative method: project the year's income from what was paid so far plus this month
     // for the rest of the year, take the year's tax less tax already deducted, and spread it over the months left
     compute_india_tds: (gross: number, _ded?: number) => {

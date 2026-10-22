@@ -9,8 +9,9 @@ import {
   usePendingRegularisations as useAttPendingReg,
   usePendingOvertime as useAttPendingOT,
 } from '../../lib/hooks/useAttendance'
+import PayrollSignoff from './PayrollSignoff'
 
-type Tab = 'leave' | 'attendance' | 'mine' | 'monitor' | 'chains'
+type Tab = 'leave' | 'attendance' | 'mine' | 'monitor' | 'chains' | 'signoff'
 
 export default function ApprovalsPage() {
   const { isManager, hasApp, hasRole } = useAuth()
@@ -33,7 +34,8 @@ export default function ApprovalsPage() {
     ...(att ? [{ key: 'attendance' as Tab, label: 'Attendance', count: attendanceCount }] : []),
     { key: 'mine' as Tab, label: 'Approval chains & delegation', count: chainPending.length },
     ...(hr ? [{ key: 'monitor' as Tab, label: 'Monitor', count: 0 }, { key: 'chains' as Tab, label: 'Set up chains', count: 0 }] : []),
-  ].filter((t) => isManager || ['mine'].includes(t.key))
+    ...(hasRole('system_admin') && hasApp('payroll') ? [{ key: 'signoff' as Tab, label: 'Payroll sign-off', count: 0 }] : []),
+  ].filter((t) => isManager || ['mine', 'signoff'].includes(t.key))
 
   return (
     <div style={s.page}>
@@ -66,6 +68,7 @@ export default function ApprovalsPage() {
       {activeTab === 'mine' && <WaitingForMe />}
       {activeTab === 'monitor' && hr && <Monitor />}
       {activeTab === 'chains' && hr && <ChainsSetup />}
+      {activeTab === 'signoff' && hasRole('system_admin') && <PayrollSignoff />}
       {activeTab === 'leave' && lv && isManager && <><LeaveApprovalsPanel /><AllocationRequestsPanel /></>}
       {activeTab === 'attendance' && att && isManager && <ApprovalsPanel />}
       {!lv && !att && <div className="card" style={{ padding: 40, textAlign: 'center' }}><div className="display" style={{ fontSize: 22 }}>Nothing to approve here yet</div><p className="dim" style={{ marginTop: 6, fontSize: 13 }}>Approvals come from the Leave and Attendance apps. Expense approvals live in Expenses.</p></div>}
