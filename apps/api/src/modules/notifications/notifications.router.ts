@@ -7,6 +7,7 @@ import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
 import { prisma } from '../../infrastructure/database/prisma'
 import { JOBS, getCronQueue } from '../../infrastructure/jobs/jobs'
+import { CATEGORIES, Prefs } from '../../infrastructure/notifications/preferences'
 
 // ─── IN-APP NOTIFICATIONS (/notifications) ─────────────────────
 export const notificationsRouter = Router()
@@ -23,6 +24,32 @@ notificationsRouter.get('/', asyncHandler(async (req, res) => {
     prisma.notification.count({ where: { userId, tenantId, readAt: null } }),
   ])
   res.json({ success: true, data: { items, unread } })
+}))
+
+// Each person's delivery choices per category (the bell always gets everything)
+notificationsRouter.get('/preferences', asyncHandler(async (req, res) => {
+  const u = await prisma.user.findFirst({ where: { id: req.user!.userId, tenantId: req.user!.tenantId }, select: { notifyPrefs: true } })
+  const prefs = (u?.notifyPrefs ?? {}) as Prefs
+  const on = (process.env.NOTIFY_CHANNELS || 'email').split(',').map((c) => c.trim())
+  res.json({ success: true, data: {
+    channels: { email: on.includes('email'), whatsapp: on.includes('whatsapp') },
+    categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label, hint: c.hint, mandatory: c.mandatory, email: c.mandatory || prefs[c.key]?.email !== false, whatsapp: c.mandatory || prefs[c.key]?.whatsapp !== false })),
+  } })
+}))
+
+const Channel = z.object({ email: z.boolean().optional(), whatsapp: z.boolean().optional() }).strict()
+const PrefsBody = z.object({ prefs: z.object(Object.fromEntries(CATEGORIES.map((c) => [c.key, Channel.optional()]))).strict() }).strict()
+notificationsRouter.put('/preferences', validate(z.object({ body: PrefsBody })), asyncHandler(async (req, res) => {
+  const { userId, tenantId } = req.user!
+  const u = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { notifyPrefs: true } })
+  if (!u) throw new AppError('User not found', 404)
+  const merged: Record<string, unknown> = { ...((u.notifyPrefs ?? {}) as object) }
+  for (const [k, v] of Object.entries(req.body.prefs as Record<string, object | undefined>)) {
+    if (!v || CATEGORIES.find((c) => c.key === k)?.mandatory) continue // mandatory categories cannot be switched off
+    merged[k] = { ...((merged[k] as object) ?? {}), ...v }
+  }
+  await prisma.user.update({ where: { id: userId }, data: { notifyPrefs: merged as any } })
+  res.json({ success: true, data: merged })
 }))
 
 notificationsRouter.post('/read-all', asyncHandler(async (req, res) => {

@@ -1,4 +1,5 @@
 import { prisma } from '../database/prisma'
+import { wants } from './preferences'
 
 // In-app notification rows plus outbound delivery over pluggable transports.
 // Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | resend.
@@ -80,7 +81,7 @@ export async function notify(input: NotifyInput) {
   if (!userIds.length) return []
   const users = await prisma.user.findMany({
     where: { id: { in: userIds }, tenantId: input.tenantId, active: true },
-    select: { id: true, email: true, fullName: true, employee: { select: { mobileWork: true, mobilePersonal: true } } },
+    select: { id: true, email: true, fullName: true, notifyPrefs: true, employee: { select: { mobileWork: true, mobilePersonal: true } } },
   })
   const transports = transportsFor()
   const created = []
@@ -102,6 +103,10 @@ export async function notify(input: NotifyInput) {
 
     const deliveries = []
     for (const [channel, transport] of Object.entries(transports)) {
+      if (!wants(user.notifyPrefs, input.type, channel as 'email' | 'whatsapp')) {
+        deliveries.push({ channel, transport: transport.name, status: 'skipped', reason: 'preference' })
+        continue
+      }
       const msg: OutboundMessage = {
         to: { name: user.fullName, email: user.email, phone: user.employee?.mobileWork || user.employee?.mobilePersonal },
         subject: input.title,

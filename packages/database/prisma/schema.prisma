@@ -95,6 +95,7 @@ model User {
   googleSub     String?
   tourDoneAt    DateTime?
   mustChangePassword Boolean @default(false)
+  notifyPrefs   Json      @default("{}") // { category: { email, whatsapp } }; the bell always gets everything
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
