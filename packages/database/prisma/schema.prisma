@@ -2466,3 +2466,41 @@ model PolicyException {
   @@index([employeeId])
   @@map("policy_exceptions")
 }
+
+// Compensation review: Payroll opens a cycle with a budget (% of the team's annual CTC); managers recommend an
+// increase % per direct report while seeing only team totals; Payroll applies approved ones as salary revisions.
+model CompReviewCycle {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  effectiveFrom DateTime @db.Date
+  budgetPercent Float
+  status        String   @default("open") // open | closed | applied
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  recommendations CompRecommendation[]
+
+  @@unique([tenantId, name])
+  @@map("comp_review_cycles")
+}
+
+model CompRecommendation {
+  id                String   @id @default(uuid())
+  tenantId          String
+  cycleId           String
+  employeeId        String
+  managerEmployeeId String
+  increasePercent   Float
+  note              String?
+  status            String   @default("recommended") // recommended | approved | rejected | applied
+  revisionId        String?
+  decidedBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  cycle CompReviewCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@unique([cycleId, employeeId])
+  @@map("comp_recommendations")
+}

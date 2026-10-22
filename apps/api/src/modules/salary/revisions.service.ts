@@ -52,7 +52,7 @@ const view = async (r: any) => {
 
 export const revisionService = {
   async list(u: AccessUser, filter: { status?: string; employeeId?: string }) {
-    if (!isStaff(u)) throw new AppError('Only HR and payroll can see salary revisions', 403)
+    if (!isStaff(u)) throw new AppError('Only Payroll admins see salary revisions', 403)
     const rows = await prisma.salaryRevision.findMany({ where: { tenantId: u.tenantId, ...(filter.status && { status: filter.status }), ...(filter.employeeId && { employeeId: filter.employeeId }) }, orderBy: { createdAt: 'desc' }, take: 300 })
     const out = []
     for (const r of rows) {
@@ -65,7 +65,7 @@ export const revisionService = {
   },
 
   async create(u: AccessUser, b: { employeeId: string; newCtcAnnual: number; newWageMonthly: number; newSalaryStructureId?: string; effectiveFrom: string; reason: string }) {
-    if (!isStaff(u)) throw new AppError('Only HR and payroll raise salary revisions', 403)
+    if (!isStaff(u)) throw new AppError('Only Payroll admins raise salary revisions', 403)
     const emp = await prisma.employee.findFirst({ where: { id: b.employeeId, tenantId: u.tenantId, active: true } })
     if (!emp) throw new AppError('Employee not found', 404)
     if (emp.id === u.employeeId) throw new AppError('You cannot revise your own salary', 403)

@@ -55,6 +55,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Payroll', selfLabel: 'My payslips', path: '/payroll', icon: 'wallet', app: 'payroll', keywords: 'payslips salary cycles bank file' },
       { label: 'Expenses', selfLabel: 'My expenses', path: '/expenses', icon: 'receipt', app: 'expenses', keywords: 'claims reimbursements per diem' },
       { label: 'Salary structures', path: '/compensation', icon: 'sliders', roles: ROLE.PAYROLL, app: 'payroll', keywords: 'compensation rules grade bands contracts' },
+      { label: 'Pay review', path: '/compensation-review', icon: 'chart', roles: ['payroll_admin', 'manager'], app: 'payroll', keywords: 'compensation review increments raises budget team cost merit' },
       { label: 'Tax & compliance', selfLabel: 'My tax statement', path: '/tax', icon: 'scale', app: 'payroll', keywords: 'paye napsa nhima tds income tax statutory return filing certificate statement rates' },
       { label: 'Incentives', selfLabel: 'My awards', path: '/incentives', icon: 'gift', app: 'payroll', keywords: 'bonus award reward recognition nominate referral' },
     ],
