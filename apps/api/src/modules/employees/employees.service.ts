@@ -266,7 +266,7 @@ export const employeeService = {
       const event = prepareEvent(tenantId, 'employee.created', { employeeId, employeeCode: code, name: `${data.firstName} ${data.lastName}`, email: data.workEmail, createdBy })
       try {
         await insertRows({
-          users: [{ id: userId, tenantId, email: data.workEmail, fullName: `${data.firstName} ${data.lastName}`, passwordHash: null, active: true, mfaEnabled: false, mustChangePassword: false, createdAt: now, updatedAt: now }],
+          users: [{ id: userId, tenantId, email: data.workEmail, fullName: `${data.firstName} ${data.lastName}`, passwordHash: null, active: true, mfaEnabled: false, mustChangePassword: false, notifyPrefs: {}, createdAt: now, updatedAt: now }],
           user_roles: employeeRole ? [{ id: crypto.randomUUID(), userId, roleId: employeeRole.id, scopeType: 'org', validFrom: now, createdAt: now }] : [],
           employees: [{ ...employeeRow, employeeCode: code }],
           employee_position_history: [historyRow(employeeId, createdBy, data as any, employeeRow.hireDate as string, 'Joined')],
