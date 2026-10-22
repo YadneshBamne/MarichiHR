@@ -24,6 +24,16 @@ const readOrg = () => { try { return localStorage.getItem(LAST_ORG) || '' } catc
 
 type Mode = 'signin' | 'mfa' | 'forgot'
 
+// One-click demo accounts for presentations. Read from build-time env (MARICHI_DEMO_*), so they exist only on a build
+// that sets them (e.g. the Vercel demo); a normal install shows no buttons. Note: values in a web build are visible
+// to anyone who opens the site's JavaScript, so use them only for demo accounts.
+interface DemoLogin { label: string; email: string; password: string }
+const env = import.meta.env as Record<string, string | undefined>
+const DEMO_ORG = (env.MARICHI_DEMO_ORG ?? '').trim()
+const DEMO_LOGINS: DemoLogin[] = ([['HR / Admin', 'HR'], ['Manager', 'MANAGER'], ['Employee', 'EMPLOYEE']] as const)
+  .map(([label, key]) => ({ label, email: (env[`MARICHI_DEMO_${key}_EMAIL`] ?? '').trim(), password: env[`MARICHI_DEMO_${key}_PASSWORD`] ?? '' }))
+  .filter((d) => d.email && d.password)
+
 export default function LoginPage() {
   const { login, verifyMfa, googleLogin } = useAuth()
   const navigate = useNavigate()
@@ -73,12 +83,24 @@ export default function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    await signIn(form.email, form.password, showOrg ? form.tenantSlug : '')
+  }
+
+  // Demo buttons: fill the form visibly, then sign in exactly like typing it
+  const quickLogin = async (d: DemoLogin) => {
+    setForm((f) => ({ ...f, email: d.email, password: d.password, tenantSlug: DEMO_ORG || f.tenantSlug }))
+    if (DEMO_ORG) setShowOrg(true)
+    await new Promise((r) => setTimeout(r, 350))
+    await signIn(d.email, d.password, DEMO_ORG)
+  }
+
+  const signIn = async (email: string, password: string, orgInput: string) => {
     setError('')
     setSignupCode(null)
     setLoading(true)
     try {
-      const org = showOrg ? form.tenantSlug.trim().toLowerCase() : ''
-      const pending = await login(form.email.trim(), form.password, org || undefined)
+      const org = orgInput.trim().toLowerCase()
+      const pending = await login(email.trim(), password, org || undefined)
       try { if (org) localStorage.setItem(LAST_ORG, org) } catch { /* private mode */ }
       if (pending) { setMfaToken(pending); setCode(''); setMode('mfa') }
       else navigate(from, { replace: true })
@@ -135,7 +157,15 @@ export default function LoginPage() {
             <form onSubmit={submit} noValidate>
               {brand && <div data-rise style={{ marginBottom: 16 }}><CompanyLogo name={brand.name} src={brand.logoUrl} size={56} /></div>}
               <h1 data-rise style={{ fontSize: 'clamp(34px, 4vw, 46px)', lineHeight: 1.05 }}>{brand ? `Sign in to ${brand.name}` : 'Welcome back'}</h1>
-              <p data-rise className="dim" style={{ marginTop: 10, marginBottom: 28 }}>Use the work email your company registered for you.</p>
+              <p data-rise className="dim" style={{ marginTop: 10, marginBottom: DEMO_LOGINS.length ? 16 : 28 }}>Use the work email your company registered for you.</p>
+              {DEMO_LOGINS.length > 0 && (
+                <div data-rise style={{ marginBottom: 22 }}>
+                  <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>Demo: sign in with one click as</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {DEMO_LOGINS.map((d) => <button key={d.label} type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={() => quickLogin(d)}>{d.label}</button>)}
+                  </div>
+                </div>
+              )}
               {showOrg && (
                 <div data-rise className="field" style={{ marginBottom: 14 }}>
                   <label htmlFor="org">Organisation</label>
