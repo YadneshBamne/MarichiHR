@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { DEMO_LOGINS, DEMO_ORG, type DemoLogin } from '../lib/demoAccounts'
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { CompanyLogo } from '../components/company/CompanyParts'
 import api from '../lib/api'
@@ -23,16 +24,6 @@ const LAST_ORG = 'marichihr.org'
 const readOrg = () => { try { return localStorage.getItem(LAST_ORG) || '' } catch { return '' } }
 
 type Mode = 'signin' | 'mfa' | 'forgot'
-
-// One-click demo accounts for presentations. Read from build-time env (MARICHI_DEMO_*), so they exist only on a build
-// that sets them (e.g. the Vercel demo); a normal install shows no buttons. Note: values in a web build are visible
-// to anyone who opens the site's JavaScript, so use them only for demo accounts.
-interface DemoLogin { label: string; email: string; password: string }
-const env = import.meta.env as Record<string, string | undefined>
-const DEMO_ORG = (env.MARICHI_DEMO_ORG ?? '').trim()
-const DEMO_LOGINS: DemoLogin[] = ([['HR / Admin', 'HR'], ['Manager', 'MANAGER'], ['Employee', 'EMPLOYEE']] as const)
-  .map(([label, key]) => ({ label, email: (env[`MARICHI_DEMO_${key}_EMAIL`] ?? '').trim(), password: env[`MARICHI_DEMO_${key}_PASSWORD`] ?? '' }))
-  .filter((d) => d.email && d.password)
 
 export default function LoginPage() {
   const { login, verifyMfa, googleLogin } = useAuth()
