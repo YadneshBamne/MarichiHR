@@ -20,6 +20,10 @@ const openingFields = {
   salaryMin: money.nullable(),
   salaryMax: money.nullable(),
   hiringManagerId: uuidOrNull,
+  reason: z.enum(['new_post', 'replacement']), // replacement: name who is being replaced
+  replacesEmployeeId: uuidOrNull,
+  experienceMinYears: z.number().min(0).max(50).nullable(),
+  experienceMaxYears: z.number().min(0).max(50).nullable(),
 }
 const CreateOpening = z.object({ body: z.object(openingFields).partial().required({ title: true, orgUnitId: true }).strict() })
 const UpdateOpening = z.object({ params: id, body: z.object({ ...openingFields, status: z.enum(['open', 'on_hold', 'closed']), closedReason: z.string().trim().max(300).nullable() }).partial().strict() })

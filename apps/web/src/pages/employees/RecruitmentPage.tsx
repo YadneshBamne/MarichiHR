@@ -13,7 +13,7 @@ import { flattenUnits } from '../workplace/AnnouncementsPage'
 import MasterSelect from '../../components/ui/MasterSelect'
 import { useMasters } from '../../lib/hooks/useMasters'
 
-interface Opening { id: string; title: string; description: string; orgUnitId: string; orgUnit: string | null; employmentType: string; openings: number; salaryMin: number | null; salaryMax: number | null; currency: string; hiringManagerId: string | null; hiringManager: string | null; status: string; closedReason: string | null; requestedBy: string | null; requestedByUserId: string; createdAt: string; canManage: boolean; pipeline: Record<string, number> | null }
+interface Opening { id: string; title: string; description: string; orgUnitId: string; orgUnit: string | null; employmentType: string; openings: number; salaryMin: number | null; salaryMax: number | null; currency: string; hiringManagerId: string | null; hiringManager: string | null; reason: string; replacesEmployeeId: string | null; replacesEmployee: string | null; experienceMinYears: number | null; experienceMaxYears: number | null; status: string; closedReason: string | null; requestedBy: string | null; requestedByUserId: string; createdAt: string; canManage: boolean; pipeline: Record<string, number> | null }
 interface Cand { id: string; openingId: string; opening?: string; firstName: string; lastName: string; stage: string; source: string; summary: string | null; resumeUrl: string | null; rating: number | null; email?: string; phone?: string | null; rejectionReason?: string | null; referredBy?: string | null; offerCtcAnnual?: number | null; offerJoiningDate?: string | null; offerStatus?: string | null; offerNote?: string | null; hiredEmployeeId?: string | null; interviews?: any; feedbackIn?: number; canManage?: boolean }
 interface Interview { id: string; candidateId: string; interviewer: string | null; interviewerUserId: string; scheduledAt: string; mode: string; status: string; rating: number | null; recommendation: string | null; feedback: string | null; candidate?: string; opening?: string }
 
@@ -22,6 +22,8 @@ const STAGE_PILL: Record<string, string> = { applied: 'mute', screening: 'info',
 const PIPELINE = ['applied', 'screening', 'interview', 'offer', 'hired'] as const
 const label = (s: string) => s.replace(/_/g, ' ')
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
+const exp = (o: Opening) => o.experienceMinYears != null || o.experienceMaxYears != null ? `${o.experienceMinYears ?? 0}${o.experienceMaxYears != null ? `–${o.experienceMaxYears}` : '+'} yrs experience` : null
+const why = (o: Opening) => (o.reason === 'replacement' ? `replaces ${o.replacesEmployee ?? 'someone'}` : 'new post')
 const range = (o: Opening) => o.salaryMin || o.salaryMax ? `${[o.salaryMin, o.salaryMax].filter((x) => x != null).map((x) => x!.toLocaleString()).join(' – ')} ${o.currency}/yr` : null
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -69,7 +71,7 @@ export default function RecruitmentPage() {
               {data.filter((o) => o.status === 'open').map((o) => (
                 <section key={o.id} data-card className="card span-4" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><strong style={{ fontSize: 16 }}>{o.title}</strong><Icon name="briefcase" size={16} /></div>
-                  <div className="dim" style={{ fontSize: 13 }}>{[o.orgUnit, ml('employment_type', o.employmentType), range(o)].filter(Boolean).join(' · ')}</div>
+                  <div className="dim" style={{ fontSize: 13 }}>{[o.orgUnit, ml('employment_type', o.employmentType), why(o), exp(o), range(o)].filter(Boolean).join(' · ')}</div>
                   {o.description && <p style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 84, overflow: 'hidden' }}>{o.description}</p>}
                   <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
                     <button className="btn btn-honey btn-sm" onClick={() => setReferring(o)}><Icon name="user" size={14} /> Refer someone</button>
@@ -92,12 +94,12 @@ function OpeningModal({ onClose, edit }: { onClose: () => void; edit?: Opening }
   const isHR = hasRole('hr_admin')
   const qc = useQueryClient()
   const toast = useToast()
-  const [f, setF] = useState({ title: edit?.title ?? '', description: edit?.description ?? '', orgUnitId: edit?.orgUnitId ?? '', employmentType: edit?.employmentType ?? 'full_time', openings: String(edit?.openings ?? 1), salaryMin: edit?.salaryMin?.toString() ?? '', salaryMax: edit?.salaryMax?.toString() ?? '', hiringManagerId: edit?.hiringManagerId ?? '' })
+  const [f, setF] = useState({ title: edit?.title ?? '', description: edit?.description ?? '', orgUnitId: edit?.orgUnitId ?? '', employmentType: edit?.employmentType ?? 'full_time', openings: String(edit?.openings ?? 1), salaryMin: edit?.salaryMin?.toString() ?? '', salaryMax: edit?.salaryMax?.toString() ?? '', hiringManagerId: edit?.hiringManagerId ?? '', reason: edit?.reason ?? 'new_post', replacesEmployeeId: edit?.replacesEmployeeId ?? '', experienceMinYears: edit?.experienceMinYears?.toString() ?? '', experienceMaxYears: edit?.experienceMaxYears?.toString() ?? '' })
   const { data: units = [] } = useQuery({ queryKey: ['unit-tree'], queryFn: async () => flattenUnits((await api.get('/employees/org-units/tree')).data.data) })
-  const { data: people = [] } = useQuery({ queryKey: ['recruit-people'], enabled: isHR, queryFn: async () => (await api.get('/employees', { params: { limit: 500 } })).data.data as any[] })
+  const { data: people = [] } = useQuery({ queryKey: ['recruit-people'], queryFn: async () => (await api.get('/employees', { params: { limit: 500 } })).data.data as any[] })
   const save = useMutation({
     mutationFn: () => {
-      const body: any = { title: f.title, description: f.description, orgUnitId: f.orgUnitId, employmentType: f.employmentType, openings: Number(f.openings), salaryMin: f.salaryMin ? Number(f.salaryMin) : null, salaryMax: f.salaryMax ? Number(f.salaryMax) : null }
+      const body: any = { title: f.title, description: f.description, orgUnitId: f.orgUnitId, employmentType: f.employmentType, openings: Number(f.openings), salaryMin: f.salaryMin ? Number(f.salaryMin) : null, salaryMax: f.salaryMax ? Number(f.salaryMax) : null, reason: f.reason, replacesEmployeeId: f.reason === 'replacement' ? f.replacesEmployeeId || null : null, experienceMinYears: f.experienceMinYears ? Number(f.experienceMinYears) : null, experienceMaxYears: f.experienceMaxYears ? Number(f.experienceMaxYears) : null }
       if (isHR) body.hiringManagerId = f.hiringManagerId || null
       return edit ? api.patch(`/recruitment/openings/${edit.id}`, body) : api.post('/recruitment/openings', body)
     },
@@ -115,6 +117,10 @@ function OpeningModal({ onClose, edit }: { onClose: () => void; edit?: Opening }
           <label className="field"><span>Seats</span><input className="input" type="number" min={1} max={500} value={f.openings} onChange={set('openings')} /></label>
           <label className="field"><span>Salary from (yearly)</span><input className="input" type="number" min={0} value={f.salaryMin} onChange={set('salaryMin')} /></label>
           <label className="field"><span>Salary to (yearly)</span><input className="input" type="number" min={0} value={f.salaryMax} onChange={set('salaryMax')} /></label>
+          <label className="field"><span>Experience from (years)</span><input className="input" type="number" min={0} max={50} step={0.5} value={f.experienceMinYears} onChange={set('experienceMinYears')} /></label>
+          <label className="field"><span>Experience to (years)</span><input className="input" type="number" min={0} max={50} step={0.5} value={f.experienceMaxYears} onChange={set('experienceMaxYears')} /></label>
+          <label className="field"><span>Why is this hire needed?</span><select className="input" value={f.reason} onChange={set('reason')}><option value="new_post">New post</option><option value="replacement">Replacement</option></select></label>
+          {f.reason === 'replacement' && <label className="field"><span>Replaces</span><select className="input" required value={f.replacesEmployeeId} onChange={set('replacesEmployeeId')}><option value="">Choose who left or is leaving…</option>{people.map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.employeeCode ? ` (${p.employeeCode})` : ''}</option>)}</select></label>}
         </div>
         {isHR && <label className="field"><span>Hiring manager</span><select className="input" value={f.hiringManagerId} onChange={set('hiringManagerId')}><option value="">None</option>{people.map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}</select></label>}
         <label className="field"><span>About the role</span><textarea className="input" rows={5} maxLength={5000} value={f.description} onChange={set('description')} /></label>
@@ -212,7 +218,7 @@ export function OpeningPage() {
   const status = (s: string, closedReason?: string) => act.mutate(async () => { await api.patch(`/recruitment/openings/${id}`, { status: s, ...(closedReason ? { closedReason } : {}) }); toast('Updated') })
   return (
     <div ref={root}>
-      <PageHeader title={o.title} sub={<>{[o.orgUnit, ml('employment_type', o.employmentType), `${o.openings} seat${o.openings > 1 ? 's' : ''}`, range(o), o.hiringManager && `hiring manager ${o.hiringManager}`].filter(Boolean).join(' · ')} <span className={`pill ${OPEN_STATUS[o.status]}`} style={{ marginLeft: 6 }}>{label(o.status)}</span></>}
+      <PageHeader title={o.title} sub={<>{[o.orgUnit, ml('employment_type', o.employmentType), `${o.openings} seat${o.openings > 1 ? 's' : ''}`, why(o), exp(o), range(o), o.hiringManager && `hiring manager ${o.hiringManager}`].filter(Boolean).join(' · ')} <span className={`pill ${OPEN_STATUS[o.status]}`} style={{ marginLeft: 6 }}>{label(o.status)}</span></>}
         actions={<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Link to="/recruitment" className="btn btn-ghost btn-sm"><Icon name="chevronLeft" size={14} /> All openings</Link>
           {o.canManage && o.status === 'open' && <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Add candidate</button>}

@@ -1519,6 +1519,10 @@ model JobOpening {
   salaryMax             Decimal?  @db.Decimal(18, 2)
   currency              String
   hiringManagerId       String? // employee id
+  reason                String    @default("new_post") // new_post | replacement
+  replacesEmployeeId    String? // replacement: the person who left or is leaving
+  experienceMinYears    Float?
+  experienceMaxYears    Float?
   status                String    @default("open") // pending_approval | open | on_hold | closed | rejected
   closedReason          String?
   requestedByUserId     String

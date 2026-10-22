@@ -54,6 +54,8 @@ const openingView = (o: any, names: Map<string, string>, extra: Record<string, u
   workLocationId: o.workLocationId, employmentType: o.employmentType, openings: o.openings, salaryMin: num(o.salaryMin), salaryMax: num(o.salaryMax),
   currency: o.currency, hiringManagerId: o.hiringManagerId, hiringManager: o.hiringManagerId ? names.get(`e:${o.hiringManagerId}`) ?? null : null,
   status: o.status, closedReason: o.closedReason, requestedBy: names.get(`u:${o.requestedByUserId}`) ?? null, requestedByUserId: o.requestedByUserId,
+  reason: o.reason, replacesEmployeeId: o.replacesEmployeeId, replacesEmployee: o.replacesEmployeeId ? names.get(`e:${o.replacesEmployeeId}`) ?? null : null,
+  experienceMinYears: o.experienceMinYears, experienceMaxYears: o.experienceMaxYears,
   approvedBy: o.approvedByUserId ? names.get(`u:${o.approvedByUserId}`) ?? null : null, approvedAt: o.approvedAt, closedAt: o.closedAt, createdAt: o.createdAt,
   ...extra,
 })
@@ -74,7 +76,7 @@ const interviewView = (i: any, names: Map<string, string>) => ({
   scheduledAt: i.scheduledAt, mode: i.mode, status: i.status, rating: i.rating, recommendation: i.recommendation, feedback: i.feedback, completedAt: i.completedAt,
 })
 
-type OpeningBody = { title: string; description?: string; orgUnitId: string; jobPositionId?: string | null; workLocationId?: string | null; employmentType?: string; openings?: number; salaryMin?: number | null; salaryMax?: number | null; hiringManagerId?: string | null }
+type OpeningBody = { title: string; description?: string; orgUnitId: string; jobPositionId?: string | null; workLocationId?: string | null; employmentType?: string; openings?: number; salaryMin?: number | null; salaryMax?: number | null; hiringManagerId?: string | null; reason?: 'new_post' | 'replacement'; replacesEmployeeId?: string | null; experienceMinYears?: number | null; experienceMaxYears?: number | null }
 
 async function checkOpeningRefs(user: AccessUser, b: Partial<OpeningBody>) {
   const t = user.tenantId
@@ -87,6 +89,10 @@ async function checkOpeningRefs(user: AccessUser, b: Partial<OpeningBody>) {
   if (!unit || !pos || !loc || !mgr) throw new AppError('Department, position, location or hiring manager not found', 404)
   await assertMasters(user.tenantId, { employment_type: b.employmentType })
   if (b.salaryMin != null && b.salaryMax != null && b.salaryMin > b.salaryMax) throw new AppError('The salary range is upside down', 400)
+  if (b.experienceMinYears != null && b.experienceMaxYears != null && b.experienceMinYears > b.experienceMaxYears) throw new AppError('The experience range is upside down', 400)
+  // A replacement names the person who left or is leaving (they may already be inactive)
+  if (b.reason === 'replacement' && !b.replacesEmployeeId) throw new AppError('Say who this person replaces', 400)
+  if (b.replacesEmployeeId && !(await prisma.employee.findFirst({ where: { id: b.replacesEmployeeId, tenantId: t } }))) throw new AppError('The person being replaced was not found', 404)
 }
 
 export const recruitmentService = {
@@ -99,7 +105,7 @@ export const recruitmentService = {
     const [units, counts, names] = await Promise.all([
       prisma.orgUnit.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.orgUnitId))] } }, select: { id: true, name: true } }),
       prisma.candidate.groupBy({ by: ['openingId', 'stage'], where: { tenantId: user.tenantId, openingId: { in: rows.map((r) => r.id) } }, _count: true }),
-      people(rows.map((r) => r.hiringManagerId), rows.flatMap((r) => [r.requestedByUserId, r.approvedByUserId])),
+      people(rows.flatMap((r) => [r.hiringManagerId, r.replacesEmployeeId]), rows.flatMap((r) => [r.requestedByUserId, r.approvedByUserId])),
     ])
     const unitName = new Map(units.map((u) => [u.id, u.name]))
     return rows.map((o) => {
@@ -116,7 +122,7 @@ export const recruitmentService = {
       prisma.orgUnit.findUnique({ where: { id: o.orgUnitId }, select: { name: true } }),
       canManage ? prisma.candidate.findMany({ where: { openingId: id, tenantId: user.tenantId }, include: { interviews: true }, orderBy: { createdAt: 'desc' } }) : [],
     ])
-    const names = await people([o.hiringManagerId, ...candidates.map((c) => c.referredByEmployeeId)], [o.requestedByUserId, o.approvedByUserId])
+    const names = await people([o.hiringManagerId, o.replacesEmployeeId, ...candidates.map((c) => c.referredByEmployeeId)], [o.requestedByUserId, o.approvedByUserId])
     return openingView({ ...o, orgUnitName: unit?.name }, names, {
       canManage,
       candidates: candidates.map((c) => ({ ...candidateView(c, names, true), interviews: c.interviews.length, feedbackIn: c.interviews.filter((i) => i.status === 'completed').length })),
@@ -135,6 +141,8 @@ export const recruitmentService = {
         tenantId: user.tenantId, title: b.title, description: b.description ?? '', orgUnitId: b.orgUnitId, jobPositionId: b.jobPositionId ?? null,
         workLocationId: b.workLocationId ?? null, employmentType: b.employmentType ?? 'full_time', openings: b.openings ?? 1,
         salaryMin: b.salaryMin ?? null, salaryMax: b.salaryMax ?? null, currency: tenant?.baseCurrency ?? 'USD', hiringManagerId,
+        reason: b.reason ?? 'new_post', replacesEmployeeId: b.reason === 'replacement' ? b.replacesEmployeeId ?? null : null,
+        experienceMinYears: b.experienceMinYears ?? null, experienceMaxYears: b.experienceMaxYears ?? null,
         status: hr ? 'open' : 'pending_approval', requestedByUserId: user.userId, ...(hr ? { approvedByUserId: user.userId, approvedAt: new Date() } : {}),
       },
     })
@@ -151,8 +159,9 @@ export const recruitmentService = {
     if (!isHR(user)) throw new AppError('Only HR can change an opening', 403)
     if (['pending_approval', 'rejected'].includes(o.status) && b.status) throw new AppError('Approve the request before changing its status', 400)
     if (o.status === 'closed' && b.status !== 'open' && Object.keys(b).length) throw new AppError('Reopen the opening before editing it', 400)
-    await checkOpeningRefs(user, { salaryMin: num(o.salaryMin), salaryMax: num(o.salaryMax), ...b })
+    await checkOpeningRefs(user, { salaryMin: num(o.salaryMin), salaryMax: num(o.salaryMax), experienceMinYears: o.experienceMinYears, experienceMaxYears: o.experienceMaxYears, reason: o.reason as any, replacesEmployeeId: o.replacesEmployeeId, ...b })
     const { status, closedReason, ...fields } = b
+    if (fields.reason === 'new_post') fields.replacesEmployeeId = null
     const updated = await prisma.jobOpening.update({
       where: { id },
       data: { ...fields, ...(status ? { status, closedAt: status === 'closed' ? new Date() : null, closedReason: status === 'closed' ? closedReason ?? 'Closed' : null } : {}) },
