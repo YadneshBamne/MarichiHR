@@ -15,6 +15,7 @@ const OrgChartPage = lazy(() => import('./pages/employees/OrgChartPage'))
 const HolidaysPage = lazy(() => import('./pages/holidays/HolidaysPage'))
 const AnnouncementsPage = lazy(() => import('./pages/workplace/AnnouncementsPage'))
 const PoliciesPage = lazy(() => import('./pages/workplace/PoliciesPage'))
+const PerformancePage = lazy(() => import('./pages/employees/PerformancePage'))
 const GrievancesPage = lazy(() => import('./pages/workplace/GrievancesPage'))
 const AuditPage = lazy(() => import('./pages/reports/AuditPage'))
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'))
@@ -102,6 +103,7 @@ export default function App() {
                     <Route path="announcements" element={page(<AnnouncementsPage />)} />
                     <Route path="policies" element={page(<PoliciesPage />)} />
                     <Route path="policies/:id" element={page(<PolicyPage />)} />
+                    <Route path="performance" element={page(<PerformancePage />)} />
                     <Route path="grievances" element={page(<GrievancesPage />)} />
                     <Route path="incentives" element={page(guard(<IncentivesPage />, { app: 'payroll' }))} />
                     <Route path="tax" element={page(guard(<TaxPage />, { app: 'payroll' }))} />

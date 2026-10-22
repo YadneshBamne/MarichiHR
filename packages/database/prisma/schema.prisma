@@ -2185,3 +2185,72 @@ model TenantIntegration {
   @@map("tenant_integrations")
 }
 
+// ─── PERFORMANCE: goals, KPIs, appraisal ──────────────────────
+// A review period (quarterly or yearly) that goals belong to
+model PerformanceCycle {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  period    String // quarterly | yearly
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  status    String   @default("open") // open | closed
+  createdBy String
+  createdAt DateTime @default(now())
+
+  goals PerformanceGoal[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("performance_cycles")
+}
+
+// A goal a manager sets for one person: draft → sent → accepted (or returned) → reviewed → acknowledged
+model PerformanceGoal {
+  id              String    @id @default(uuid())
+  tenantId        String
+  cycleId         String
+  employeeId      String
+  setByUserId     String
+  setByEmployeeId String?
+  title           String
+  description     String?
+  status          String    @default("draft") // draft | sent | returned | accepted | reviewed | acknowledged
+  returnNote      String?
+  sentAt          DateTime?
+  acceptedAt      DateTime?
+  score           Float? // % of expectation met (weighted over the KPIs)
+  rating          String?
+  managerComment  String?
+  employeeComment String?
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  acknowledgedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  cycle PerformanceCycle @relation(fields: [cycleId], references: [id])
+  kpis  PerformanceKpi[]
+
+  @@index([tenantId, employeeId])
+  @@index([cycleId])
+  @@map("performance_goals")
+}
+
+// Up to 5 per goal; weights add up to 100
+model PerformanceKpi {
+  id       String  @id @default(uuid())
+  goalId   String
+  name     String
+  target   Float
+  unit     String?
+  weight   Float
+  achieved Float?
+  sequence Int     @default(0)
+
+  goal PerformanceGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@map("performance_kpis")
+}
+

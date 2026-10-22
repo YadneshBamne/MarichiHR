@@ -36,6 +36,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Employees', selfLabel: 'My team', path: '/employees', icon: 'users', roles: ROLE.DIRECTORY, keywords: 'directory staff people team' },
       { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ROLE.PAYROLL, keywords: 'exits resignation full and final settlement clearance' },
       { label: 'Onboarding & requests', selfLabel: 'My requests', path: '/requests', icon: 'mail', keywords: 'onboarding joining details data request profile update documents new joiner' },
+      { label: 'Performance', selfLabel: 'My goals', path: '/performance', icon: 'target', keywords: 'appraisal goals kpi targets review rating okr' },
       { label: 'Org chart', path: '/org-chart', icon: 'layers', keywords: 'organisation hierarchy reporting lines tree managers departments' },
       { label: 'Recruitment', selfLabel: 'Jobs & referrals', path: '/recruitment', icon: 'briefcase', keywords: 'hiring jobs openings requisition candidates interviews offers referrals careers' },
     ],

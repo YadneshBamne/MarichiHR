@@ -33,6 +33,7 @@ import { authenticate } from './middleware/auth.middleware'
 import { requireModule } from './middleware/module.middleware'
 import { automationRouter } from './modules/automation/automation.router'
 import { integrationApiRouter } from './modules/automation/integration-api.router'
+import { performanceRouter } from './modules/performance/performance.router'
 
 export function createApp() {
   const app = express()
@@ -80,6 +81,7 @@ export function createApp() {
   app.use('/api/v1/incentives', authenticate, requireModule('payroll'), incentivesRouter)
   app.use('/api/v1/masters', mastersRouter)
   app.use('/api/v1/profile-requests', requestsRouter)
+  app.use('/api/v1/performance', performanceRouter)
   app.use('/api/v1/automation', automationRouter)
   app.use('/api/v1/integration', integrationApiRouter)
   app.use('/api/v1/approvals', approvalsRouter)
