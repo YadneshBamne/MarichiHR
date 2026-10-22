@@ -5,6 +5,7 @@ import api from '../../lib/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOrgTree, useWorkLocations } from '../../lib/hooks/useEmployees'
 import PageHeader from '../../components/ui/PageHeader'
+import { PolicyQueries, PolicyExceptions } from './PolicyRequestsPanel'
 import Modal from '../../components/ui/Modal'
 import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
@@ -25,20 +26,20 @@ const useIsAdmin = () => { const { hasRole } = useAuth(); return hasRole('hr_adm
 
 export default function PoliciesPage() {
   const isAdmin = useIsAdmin()
-  const [tab, setTab] = useState<'mine' | 'manage'>('mine')
+  const [tab, setTab] = useState<'mine' | 'manage' | 'queries' | 'exceptions'>(() => { const t = new URLSearchParams(window.location.search).get('tab'); return t === 'queries' || t === 'exceptions' ? t : 'mine' })
   const [creating, setCreating] = useState(false)
   const root = useReveal<HTMLDivElement>(tab)
   return (
     <div ref={root}>
       <PageHeader title="Policies" sub="Handbooks and rules that apply to you"
         actions={isAdmin ? <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New policy</button> : undefined}>
-        {isAdmin && (
-          <div role="tablist" style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-            {([['mine', 'My policies'], ['manage', 'Manage']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+        {(
+          <div role="tablist" style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
+            {([['mine', 'My policies'], ...(isAdmin ? [['manage', 'Manage']] : []), ['queries', 'Questions'], ['exceptions', 'Exceptions']] as [typeof tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
           </div>
         )}
       </PageHeader>
-      {tab === 'mine' ? <MyPolicies /> : <ManagePolicies />}
+      {tab === 'mine' ? <MyPolicies /> : tab === 'manage' ? <ManagePolicies /> : tab === 'queries' ? <PolicyQueries hr={isAdmin} /> : <PolicyExceptions hr={isAdmin} />}
       {creating && <PolicyForm onClose={() => setCreating(false)} />}
     </div>
   )

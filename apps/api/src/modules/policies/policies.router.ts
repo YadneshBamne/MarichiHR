@@ -5,6 +5,7 @@ import { requireRoles } from '../../middleware/rbac.middleware'
 import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { policyService } from './policies.service'
+import { policyRequestsService, QueryBody, ExceptionBody } from './policy-requests.service'
 
 const id = z.object({ id: z.string().uuid() })
 const meta = {
@@ -37,6 +38,16 @@ policiesRouter.get('/manage', admins, asyncHandler(async (req, res) => {
 policiesRouter.post('/', admins, validate(Create), asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: await policyService.create(req.user!, req.body) })
 }))
+// ─── Policy queries and exceptions ─────────────────────────────
+const qid = z.object({ id: z.string().uuid() })
+const scopeQ = z.object({ query: z.object({ scope: z.enum(['mine', 'all']).default('mine') }) })
+policiesRouter.post('/queries', validate(z.object({ body: QueryBody })), asyncHandler(async (req, res) => { res.status(201).json({ success: true, data: await policyRequestsService.ask(req.user!, req.body) }) }))
+policiesRouter.get('/queries', validate(scopeQ), asyncHandler(async (req, res) => { res.json({ success: true, data: await policyRequestsService.queries(req.user!, (req.query.scope as any) || 'mine') }) }))
+policiesRouter.post('/queries/:id/answer', validate(z.object({ params: qid, body: z.object({ answer: z.string().trim().min(2).max(5000), close: z.boolean().default(false) }).strict() })), asyncHandler(async (req, res) => { res.json({ success: true, data: await policyRequestsService.answer(req.user!, String(req.params.id), req.body.answer, req.body.close) }) }))
+policiesRouter.post('/exceptions', validate(z.object({ body: ExceptionBody })), asyncHandler(async (req, res) => { res.status(201).json({ success: true, data: await policyRequestsService.requestException(req.user!, req.body) }) }))
+policiesRouter.get('/exceptions', validate(scopeQ), asyncHandler(async (req, res) => { res.json({ success: true, data: await policyRequestsService.exceptions(req.user!, (req.query.scope as any) || 'mine') }) }))
+policiesRouter.post('/exceptions/:id/withdraw', validate(z.object({ params: qid })), asyncHandler(async (req, res) => { res.json({ success: true, data: await policyRequestsService.withdraw(req.user!, String(req.params.id)) }) }))
+
 policiesRouter.get('/:id', validate(IdOnly), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await policyService.get(req.user!, String(req.params.id), isHR(req.user!.roleIds)) })
 }))
@@ -61,3 +72,4 @@ policiesRouter.post('/:id/remind', admins, validate(IdOnly), asyncHandler(async 
 policiesRouter.post('/:id/archive', admins, validate(IdOnly), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await policyService.archive(req.user!, String(req.params.id)) })
 }))
+

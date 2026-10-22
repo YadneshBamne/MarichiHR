@@ -9,8 +9,8 @@ import { AccessUser, assertCanApprove } from '../../shared/utils/access'
 // skipped). Delegates act for someone who is away. A request with no steps follows the old rule (manager or HR, once).
 // Nobody ever approves their own request.
 
-export type RequestType = 'leave' | 'regularisation' | 'overtime' | 'pre_approval'
-const LABEL: Record<RequestType, string> = { leave: 'leave', regularisation: 'attendance', overtime: 'overtime', pre_approval: 'pre-approval' }
+export type RequestType = 'leave' | 'regularisation' | 'overtime' | 'pre_approval' | 'policy_exception'
+const LABEL: Record<RequestType, string> = { leave: 'leave', regularisation: 'attendance', overtime: 'overtime', pre_approval: 'pre-approval', policy_exception: 'policy exception' }
 export interface Level { kind: 'manager' | 'skip_manager' | 'hr' | 'user'; userId?: string }
 const isHR = (u: { roleIds: string[] }) => u.roleIds.includes('hr_admin')
 const today = () => new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
@@ -122,11 +122,12 @@ export const describe = (s: { kind: string; userId?: string | null }) => ({ mana
 
 async function summaries(tenantId: string, items: { requestType: string; requestId: string }[]) {
   const ids = (t: string) => items.filter((i) => i.requestType === t).map((i) => i.requestId)
-  const [leave, reg, ot, pre] = await Promise.all([
+  const [leave, reg, ot, pre, pex] = await Promise.all([
     prisma.leaveRequest.findMany({ where: { id: { in: ids('leave') }, employee: { tenantId } }, select: { id: true, employeeId: true, startDate: true, endDate: true, totalDays: true, status: true, leaveType: { select: { name: true } }, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.attendanceRegularisation.findMany({ where: { id: { in: ids('regularisation') }, employee: { tenantId } }, select: { id: true, employeeId: true, date: true, actualIn: true, actualOut: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.overtimeRequest.findMany({ where: { id: { in: ids('overtime') }, employee: { tenantId } }, select: { id: true, employeeId: true, date: true, overtimeHours: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.expenseRequest.findMany({ where: { id: { in: ids('pre_approval') }, tenantId }, select: { id: true, employeeId: true, kind: true, purpose: true, amount: true, currency: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
+    prisma.policyException.findMany({ where: { id: { in: ids('policy_exception') }, tenantId }, select: { id: true, employeeId: true, request: true, status: true } }),
   ])
   const d = (x: Date) => x.toISOString().slice(0, 10)
   const m = new Map<string, { employeeId: string; employee: string; summary: string; status: string }>()
@@ -134,6 +135,10 @@ async function summaries(tenantId: string, items: { requestType: string; request
   reg.forEach((r) => m.set(`regularisation:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `Attendance on ${d(r.date)}: ${r.actualIn ?? '?'}–${r.actualOut ?? '?'}`, status: r.status }))
   ot.forEach((r) => m.set(`overtime:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.overtimeHours} h overtime on ${d(r.date)}`, status: r.status }))
   pre.forEach((r) => m.set(`pre_approval:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.kind === 'money' ? 'Money' : r.kind === 'travel' ? 'Travel' : 'Accommodation'}: ${r.currency} ${Number(r.amount).toLocaleString('en')} for ${r.purpose}`, status: r.status }))
+  if (pex.length) {
+    const emps = await prisma.employee.findMany({ where: { id: { in: pex.map((x) => x.employeeId) } }, select: { id: true, firstName: true, lastName: true } })
+    pex.forEach((r) => { const e = emps.find((x) => x.id === r.employeeId); m.set(`policy_exception:${r.id}`, { employeeId: r.employeeId, employee: e ? `${e.firstName} ${e.lastName}` : '', summary: `Policy exception: ${r.request}`, status: r.status }) })
+  }
   return m
 }
 

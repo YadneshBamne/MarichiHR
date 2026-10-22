@@ -2426,3 +2426,43 @@ model TaxDeclaration {
   @@index([tenantId, year, status])
   @@map("tax_declarations")
 }
+
+// Policy queries: a question to HR about a policy, answered within a target time
+model PolicyQuery {
+  id            String    @id @default(uuid())
+  tenantId      String
+  policyId      String?
+  askedByUserId String
+  question      String
+  status        String    @default("open") // open | answered | closed
+  answer        String?
+  answeredBy    String?
+  answeredAt    DateTime?
+  dueAt         DateTime
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@map("policy_queries")
+}
+
+// Policy exceptions: asking to be excused from (or treated differently under) a policy; decided through the
+// approval chain for "policy_exception" (manager then HR by default)
+model PolicyException {
+  id           String    @id @default(uuid())
+  tenantId     String
+  policyId     String
+  employeeId   String
+  request      String
+  reason       String
+  startDate    DateTime? @db.Date
+  endDate      DateTime? @db.Date
+  status       String    @default("pending") // pending | approved | rejected | withdrawn
+  decidedBy    String?
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@index([employeeId])
+  @@map("policy_exceptions")
+}
