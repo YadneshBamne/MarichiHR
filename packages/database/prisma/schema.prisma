@@ -2292,3 +2292,115 @@ model PerformanceKpi {
   @@map("performance_kpis")
 }
 
+
+// ─── Community: forums, polls, recognition ───────────────────────────────────
+// Spaces hold threads; a thread may carry one poll. Anyone can report a thread, comment or kudos; HR moderates.
+model ForumSpace {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String   @default("")
+  active      Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  threads ForumThread[]
+
+  @@unique([tenantId, name])
+  @@map("forum_spaces")
+}
+
+model ForumThread {
+  id             String    @id @default(uuid())
+  tenantId       String
+  spaceId        String
+  authorUserId   String
+  title          String
+  body           String
+  pinned         Boolean   @default(false)
+  locked         Boolean   @default(false)
+  hidden         Boolean   @default(false) // moderated away
+  lastActivityAt DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  space    ForumSpace     @relation(fields: [spaceId], references: [id])
+  comments ForumComment[]
+  poll     ForumPoll?
+
+  @@index([tenantId, spaceId, lastActivityAt])
+  @@map("forum_threads")
+}
+
+model ForumComment {
+  id           String   @id @default(uuid())
+  tenantId     String
+  threadId     String
+  authorUserId String
+  body         String
+  hidden       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  thread ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("forum_comments")
+}
+
+model ForumPoll {
+  id       String    @id @default(uuid())
+  threadId String    @unique
+  question String
+  options  Json // [{ id, label }]
+  multi    Boolean   @default(false)
+  closesAt DateTime?
+
+  thread ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  votes  ForumVote[]
+
+  @@map("forum_polls")
+}
+
+model ForumVote {
+  id        String   @id @default(uuid())
+  pollId    String
+  userId    String
+  optionIds String[]
+  createdAt DateTime @default(now())
+
+  poll ForumPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@map("forum_votes")
+}
+
+// Recognition wall: public thanks from one person to another, with a badge
+model Kudos {
+  id           String   @id @default(uuid())
+  tenantId     String
+  fromUserId   String
+  toEmployeeId String
+  badge        String // teamwork | customer | innovation | leadership | above_and_beyond
+  message      String
+  hidden       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("kudos")
+}
+
+model ForumReport {
+  id             String    @id @default(uuid())
+  tenantId       String
+  targetType     String // thread | comment | kudos
+  targetId       String
+  reporterUserId String
+  reason         String
+  status         String    @default("open") // open | resolved
+  resolution     String? // hidden | kept
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@map("forum_reports")
+}
