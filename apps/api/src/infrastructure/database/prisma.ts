@@ -28,6 +28,7 @@ function createClient() {
       perDiemRate: { ratePerDay: num('ratePerDay') },
       fxRate: { rate: num('rate') },
       reimbursementClaim: { expenseAmount: num('expenseAmount'), fxRate: num('fxRate'), homeAmount: num('homeAmount') },
+      expenseRequest: { amount: num('amount') },
       employeeExit: { totalEarnings: optNum('totalEarnings'), totalDeductions: optNum('totalDeductions'), netPayable: optNum('netPayable') },
     },
   })

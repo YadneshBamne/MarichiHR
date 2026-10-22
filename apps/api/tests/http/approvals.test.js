@@ -13,7 +13,7 @@ const ymd = (d) => d.toISOString().slice(0, 10)
 const week = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7) + 7 * n); const t = new Date(d); t.setUTCDate(t.getUTCDate() + 1); return { startDate: ymd(d), endDate: ymd(t) } }
 
 ;(async () => {
-  const keys = await redis.keys('signup:*'); if (keys.length) await redis.del(...keys)
+  await redis.keys('signup:*').then((k) => (k.length ? redis.del(...k) : 0)).catch(() => {})
   const email = `owner.${TAG}@example.com`
   let r = await api(null, 'POST', '/auth/signup', { companyName: `Appr ${TAG}`, fullName: 'Oli Owner', email, password: 'Owner-pass-123' })
   const owner = { token: r.body.accessToken }

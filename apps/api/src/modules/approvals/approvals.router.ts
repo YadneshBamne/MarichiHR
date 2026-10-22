@@ -8,10 +8,11 @@ import { AppError } from '../../shared/utils/AppError'
 import { AccessUser } from '../../shared/utils/access'
 import { leaveService } from '../leave/leave.service'
 import { attendanceService } from '../attendance/attendance.service'
+import { expenseRequestService } from '../expenses/requests.service'
 import { pendingApprovals, approvalTrail, chainService, delegationService, RequestType } from './approvals.service'
 
 const id = z.string().uuid()
-const type = z.enum(['leave', 'regularisation', 'overtime'])
+const type = z.enum(['leave', 'regularisation', 'overtime', 'pre_approval'])
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const level = z.object({ kind: z.enum(['manager', 'skip_manager', 'hr', 'user']), userId: z.string().uuid().optional() }).strict()
 
@@ -21,6 +22,7 @@ async function decide(u: AccessUser, t: RequestType, rid: string, approve: boole
   if (t === 'leave') return approve ? leaveService.approveLeave(rid, u, { comments } as any, opts) : leaveService.rejectLeave(rid, u, { comments } as any, opts)
   if (t === 'regularisation') return approve ? attendanceService.approveRegularisation(rid, u, opts) : attendanceService.rejectRegularisation(rid, u, opts)
   if (t === 'overtime') return approve ? attendanceService.approveOvertime(rid, u, undefined, opts) : attendanceService.rejectOvertime(rid, u, opts)
+  if (t === 'pre_approval') return expenseRequestService.decide(u, rid, approve, comments, override)
   throw new AppError('Unknown request type', 400)
 }
 

@@ -2,7 +2,10 @@ import { Router } from 'express'
 import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission } from '../../middleware/rbac.middleware'
 import { validate } from '../../middleware/validate.middleware'
+import { z } from 'zod'
+import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { expensesController as c } from './expenses.controller'
+import { expenseRequestService as pre, RequestBody } from './requests.service'
 import {
   CreateClaimSchema, ClaimIdSchema, ReasonSchema,
   CreateCategorySchema, UpdateCategorySchema, CreatePerDiemRateSchema, UpdatePerDiemRateSchema, CreateFxRateSchema, UpdateFxRateSchema,
@@ -17,6 +20,15 @@ expensesRouter.get('/categories', requirePermission('expenses:read'), c.listCate
 expensesRouter.get('/per-diem/quote', requirePermission('expenses:read'), c.quotePerDiem)
 expensesRouter.get('/fx/quote', requirePermission('expenses:read'), c.quoteFx)
 expensesRouter.post('/claims', requirePermission('expenses:write'), validate(CreateClaimSchema), c.create)
+
+// ─── PRE-APPROVAL (money / travel / accommodation before spending); approvers act through /approvals ───
+const rid = z.object({ id: z.string().uuid() })
+const ok = (res: any, data: unknown, status = 200) => res.status(status).json({ success: true, data })
+expensesRouter.post('/requests', requirePermission('expenses:write'), validate(z.object({ body: RequestBody })), asyncHandler(async (req, res) => ok(res, await pre.create(req.user!, req.body), 201)))
+expensesRouter.get('/requests', requirePermission('expenses:read'), validate(z.object({ query: z.object({ scope: z.enum(['mine', 'finance', 'all']).default('mine') }) })), asyncHandler(async (req, res) => ok(res, await pre.list(req.user!, (req.query.scope as any) || 'mine'))))
+expensesRouter.get('/requests/:id', requirePermission('expenses:read'), validate(z.object({ params: rid })), asyncHandler(async (req, res) => ok(res, await pre.get(req.user!, String(req.params.id)))))
+expensesRouter.post('/requests/:id/withdraw', requirePermission('expenses:write'), validate(z.object({ params: rid })), asyncHandler(async (req, res) => ok(res, await pre.withdraw(req.user!, String(req.params.id)))))
+expensesRouter.post('/requests/:id/close', validate(z.object({ params: rid, body: z.object({ note: z.string().trim().max(500).optional() }).strict() })), asyncHandler(async (req, res) => ok(res, await pre.close(req.user!, String(req.params.id), req.body.note))))
 expensesRouter.get('/claims/me', requirePermission('expenses:read'), c.listMine)
 
 // ─── MANAGER / FINANCE QUEUES (before /claims/:id) ────────────

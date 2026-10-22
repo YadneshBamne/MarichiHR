@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, assertCanApprove } from '../../shared/utils/access'
 import { businessToday, normaliseDateInput } from '../../shared/utils/businessDate'
+import { expenseRequestService } from './requests.service'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
@@ -10,6 +11,7 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10)
 const claimInclude = {
   category: { select: { id: true, name: true, code: true } },
   employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, managerId: true } },
+  expenseRequest: { select: { id: true, kind: true, purpose: true, amount: true, currency: true } },
 } as const
 
 async function audit(user: AccessUser, action: string, claimId: string, newValue?: Prisma.InputJsonValue) {
@@ -97,6 +99,7 @@ export const expensesService = {
     const category = await prisma.expenseCategory.findFirst({ where: { id: body.categoryId, tenantId, active: true } })
     if (!category) throw new AppError('Expense category not found', 404)
 
+    if (body.expenseRequestId) await expenseRequestService.assertClaimable(user, body.expenseRequestId)
     const expenseDate = normaliseDateInput(body.expenseDate)
     if (expenseDate > (await businessToday(tenantId))) throw new AppError('Expense date cannot be in the future', 400)
 
@@ -149,7 +152,7 @@ export const expensesService = {
     }
 
     const claim = await prisma.reimbursementClaim.create({
-      data: { ...data, tenantId, employeeId: user.employeeId, status: 'submitted' },
+      data: { ...data, tenantId, employeeId: user.employeeId, status: 'submitted', expenseRequestId: body.expenseRequestId ?? null },
       include: claimInclude,
     })
     await audit(user, 'EXPENSE_SUBMITTED', claim.id, { claimType: claim.claimType, homeAmount: claim.homeAmount, homeCurrency: claim.homeCurrency })

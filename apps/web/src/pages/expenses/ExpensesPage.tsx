@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import RequestsPanel from './RequestsPanel'
 import { useAuth } from '../../contexts/AuthContext'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
@@ -7,7 +9,7 @@ import { useMyClaims, usePendingClaims, useAwaitingFinance, useWithdrawClaim, us
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import { money, fmtDate } from '../../lib/format'
 
-type Tab = 'mine' | 'approvals' | 'finance'
+type Tab = 'mine' | 'requests' | 'approvals' | 'finance'
 
 const statusBadge = (status: string) => <Badge label={status.replace(/_/g, ' ')} variant={status} />
 
@@ -17,10 +19,11 @@ export default function ExpensesPage() {
   const canApprove = hasRole('manager') || hasRole('hr_admin')
   const canFinance = hasRole('payroll_admin') || hasRole('hr_admin')
 
-  const [tab, setTab] = useState<Tab>('mine')
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<Tab>(params.get('tab') === 'requests' ? 'requests' : 'mine')
   const [showNew, setShowNew] = useState(false)
 
-  const tabs: [Tab, string][] = [['mine', 'My claims'], ...(canApprove ? [['approvals', 'Approvals'] as [Tab, string]] : []), ...(canFinance ? [['finance', 'Finance'] as [Tab, string]] : [])]
+  const tabs: [Tab, string][] = [['mine', 'My claims'], ['requests', 'Pre-approvals'], ...(canApprove ? [['approvals', 'Approvals'] as [Tab, string]] : []), ...(canFinance ? [['finance', 'Finance'] as [Tab, string]] : [])]
   const { data: pending = [] } = usePendingClaims(canApprove)
   const { data: awaiting = [] } = useAwaitingFinance(canFinance)
   const count = (t: Tab) => (t === 'approvals' ? pending.length : t === 'finance' ? awaiting.length : 0)
@@ -45,6 +48,7 @@ export default function ExpensesPage() {
       </div>
 
       {tab === 'mine' && <MyClaims />}
+      {tab === 'requests' && <RequestsPanel />}
       {tab === 'approvals' && canApprove && <Queue claims={pending} mode="manager" userId={user?.id} employeeId={user?.employee?.id} />}
       {tab === 'finance' && canFinance && <Queue claims={awaiting} mode="finance" userId={user?.id} employeeId={user?.employee?.id} />}
 

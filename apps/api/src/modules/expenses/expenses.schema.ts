@@ -10,6 +10,7 @@ const common = {
   categoryId: z.string().uuid(),
   expenseDate: dateString,
   description: z.string().trim().min(1).max(500),
+  expenseRequestId: z.string().uuid().optional(), // the approved pre-approval this bill belongs to
 }
 
 const ActualClaimBody = z.object({

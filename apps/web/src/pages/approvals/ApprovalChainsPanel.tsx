@@ -13,7 +13,7 @@ import { fmtDate } from '../../lib/format'
 interface Pending { requestType: string; requestId: string; employeeId: string; employee: string; summary: string; level: number; of: number; waitingFor: string; approvers: string[]; pendingSince: string; canAct: boolean }
 interface Chain { id: string; requestType: string; name: string; priority: number; leaveTypeIds: string[]; minDays: number | null; levels: { kind: string; userId?: string }[]; active: boolean }
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
-const TYPE: Record<string, string> = { leave: 'Leave', regularisation: 'Attendance', overtime: 'Overtime' }
+const TYPE: Record<string, string> = { leave: 'Leave', regularisation: 'Attendance', overtime: 'Overtime', pre_approval: 'Pre-approval (spend)' }
 const KIND: Record<string, string> = { manager: 'Their manager', skip_manager: "Their manager's manager", hr: 'HR', user: 'A named person' }
 const since = (iso: string) => { const h = Math.round((Date.now() - new Date(iso).getTime()) / 3_600_000); return h < 24 ? `${h} h` : `${Math.round(h / 24)} d` }
 export const usePendingChain = (enabled = true) => useQuery({ queryKey: ['approvals-pending'], enabled, queryFn: async () => (await api.get('/approvals/pending')).data.data as Pending[] })

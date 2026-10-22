@@ -9,7 +9,8 @@ import { AccessUser, assertCanApprove } from '../../shared/utils/access'
 // skipped). Delegates act for someone who is away. A request with no steps follows the old rule (manager or HR, once).
 // Nobody ever approves their own request.
 
-export type RequestType = 'leave' | 'regularisation' | 'overtime'
+export type RequestType = 'leave' | 'regularisation' | 'overtime' | 'pre_approval'
+const LABEL: Record<RequestType, string> = { leave: 'leave', regularisation: 'attendance', overtime: 'overtime', pre_approval: 'pre-approval' }
 export interface Level { kind: 'manager' | 'skip_manager' | 'hr' | 'user'; userId?: string }
 const isHR = (u: { roleIds: string[] }) => u.roleIds.includes('hr_admin')
 const today = () => new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
@@ -20,16 +21,16 @@ export async function chainFor(tenantId: string, type: RequestType, ctx: { leave
   return chains.find((c) => (!c.leaveTypeIds.length || (ctx.leaveTypeId && c.leaveTypeIds.includes(ctx.leaveTypeId))) && (c.minDays == null || (ctx.days ?? 0) >= c.minDays)) ?? null
 }
 
-// Called when a request is raised. No chain: nothing to create (the old rule applies)
-export async function startApproval(tenantId: string, type: RequestType, requestId: string, ownerEmployeeId: string, ctx: { leaveTypeId?: string; days?: number } = {}) {
+// Called when a request is raised. No chain: the fallback levels if given, else nothing (the old rule applies)
+export async function startApproval(tenantId: string, type: RequestType, requestId: string, ownerEmployeeId: string, ctx: { leaveTypeId?: string; days?: number } = {}, fallback?: Level[]) {
   const chain = await chainFor(tenantId, type, ctx)
-  if (!chain) return null
-  const levels = chain.levels as unknown as Level[]
+  if (!chain && !fallback?.length) return null
+  const levels = (chain?.levels ?? fallback) as unknown as Level[]
   await prisma.approvalStep.createMany({
     data: levels.map((l, i) => ({ tenantId, requestType: type, requestId, level: i + 1, kind: l.kind, userId: l.userId ?? null, status: i === 0 ? 'pending' : 'waiting', pendingSince: i === 0 ? new Date() : null })),
   })
   await notifyApprovers(tenantId, type, requestId, ownerEmployeeId, levels[0])
-  return chain.id
+  return chain?.id ?? 'default'
 }
 
 async function ownerChain(employeeId: string) {
@@ -67,7 +68,7 @@ async function notifyApprovers(tenantId: string, type: RequestType, requestId: s
   const delegates = await prisma.approvalDelegation.findMany({ where: { tenantId, fromUserId: { in: users }, active: true, startDate: { lte: today() }, endDate: { gte: today() } }, select: { toUserId: true } })
   const owner = await prisma.employee.findUnique({ where: { id: ownerEmployeeId }, select: { firstName: true, lastName: true, userId: true } })
   const to = [...users, ...delegates.map((d) => d.toUserId)].filter((x) => x !== owner?.userId)
-  await notify({ tenantId, userIds: to, type: 'approval.waiting', title: `${owner?.firstName} ${owner?.lastName}: ${type} request waiting for you`, body: 'Open Approvals to review it', link: '/approvals', entityType: type, entityId: requestId })
+  await notify({ tenantId, userIds: to, type: 'approval.waiting', title: `${owner?.firstName} ${owner?.lastName}: ${LABEL[type as RequestType] ?? type} request waiting for you`, body: 'Open Approvals to review it', link: '/approvals', entityType: type, entityId: requestId })
 }
 
 // Approve or reject a request at its current step. { final: true } means the request is now decided.
@@ -121,16 +122,18 @@ export const describe = (s: { kind: string; userId?: string | null }) => ({ mana
 
 async function summaries(tenantId: string, items: { requestType: string; requestId: string }[]) {
   const ids = (t: string) => items.filter((i) => i.requestType === t).map((i) => i.requestId)
-  const [leave, reg, ot] = await Promise.all([
+  const [leave, reg, ot, pre] = await Promise.all([
     prisma.leaveRequest.findMany({ where: { id: { in: ids('leave') }, employee: { tenantId } }, select: { id: true, employeeId: true, startDate: true, endDate: true, totalDays: true, status: true, leaveType: { select: { name: true } }, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.attendanceRegularisation.findMany({ where: { id: { in: ids('regularisation') }, employee: { tenantId } }, select: { id: true, employeeId: true, date: true, actualIn: true, actualOut: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.overtimeRequest.findMany({ where: { id: { in: ids('overtime') }, employee: { tenantId } }, select: { id: true, employeeId: true, date: true, overtimeHours: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
+    prisma.expenseRequest.findMany({ where: { id: { in: ids('pre_approval') }, tenantId }, select: { id: true, employeeId: true, kind: true, purpose: true, amount: true, currency: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
   ])
   const d = (x: Date) => x.toISOString().slice(0, 10)
   const m = new Map<string, { employeeId: string; employee: string; summary: string; status: string }>()
   leave.forEach((r) => m.set(`leave:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.leaveType.name}, ${r.totalDays} day${r.totalDays === 1 ? '' : 's'} (${d(r.startDate)} – ${d(r.endDate)})`, status: r.status }))
   reg.forEach((r) => m.set(`regularisation:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `Attendance on ${d(r.date)}: ${r.actualIn ?? '?'}–${r.actualOut ?? '?'}`, status: r.status }))
   ot.forEach((r) => m.set(`overtime:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.overtimeHours} h overtime on ${d(r.date)}`, status: r.status }))
+  pre.forEach((r) => m.set(`pre_approval:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.kind === 'money' ? 'Money' : r.kind === 'travel' ? 'Travel' : 'Accommodation'}: ${r.currency} ${Number(r.amount).toLocaleString('en')} for ${r.purpose}`, status: r.status }))
   return m
 }
 

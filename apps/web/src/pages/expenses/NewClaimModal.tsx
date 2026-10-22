@@ -4,6 +4,7 @@ import { FormField, inputStyle, selectStyle } from '../../components/ui/FormFiel
 import { useAuth } from '../../contexts/AuthContext'
 import { useExpenseCategories, useCreateClaim, usePerDiemQuote, useFxQuote } from '../../lib/hooks/useExpenses'
 import { money } from '../../lib/format'
+import { useMyRequests } from './RequestsPanel'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -12,6 +13,8 @@ export default function NewClaimModal({ open, onClose }: { open: boolean; onClos
   const home = user?.tenant?.baseCurrency || 'ZMW'
   const { data: categories = [] } = useExpenseCategories()
   const create = useCreateClaim()
+  const approved = (useMyRequests().data ?? []).filter((r) => r.status === 'approved')
+  const [requestId, setRequestId] = useState('')
 
   const [type, setType] = useState<'actual' | 'per_diem'>('actual')
   const [f, setF] = useState({
@@ -37,7 +40,7 @@ export default function NewClaimModal({ open, onClose }: { open: boolean; onClos
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    const base = { categoryId: f.categoryId, expenseDate: f.expenseDate, description: f.description }
+    const base = { categoryId: f.categoryId, expenseDate: f.expenseDate, description: f.description, ...(requestId && { expenseRequestId: requestId }) }
     const body = type === 'actual'
       ? { claimType: 'actual', ...base, expenseCurrency: cur, expenseAmount: amount, ...(f.receiptNumber.trim() && { receiptNumber: f.receiptNumber.trim() }) }
       : { claimType: 'per_diem', ...base, countryCode: country, ...(f.city.trim() && { city: f.city.trim() }), days }
@@ -102,6 +105,15 @@ export default function NewClaimModal({ open, onClose }: { open: boolean; onClos
             <FormField label="City (optional)"><input style={inputStyle} value={f.city} onChange={(e) => set('city', e.target.value)} /></FormField>
             <FormField label="Days" required><input style={inputStyle} type="number" min="0.5" step="0.5" value={f.days} onChange={(e) => set('days', e.target.value)} required /></FormField>
           </div>
+        )}
+
+        {approved.length > 0 && (
+          <FormField label="Against a pre-approval (optional)">
+            <select style={selectStyle} value={requestId} onChange={(e) => setRequestId(e.target.value)}>
+              <option value="">Not linked</option>
+              {approved.map((r) => <option key={r.id} value={r.id}>{r.purpose}: {money(r.amount, r.currency)} approved, {money(r.claimed, r.currency)} billed</option>)}
+            </select>
+          </FormField>
         )}
 
         <FormField label="Description" required><input style={inputStyle} maxLength={500} value={f.description} onChange={(e) => set('description', e.target.value)} required /></FormField>

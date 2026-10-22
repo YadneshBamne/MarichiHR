@@ -388,6 +388,7 @@ model Employee {
   chatterMessages           ChatterMessage[]
   payslips                  Payslip[]
   reimbursementClaims       ReimbursementClaim[]
+  expenseRequests      ExpenseRequest[]
   exits                     EmployeeExit[]
 
   @@unique([tenantId, employeeCode])
@@ -1212,13 +1213,45 @@ model ReimbursementClaim {
   updatedAt               DateTime  @updatedAt
 
   tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  expenseRequestId        String? // the pre-approval this bill is submitted against
   employee    Employee        @relation(fields: [employeeId], references: [id])
   category    ExpenseCategory @relation(fields: [categoryId], references: [id])
+  expenseRequest ExpenseRequest? @relation(fields: [expenseRequestId], references: [id])
   perDiemRate PerDiemRate?    @relation(fields: [perDiemRateId], references: [id])
 
   @@index([tenantId, status])
   @@index([employeeId])
   @@map("reimbursement_claims")
+}
+
+// Pre-approval: before spending (an advance, travel, accommodation), the person says how much, for what and why. It
+// goes up the reporting line (or the approval chain HR set for "pre_approval"); once approved Finance can see it and
+// the bills are submitted against it as expense claims.
+model ExpenseRequest {
+  id            String    @id @default(uuid())
+  tenantId      String
+  employeeId    String
+  kind          String // money | travel | accommodation
+  purpose       String
+  justification String
+  amount        Decimal   @db.Decimal(18, 2)
+  currency      String
+  destination   String?
+  startDate     DateTime? @db.Date
+  endDate       DateTime? @db.Date
+  status        String    @default("pending") // pending | approved | rejected | withdrawn | closed
+  decidedBy     String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  employee Employee             @relation(fields: [employeeId], references: [id])
+  claims   ReimbursementClaim[]
+
+  @@index([tenantId, status])
+  @@index([employeeId])
+  @@map("expense_requests")
 }
 
 // ─── EXIT & FULL-AND-FINAL SETTLEMENT ─────────────────────────
