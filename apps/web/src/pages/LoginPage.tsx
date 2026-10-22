@@ -148,15 +148,7 @@ export default function LoginPage() {
             <form onSubmit={submit} noValidate>
               {brand && <div data-rise style={{ marginBottom: 16 }}><CompanyLogo name={brand.name} src={brand.logoUrl} size={56} /></div>}
               <h1 data-rise style={{ fontSize: 'clamp(34px, 4vw, 46px)', lineHeight: 1.05 }}>{brand ? `Sign in to ${brand.name}` : 'Welcome back'}</h1>
-              <p data-rise className="dim" style={{ marginTop: 10, marginBottom: DEMO_LOGINS.length ? 16 : 28 }}>Use the work email your company registered for you.</p>
-              {DEMO_LOGINS.length > 0 && (
-                <div data-rise style={{ marginBottom: 22 }}>
-                  <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>Demo: sign in with one click as</div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {DEMO_LOGINS.map((d) => <button key={d.label} type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={() => quickLogin(d)}>{d.label}</button>)}
-                  </div>
-                </div>
-              )}
+              <p data-rise className="dim" style={{ marginTop: 10, marginBottom: 28 }}>Use the work email your company registered for you.</p>
               {showOrg && (
                 <div data-rise className="field" style={{ marginBottom: 14 }}>
                   <label htmlFor="org">Organisation</label>
@@ -191,6 +183,14 @@ export default function LoginPage() {
               <button data-rise className="btn btn-primary" type="submit" disabled={loading || !form.email || !form.password || (showOrg && !form.tenantSlug.trim())} style={{ width: '100%', height: 46 }}>
                 {loading ? <span className="spinner" style={{ borderTopColor: 'var(--night-ink)' }} /> : <>Sign in <Icon name="arrowRight" size={16} /></>}
               </button>
+              {DEMO_LOGINS.length > 0 && (
+                <div data-rise style={{ marginTop: 16 }}>
+                  <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>Demo: sign in with one click as</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {DEMO_LOGINS.map((d) => <button key={d.label} type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={() => quickLogin(d)}>{d.label}</button>)}
+                  </div>
+                </div>
+              )}
               {google && (
                 <>
                   <div data-rise style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', fontSize: 12 }} className="muted"><span style={rule} />or<span style={rule} /></div>
