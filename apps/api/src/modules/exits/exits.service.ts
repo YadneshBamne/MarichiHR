@@ -52,6 +52,12 @@ async function loadVisible(id: string, user: AccessUser) {
   return exit
 }
 
+// The settlement's amounts are pay: only Payroll admins see them (HR and sign-off owners see the status)
+function hidePay<T extends Record<string, any>>(exit: T, user: AccessUser): T {
+  if (user.roleIds.includes('payroll_admin')) return exit
+  return { ...exit, lines: null, warnings: null, totalEarnings: null, totalDeductions: null, netPayable: null }
+}
+
 async function transition(id: string, tenantId: string, from: string[], data: Prisma.EmployeeExitUncheckedUpdateManyInput) {
   const res = await prisma.employeeExit.updateMany({ where: { id, tenantId, status: { in: from } }, data })
   if (res.count === 0) throw new AppError(`This exit is no longer ${from.join(' or ')}`, 409)
@@ -124,11 +130,11 @@ export const exitsService = {
     })
   },
 
-  list(user: AccessUser) {
-    return prisma.employeeExit.findMany({ where: { tenantId: user.tenantId }, include: exitInclude, orderBy: { createdAt: 'desc' } })
+  async list(user: AccessUser) {
+    return (await prisma.employeeExit.findMany({ where: { tenantId: user.tenantId }, include: exitInclude, orderBy: { createdAt: 'desc' } })).map((x) => hidePay(x, user))
   },
 
-  get: (id: string, user: AccessUser) => loadVisible(id, user),
+  get: async (id: string, user: AccessUser) => hidePay(await loadVisible(id, user), user),
 
   myClearances(user: AccessUser) {
     return prisma.exitClearance.findMany({

@@ -13,7 +13,7 @@ const round = (n) => Math.round(n * 100) / 100
   const keys = async (who) => ((await api(who, 'GET', '/reports')).body || []).map((r) => r.key).sort().join()
 
   // ─── Catalog & access ──────────────────────────────────────
-  check('HR sees all six reports', (await keys(admin)) === 'attendance,attrition,expenses,headcount,leave,payroll', await keys(admin))
+  check('HR sees every report except payroll', (await keys(admin)) === 'attendance,attrition,expenses,headcount,leave', await keys(admin))
   check('a manager sees attendance and leave', (await keys(john)) === 'attendance,leave', await keys(john))
   check('payroll admin sees payroll and expenses', (await keys(finance)) === 'expenses,payroll', await keys(finance))
   check('an employee sees none', (await keys(jane)) === '', await keys(jane))

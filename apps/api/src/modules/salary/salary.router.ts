@@ -16,7 +16,7 @@ export const salaryRouter = Router()
 salaryRouter.use(authenticate)
 
 // Pay structures, formulas and grade bands are for payroll staff only
-const salaryStaff = requireRoles('hr_admin', 'payroll_admin', 'compliance_officer')
+const salaryStaff = requireRoles('payroll_admin', 'compliance_officer')
 
 salaryRouter.get('/rule-categories', salaryStaff, salaryController.listRuleCategories)
 

@@ -14,7 +14,7 @@ export const payrollRouter = Router()
 payrollRouter.use(authenticate)
 
 // 'payroll:read' is held by every employee, so cycle-level endpoints also need a staff check
-const STAFF = ['hr_admin', 'payroll_admin', 'compliance_officer']
+const STAFF = ['payroll_admin', 'compliance_officer']
 function payrollStaffOnly(req: Request, _res: Response, next: NextFunction) {
   if (!req.user!.roleIds.some((r) => STAFF.includes(r))) {
     return next(new AppError('Payroll staff only', 403))
@@ -36,10 +36,11 @@ payrollRouter.get('/cycles/:id/variance-report', requirePermission('payroll:read
 
 payrollRouter.post('/cycles/:id/lock-attendance', requirePermission('payroll:run'), payrollController.lockAttendance)
 payrollRouter.post('/cycles/:id/run', requirePermission('payroll:run'), payrollController.run)
-// Two different people in two different jobs: an HR admin approves the run, a Payroll admin gives the finance approval
+// Two different Payroll admins approve every run (the service refuses the same person twice)
 const roleStep = (role: string, message: string) => (req: any, _res: any, next: any) => (req.user!.roleIds.includes(role) ? next() : next(new AppError(message, 403)))
-payrollRouter.post('/cycles/:id/approve', requirePermission('payroll:run'), roleStep('hr_admin', 'The HR approval must come from an HR admin'), payrollController.approve)
-payrollRouter.post('/cycles/:id/finance-approve', requirePermission('payroll:disburse'), roleStep('payroll_admin', 'Finance approval must come from a Payroll admin, a different person from the HR approver. Give someone the Payroll admin role in their Login & access tab.'), payrollController.financeApprove)
+const NEEDS_PAYROLL_ADMIN = 'Payroll approvals come from Payroll admins. Give the role in Login & access.'
+payrollRouter.post('/cycles/:id/approve', requirePermission('payroll:run'), roleStep('payroll_admin', NEEDS_PAYROLL_ADMIN), payrollController.approve)
+payrollRouter.post('/cycles/:id/finance-approve', requirePermission('payroll:disburse'), roleStep('payroll_admin', NEEDS_PAYROLL_ADMIN), payrollController.financeApprove)
 payrollRouter.post('/cycles/:id/reopen', requirePermission('payroll:run'), payrollController.reopen)
 payrollRouter.post('/cycles/:id/disburse', requirePermission('payroll:disburse'), payrollController.disburse)
 payrollRouter.post('/cycles/:id/release-payslips', requirePermission('payroll:run'), asyncHandler(async (req, res) => {

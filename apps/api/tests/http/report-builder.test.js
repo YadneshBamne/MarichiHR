@@ -1,16 +1,19 @@
 // Report builder: field catalog by role (pay columns only for salary roles, custom fields included), preview with
 // filters and grouping, saved reports run with the viewer's own permissions, CSV export, tenant isolation.
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, withRoles, check, done, prisma } = require('./lib')
 
 ;(async () => {
-  const admin = await tokenFor('admin@marichihr.com') // hr_admin + system_admin
+  const hr = await tokenFor('admin@marichihr.com') // hr_admin + system_admin
+  const admin = withRoles(hr, 'payroll_admin') // the same person as a Payroll admin, who sees pay columns
   const finance = await tokenFor('finance@marichihr.com') // payroll_admin
   const john = await tokenFor('john.banda@marichihr.com') // manager
   const created = []
 
-  let r = await api(admin, 'GET', '/reports/builder/fields')
+  let r = await api(hr, 'GET', '/reports/builder/fields')
+  check('an HR admin builds reports but gets no pay columns', r.status === 200 && !(r.body ?? []).some((f) => f.key === 'current_wage'), r.status)
+  r = await api(admin, 'GET', '/reports/builder/fields')
   const keys = (r.body ?? []).map((f) => f.key)
-  check('HR sees standard, pay and custom fields', r.status === 200 && keys.includes('department') && keys.includes('current_wage') && keys.includes('gender'), keys.length)
+  check('a Payroll admin sees standard, pay and custom fields', r.status === 200 && keys.includes('department') && keys.includes('current_wage') && keys.includes('gender'), keys.length)
   r = await api(john, 'GET', '/reports/builder/fields')
   check('a manager cannot build reports (403)', r.status === 403, r.status)
 

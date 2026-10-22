@@ -17,7 +17,7 @@ const DEFAULT_TYPES = [
 ]
 
 const isHR = (u: AccessUser) => u.roleIds.includes('hr_admin')
-const canPost = (u: AccessUser) => u.roleIds.some((r) => ['hr_admin', 'payroll_admin'].includes(r))
+const canPost = (u: AccessUser) => u.roleIds.includes('payroll_admin')
 const audit = (user: AccessUser, action: string, entityId: string, newValue?: any) =>
   prisma.auditLog.create({ data: { tenantId: user.tenantId, userId: user.userId, action, entityType: 'incentive', entityId, newValue } })
 

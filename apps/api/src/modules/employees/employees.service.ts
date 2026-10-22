@@ -174,10 +174,10 @@ const UPDATABLE_FIELDS = new Set(Object.keys(UpdateEmployeeSchema.shape.body.sha
 const hasAnyRole = (user: AccessUser, ...roles: string[]) => roles.some((r) => user.roleIds.includes(r))
 
 // What this viewer may see on another person's record: compensation (contracts) and bank fields are
-// limited to the person themself and payroll/HR staff (managers get neither)
+// limited to the person themself and payroll staff (bank also to HR, who keeps the details on file; managers get neither)
 function shapeEmployeeForViewer(employee: Record<string, any>, user: AccessUser) {
   const self = !!user.employeeId && user.employeeId === employee.id
-  const canCompensation = self || hasAnyRole(user, 'hr_admin', 'payroll_admin', 'compliance_officer')
+  const canCompensation = self || hasAnyRole(user, 'payroll_admin', 'compliance_officer')
   const canBank = self || hasAnyRole(user, 'hr_admin', 'payroll_admin')
 
   const safe: Record<string, any> = toSafeEmployee(employee)
@@ -566,7 +566,7 @@ export const orgChartService = {
       const stack = [...(kids.get(user.employeeId) ?? [])]
       while (stack.length) { const id = stack.pop()!; if (!below.has(id)) { below.add(id); stack.push(...(kids.get(id) ?? [])) } }
     }
-    const isHR = user.roleIds.includes('hr_admin')
+    const isHR = user.roleIds.some((r) => ['hr_admin', 'system_admin', 'payroll_admin'].includes(r))
     return {
       people: rows.map((r) => ({
         id: r.id,

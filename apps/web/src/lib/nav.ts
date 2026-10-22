@@ -18,7 +18,7 @@ export interface NavSection { key: string; label: string; icon: IconName; items:
 export const ROLE = {
   HR: ['hr_admin', 'system_admin'],
   ADMIN: ['hr_admin', 'system_admin'],
-  PAYROLL: ['hr_admin', 'payroll_admin', 'compliance_officer'],
+  PAYROLL: ['payroll_admin', 'compliance_officer'], // pay: never HR
   APPROVERS: ['manager', 'hr_admin', 'system_admin'],
   DIRECTORY: ['manager', 'hr_admin', 'system_admin', 'payroll_admin', 'compliance_officer'],
 }
@@ -34,7 +34,7 @@ export const SECTIONS: NavSection[] = [
   {
     key: 'employees', label: 'Employees', icon: 'users', items: [
       { label: 'Employees', selfLabel: 'My team', path: '/employees', icon: 'users', roles: ROLE.DIRECTORY, keywords: 'directory staff people team' },
-      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ROLE.PAYROLL, keywords: 'exits resignation full and final settlement clearance' },
+      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ['hr_admin', 'payroll_admin'], keywords: 'exits resignation full and final settlement clearance' },
       { label: 'Onboarding & requests', selfLabel: 'My requests', path: '/requests', icon: 'mail', keywords: 'onboarding joining details data request profile update documents new joiner' },
       { label: 'Performance', selfLabel: 'My goals', path: '/performance', icon: 'target', keywords: 'appraisal goals kpi targets review rating okr' },
       { label: 'Org chart', path: '/org-chart', icon: 'layers', keywords: 'organisation hierarchy reporting lines tree managers departments' },

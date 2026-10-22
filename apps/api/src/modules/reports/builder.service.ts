@@ -9,7 +9,7 @@ import type { Col, Report } from './reports.service'
 // pay), filters and an optional grouping, saves it by name and runs it like any ready-made report (table, chart, CSV).
 
 const BUILDERS = ['hr_admin', 'system_admin', 'compliance_officer']
-const SALARY = ['hr_admin', 'payroll_admin']
+const SALARY = ['payroll_admin']
 const has = (u: AccessUser, roles: string[]) => u.roleIds.some((r) => roles.includes(r))
 const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null)
 const years = (from: Date, to = new Date()) => Math.round(((to.getTime() - from.getTime()) / (365.25 * 86_400_000)) * 10) / 10

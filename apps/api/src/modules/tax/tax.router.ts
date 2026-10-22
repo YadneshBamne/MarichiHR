@@ -11,7 +11,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 // Tax & compliance: the statutory tables payroll uses (with sources), the statutory return for a payroll run
 // (tax and contributions per employee, CSV for filing) and each employee's annual tax statement.
 
-const PAYROLL_STAFF = ['hr_admin', 'payroll_admin', 'compliance_officer']
+const PAYROLL_STAFF = ['payroll_admin', 'compliance_officer']
 const FINAL = ['approved', 'disbursed']
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const cell = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }

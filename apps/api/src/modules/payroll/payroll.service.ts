@@ -13,7 +13,7 @@ import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import crypto from 'crypto'
 
-const PAYROLL_STAFF_ROLES = ['hr_admin', 'payroll_admin', 'compliance_officer']
+const PAYROLL_STAFF_ROLES = ['payroll_admin', 'compliance_officer']
 
 // ─── DATE HELPERS (all UTC, YYYY-MM-DD strings) ───────────────
 const dstr = (d: Date) => d.toISOString().slice(0, 10)
@@ -316,9 +316,14 @@ export const payrollService = {
 
   async getCycle(cycleId: string, tenantId: string) {
     const cycle = await getCycleOrThrow(cycleId, tenantId)
-    const totals = await repo.aggregateTotals(cycleId)
+    const [totals, payrollAdmins] = await Promise.all([
+      repo.aggregateTotals(cycleId),
+      // The screen explains the two-approver rule when the company has only one Payroll admin
+      prisma.userRole.count({ where: { role: { tenantId, name: 'payroll_admin' }, user: { tenantId, active: true } } }),
+    ])
     return {
       ...cycle,
+      payrollAdmins,
       totals: {
         payslips: totals._count,
         gross: round2(Number(totals._sum.grossEarnings ?? 0)),
@@ -518,10 +523,10 @@ export const payrollService = {
 
   async financeApprove(cycleId: string, tenantId: string, userId: string) {
     const cycle = await getCycleOrThrow(cycleId, tenantId)
-    if (cycle.status !== 'approved' || !cycle.approvedBy) throw new AppError('Cycle must be HR-approved first', 400)
+    if (cycle.status !== 'approved' || !cycle.approvedBy) throw new AppError('The first approval is needed before the second', 400)
     if (cycle.financeApprovedBy) throw new AppError('Cycle is already finance-approved', 400)
     if (cycle.approvedBy === userId) {
-      throw new AppError('Finance approval must be given by a different user than the HR approver', 403)
+      throw new AppError('The second approval must come from a different Payroll admin than the first. If you are the only Payroll admin, give a second person the role in Login & access.', 403)
     }
 
     await repo.updateCycle(cycleId, { financeApprovedBy: userId, financeApprovedAt: new Date() })
@@ -547,7 +552,7 @@ export const payrollService = {
   async disburse(cycleId: string, tenantId: string, userId: string) {
     const cycle = await getCycleOrThrow(cycleId, tenantId)
     if (cycle.status !== 'approved') throw new AppError(`Cycle must be approved to disburse (currently ${cycle.status})`, 400)
-    if (!cycle.approvedBy || !cycle.financeApprovedBy) throw new AppError('Both HR and finance approvals are required before disbursement', 400)
+    if (!cycle.approvedBy || !cycle.financeApprovedBy) throw new AppError('Both approvals (two different Payroll admins) are required before disbursement', 400)
 
     // Reimbursement claims on this cycle's payslips must not already have been paid elsewhere — checked before anything changes
     const reimbLines = await prisma.payslipLine.findMany({

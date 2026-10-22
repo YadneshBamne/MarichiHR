@@ -27,7 +27,7 @@ function scopes(u: U) {
     self: !!u.employeeId,
     team: hr || (r.includes('manager') && !!u.employeeId),
     company: hr,
-    payroll: r.some((x) => ['hr_admin', 'payroll_admin', 'compliance_officer'].includes(x)),
+    payroll: r.some((x) => ['payroll_admin', 'compliance_officer'].includes(x)),
     finance: r.some((x) => ['hr_admin', 'payroll_admin'].includes(x)),
     hr,
   }

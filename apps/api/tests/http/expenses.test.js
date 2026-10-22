@@ -1,6 +1,6 @@
 // Prompt 19 verification: reimbursement + per-diem claims through approval and payroll, plus the Part 0 fixes.
 // Creates claims and a payroll cycle for CYCLE_MONTH (default 2026-12) in the dev DB; never touches disbursed cycles.
-const { api, tokenFor, check, done, prisma, round2, sum } = require('./lib')
+const { api, tokenFor, withRoles, check, done, prisma, round2, sum } = require('./lib')
 
 const CYCLE_MONTH = process.env.CYCLE_MONTH || '2026-12'
 const TAG = `p19-${Date.now()}`
@@ -8,6 +8,7 @@ const TAG = `p19-${Date.now()}`
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com')
   const finance = await tokenFor('finance@marichihr.com')
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: payroll needs the role
   const john = await tokenFor('john.banda@marichihr.com')
   const jane = await tokenFor('jane.mutale@marichihr.com')
 
@@ -117,18 +118,18 @@ const TAG = `p19-${Date.now()}`
   // A previous run may have left this month's cycle undisbursed (e.g. crashed mid-run): reset and reuse it
   const leftover = await prisma.payrollCycle.findFirst({ where: { tenantId: admin.tenantId, payPeriodStart: new Date(`${CYCLE_MONTH}-01T00:00:00Z`), status: { in: ['draft', 'processing', 'review'] } } })
   if (leftover) await prisma.payrollCycle.update({ where: { id: leftover.id }, data: { status: 'draft' } })
-  r = leftover ? { status: 201, body: leftover } : await api(admin, 'POST', '/payroll/cycles', { payPeriodStart: `${CYCLE_MONTH}-01`, payPeriodEnd: last })
+  r = leftover ? { status: 201, body: leftover } : await api(adminPay, 'POST', '/payroll/cycles', { payPeriodStart: `${CYCLE_MONTH}-01`, payPeriodEnd: last })
   check(`create ${CYCLE_MONTH} cycle`, r.status === 201, r.data)
   const cycle = r.body
-  await api(admin, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
-  const run = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/run`)
+  await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
+  const run = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/run`)
   check('run cycle', run.status === 200 && run.body.status === 'review', run.data)
   check('Jane (no contract) is skipped', run.body.skipped.some((s) => s.employeeCode === 'EMP0003' && /contract/i.test(s.reason)), run.body.skipped)
 
   const approvedBefore = await prisma.reimbursementClaim.findMany({ where: { tenantId: admin.tenantId, status: 'finance_approved', paidInCycleId: null } })
-  const payslips = (await api(admin, 'GET', `/payroll/cycles/${cycle.id}/payslips`)).body
+  const payslips = (await api(adminPay, 'GET', `/payroll/cycles/${cycle.id}/payslips`)).body
   for (const ps of payslips) {
-    const full = (await api(admin, 'GET', `/payroll/payslips/${ps.id}`)).body
+    const full = (await api(adminPay, 'GET', `/payroll/payslips/${ps.id}`)).body
     const reimb = full.lines.filter((l) => l.category === 'REIMB')
     const net = full.lines.find((l) => l.code === 'NET')
     const gross = full.lines.find((l) => l.code === 'GROSS')
@@ -146,16 +147,16 @@ const TAG = `p19-${Date.now()}`
 
   // Payslip PDF and HTML show the reimbursement section
   const johnPs = payslips.find((p) => p.employee.employeeCode === 'EMP0002')
-  const pdf = await api(admin, 'GET', `/payroll/payslips/${johnPs.id}/pdf`)
+  const pdf = await api(adminPay, 'GET', `/payroll/payslips/${johnPs.id}/pdf`)
   check('payslip PDF downloads (application/pdf, %PDF header)', pdf.status === 200 && Buffer.isBuffer(pdf.data) && pdf.data.slice(0, 4).toString() === '%PDF', pdf.status)
 
   // ─── APPROVALS, GL, DISBURSE ────────────────────────────────
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/approve`)
-  check('HR approves cycle', r.status === 200, r.data)
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/finance-approve`)
-  check('HR approver cannot finance-approve (403)', r.status === 403, r.data)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/approve`)
+  check('a Payroll admin gives the first approval', r.status === 200, r.data)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/finance-approve`)
+  check('the first approver cannot give the second approval (403)', r.status === 403, r.data)
   r = await api(finance, 'POST', `/payroll/cycles/${cycle.id}/finance-approve`)
-  check('finance approves cycle', r.status === 200, r.data)
+  check('a different Payroll admin gives the second approval', r.status === 200, r.data)
 
   const gl = await api(finance, 'GET', `/payroll/cycles/${cycle.id}/gl-export`)
   const glRows = String(gl.data).trim().split('\r\n').map((l) => l.split(','))
@@ -175,11 +176,11 @@ const TAG = `p19-${Date.now()}`
   const byId = Object.fromEntries(after.map((c) => [c.id, c]))
   check('paid claims: status paid + paidInCycleId + paidAt', [johnClaim, johnPerDiem, adminClaim].every((c) => byId[c.id].status === 'paid' && byId[c.id].paidInCycleId === cycle.id && byId[c.id].paidAt), [johnClaim, johnPerDiem, adminClaim].map((c) => byId[c.id].status))
   check("Jane's claims (skipped employee) stay finance_approved and unpaid", [janeTravel, janePerDiem, janeSoft].every((c) => byId[c.id].status === 'finance_approved' && !byId[c.id].paidInCycleId), [janeTravel, janePerDiem, janeSoft].map((c) => byId[c.id].status))
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/run`)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/run`)
   check('disbursed cycle cannot be re-run (immutable)', r.status === 400, r.data)
 
   // ─── PART 0 FIXES ───────────────────────────────────────────
-  for (const [who, name, expect] of [[john, 'manager', 403], [jane, 'employee', 403], [finance, 'payroll_admin', 200], [admin, 'hr_admin', 200]]) {
+  for (const [who, name, expect] of [[john, 'manager', 403], [jane, 'employee', 403], [finance, 'payroll_admin', 200], [admin, 'hr_admin', 403]]) {
     const a = await api(who, 'GET', '/salary/structures')
     const b = await api(who, 'GET', '/salary/grade-bands')
     check(`salary reads as ${name}: ${expect}`, a.status === expect && b.status === expect, [a.status, b.status])

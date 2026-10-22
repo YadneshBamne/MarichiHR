@@ -43,7 +43,7 @@ incentivesRouter.get('/', validate(z.object({ query: z.object({ status: z.enum([
 incentivesRouter.post('/', nominators, validate(Nominate), asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: await incentiveService.nominate(req.user!, req.body) })
 }))
-incentivesRouter.post('/post', requireRoles('hr_admin', 'payroll_admin'), validate(Post), asyncHandler(async (req, res) => {
+incentivesRouter.post('/post', requireRoles('payroll_admin'), validate(Post), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await incentiveService.post(req.user!, req.body.cycleId, req.body.incentiveIds) })
 }))
 incentivesRouter.post('/:id/approve', hr, validate(Decide), asyncHandler(async (req, res) => {

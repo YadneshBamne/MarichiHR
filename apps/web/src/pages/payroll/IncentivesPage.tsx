@@ -18,7 +18,7 @@ const money = (n: number, c: string) => `${n.toLocaleString(undefined, { minimum
 export default function IncentivesPage() {
   const { hasRole, user } = useAuth()
   const isHR = hasRole('hr_admin')
-  const canPost = isHR || hasRole('payroll_admin')
+  const canPost = hasRole('payroll_admin')
   const canNominate = isHR || hasRole('manager')
   const qc = useQueryClient()
   const toast = useToast()

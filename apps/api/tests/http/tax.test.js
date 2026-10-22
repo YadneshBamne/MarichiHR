@@ -2,7 +2,7 @@
 // them, a payroll run using the tables, the statutory return (+CSV) and annual tax statements, isolation.
 // Uses a throwaway payroll run in TAX_MONTH (default 2032-04) and removes it at the end.
 require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'commonjs' } })
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, check, done, prisma, withRoles } = require('./lib')
 const { bandTax, indiaAnnualTax, indiaMonthsLeft, indiaFyStart, statutoryFunctions } = require('../../src/modules/tax/statutory')
 
 const BASE = (process.env.API_URL || 'http://localhost:4000') + '/api/v1'
@@ -30,6 +30,7 @@ const MONTH = process.env.TAX_MONTH || '2032-04'
 
   // ─── Tables & access ───────────────────────────────────────
   const admin = await tokenFor('admin@marichihr.com'), finance = await tokenFor('finance@marichihr.com'), jane = await tokenFor('jane.mutale@marichihr.com'), john = await tokenFor('john.banda@marichihr.com')
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: pay steps need the role
   let r = await api(jane, 'GET', '/tax/tables')
   check('an employee cannot open the tax tables (403)', r.status === 403, r.status)
   r = await api(finance, 'GET', '/tax/tables')
@@ -44,9 +45,9 @@ const MONTH = process.env.TAX_MONTH || '2032-04'
   let cycle = await prisma.payrollCycle.findFirst({ where: { tenantId: admin.tenantId, payPeriodStart: new Date(`${MONTH}-01T00:00:00Z`) } })
   if (cycle && !['draft', 'processing', 'review'].includes(cycle.status)) throw new Error(`${MONTH} is already ${cycle.status}; set TAX_MONTH to an unused month`)
   if (cycle) await prisma.payrollCycle.update({ where: { id: cycle.id }, data: { status: 'draft' } })
-  else cycle = (await api(admin, 'POST', '/payroll/cycles', { payPeriodStart: `${MONTH}-01`, payPeriodEnd: last })).body
-  await api(admin, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/run`)
+  else cycle = (await api(adminPay, 'POST', '/payroll/cycles', { payPeriodStart: `${MONTH}-01`, payPeriodEnd: last })).body
+  await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/run`)
   check('payroll runs with the statutory tables', r.status === 200 && r.body.status === 'review', r.data)
   const slips = await prisma.payslip.findMany({ where: { payrollCycleId: cycle.id }, include: { lines: true } })
   const zm = slips.filter((s) => s.lines.some((l) => l.code === 'PAYE_ZM'))

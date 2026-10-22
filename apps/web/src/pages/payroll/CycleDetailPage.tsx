@@ -13,7 +13,7 @@ import { money, fmtPeriod, fmtDate } from '../../lib/format'
 
 type Tab = 'payslips' | 'variance' | 'inputs'
 
-const STEPS = ['Draft', 'Attendance locked', 'In review', 'HR approved', 'Finance approved', 'Disbursed']
+const STEPS = ['Draft', 'Attendance locked', 'In review', 'First approval', 'Second approval', 'Disbursed']
 
 function stepIndex(c: any): number {
   if (c.status === 'disbursed' || c.status === 'locked') return 5
@@ -28,7 +28,7 @@ export default function CycleDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user, hasRole } = useAuth()
-  const canAct = hasRole('hr_admin') || hasRole('payroll_admin')
+  const canAct = hasRole('payroll_admin')
   const currency = user?.tenant?.baseCurrency || 'ZMW'
 
   const { data: cycle, isLoading } = useCycle(id!)
@@ -80,16 +80,16 @@ export default function CycleDetailPage() {
     if (cycle.status === 'draft' && cycle.attendanceLockedAt) actions.push(btn('Run payroll', 'run', { primary: true }))
     if (cycle.status === 'review') {
       actions.push(btn('Re-run payroll', 'run'))
-      actions.push(btn('Approve (HR)', 'approve', { primary: true, disabled: !hasRole('hr_admin'), title: hasRole('hr_admin') ? '' : 'The HR approval must come from an HR admin', confirm: { title: 'Approve payroll?', body: 'You are approving all payslips in this cycle. A Payroll admin then gives the finance approval.' } }))
+      actions.push(btn('First approval', 'approve', { primary: true, confirm: { title: 'Give the first approval?', body: 'You are approving all payslips in this cycle. A different Payroll admin then gives the second approval.' } }))
     }
     if (cycle.status === 'approved') {
       actions.push(btn('Reopen', 'reopen', { danger: true, confirm: { title: 'Reopen cycle?', body: 'This clears all approvals and returns the cycle to review.' } }))
       if (!cycle.financeApprovedBy) {
-        actions.push(btn('Finance approve', 'finance-approve', {
+        actions.push(btn('Second approval', 'finance-approve', {
           primary: true,
-          disabled: isMakerOfApproval || !hasRole('payroll_admin'),
-          title: !hasRole('payroll_admin') ? 'Waiting for a Payroll admin: finance approval needs someone with the Payroll admin role (give it in their Login & access tab)' : isMakerOfApproval ? 'Finance approval must come from a different user than the HR approver' : '',
-          confirm: { title: 'Finance approve?', body: 'Confirm the totals are correct. Next step is disbursement.' },
+          disabled: isMakerOfApproval,
+          title: isMakerOfApproval ? 'You gave the first approval: the second must come from a different Payroll admin' : '',
+          confirm: { title: 'Give the second approval?', body: 'Confirm the totals are correct. Next step is disbursement.' },
         }))
       } else {
         actions.push(btn('Disburse', 'disburse', { primary: true, confirm: { title: 'Disburse payroll?', body: 'Payslips are released to employees and the cycle becomes immutable. This cannot be undone.' } }))
@@ -133,8 +133,8 @@ export default function CycleDetailPage() {
         </div>
         <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
-          {cycle.status === 'approved' && !cycle.financeApprovedBy && !hasRole('payroll_admin') && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for a Payroll admin to give the finance approval</span>}
-          {cycle.status === 'review' && !hasRole('hr_admin') && <span className="pill info" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for an HR admin to approve</span>}
+          {cycle.status === 'approved' && !cycle.financeApprovedBy && isMakerOfApproval && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for a second Payroll admin to give the second approval</span>}
+          {['review', 'approved'].includes(cycle.status) && !cycle.financeApprovedBy && (cycle as any).payrollAdmins < 2 && <span className="pill danger" style={{ whiteSpace: 'normal', textAlign: 'right', maxWidth: 380 }}>Every payroll needs approvals from two different Payroll admins, and this company has only {(cycle as any).payrollAdmins}. Give a second person the Payroll admin role in their Login &amp; access tab.</span>}
         </div>
       </div>
 

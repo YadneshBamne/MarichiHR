@@ -13,7 +13,7 @@ type Tab = 'structures' | 'types' | 'bands' | 'contracts' | 'revisions'
 
 export default function SalarySetupPage() {
   const { hasRole } = useAuth()
-  const canEdit = hasRole('hr_admin')
+  const canEdit = hasRole('payroll_admin')
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'structures')
   const tabs: [Tab, string][] = [['structures', 'Structures & rules'], ['types', 'Structure types'], ['bands', 'Grade bands'], ['contracts', 'Contracts'], ['revisions', 'Salary revisions']]
 

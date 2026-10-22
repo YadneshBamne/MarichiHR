@@ -1,6 +1,6 @@
 // Prompt 20 verification: exit → clearance → F&F compute → maker-checker approval → payment (contract closed, employee archived).
 // Creates two throwaway employees each run. Uses FNF_MONTH (default 2027-02) for the last working day and a payroll cycle.
-const { api, tokenFor, check, done, prisma, round2, sum } = require('./lib')
+const { api, tokenFor, withRoles, check, done, prisma, round2, sum } = require('./lib')
 
 const FNF_MONTH = process.env.FNF_MONTH || '2027-02'
 const TAG = `p20-${Date.now()}`
@@ -8,6 +8,7 @@ const TAG = `p20-${Date.now()}`
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com')
   const finance = await tokenFor('finance@marichihr.com')
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: pay steps need the role
   const john = await tokenFor('john.banda@marichihr.com')
   const jane = await tokenFor('jane.mutale@marichihr.com')
 
@@ -24,13 +25,13 @@ const TAG = `p20-${Date.now()}`
   const leaver = await mk('Leaver')
   const facilities = await mk('Facilities')
 
-  const zm = (await api(admin, 'GET', '/salary/structures')).body.find((s) => s.countryCode === 'ZM')
-  let r = await api(admin, 'POST', '/leave/contracts', {
+  const zm = (await api(adminPay, 'GET', '/salary/structures')).body.find((s) => s.countryCode === 'ZM')
+  let r = await api(adminPay, 'POST', '/leave/contracts', {
     employeeId: leaver.emp.id, ctcAnnual: 240000, wageMonthly: 20000, currency: 'ZMW', effectiveFrom: '2026-01-01', noticePeriodDays: 30, salaryStructureId: zm.id,
   })
   const contract = r.body
   check('setup: contract with 30-day notice', r.status === 201 && contract.noticePeriodDays === 30, r.data)
-  for (const step of ['draft', 'confirm', 'activate']) await api(admin, 'POST', `/leave/contracts/${contract.id}/${step}`, {})
+  for (const step of ['draft', 'confirm', 'activate']) await api(adminPay, 'POST', `/leave/contracts/${contract.id}/${step}`, {})
   const annual = (await api(admin, 'GET', '/leave/types')).body.find((t) => t.code === 'ANNUAL')
   r = await api(admin, 'POST', '/leave/allocations/manual', { employeeId: leaver.emp.id, leaveTypeId: annual.id, daysAllocated: 10, validFrom: '2026-01-01', reason: TAG, allocationType: 'manual' })
   check('setup: 10 days ANNUAL (encashable) allocated', r.status === 201, r.data)
@@ -75,7 +76,7 @@ const TAG = `p20-${Date.now()}`
   check("John's pending sign-offs include MANAGER for this exit", mine.some((c) => c.exitId === exit.id && c.department === 'MANAGER'), mine)
 
   // ─── CLEARANCE ──────────────────────────────────────────────
-  r = await api(admin, 'POST', `/exits/${exit.id}/compute`, {})
+  r = await api(adminPay, 'POST', `/exits/${exit.id}/compute`, {})
   check('compute before clearance is blocked (400, lists pending)', r.status === 400 && /IT/.test(r.data.message) && /MANAGER/.test(r.data.message), r.data)
   r = await api(john, 'POST', `/exits/${exit.id}/clearances/IT/sign`, {})
   check('John cannot sign the IT clearance (403)', r.status === 403, r.data)
@@ -92,22 +93,22 @@ const TAG = `p20-${Date.now()}`
   const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
   const leftover = await prisma.payrollCycle.findFirst({ where: { tenantId: admin.tenantId, payPeriodStart: new Date(`${FNF_MONTH}-01T00:00:00Z`) } })
   let cycle = leftover
-  if (!cycle) cycle = (await api(admin, 'POST', '/payroll/cycles', { payPeriodStart: `${FNF_MONTH}-01`, payPeriodEnd: last })).body
+  if (!cycle) cycle = (await api(adminPay, 'POST', '/payroll/cycles', { payPeriodStart: `${FNF_MONTH}-01`, payPeriodEnd: last })).body
   if (['draft', 'review'].includes(cycle.status)) {
-    await api(admin, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
-    const run = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/run`)
+    await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
+    const run = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/run`)
     check(`${FNF_MONTH} payroll run skips the leaver ("full & final")`, run.status === 200 && run.body.skipped.some((s) => s.employeeId === leaver.emp.id && /final settlement/.test(s.reason)), run.data)
   }
 
   // ─── COMPUTE ────────────────────────────────────────────────
-  r = await api(finance, 'POST', `/exits/${exit.id}/compute`, {})
-  check('payroll_admin cannot compute (403)', r.status === 403, r.data)
+  r = await api(admin, 'POST', `/exits/${exit.id}/compute`, {})
+  check('an HR admin cannot compute the settlement (403)', r.status === 403, r.data)
   // The 10 allocated days plus any automatic credit (this month's accrual) are what is left to encash
   const pre = await prisma.leaveBalance.findUnique({ where: { employeeId_leaveTypeId: { employeeId: leaver.emp.id, leaveTypeId: annual.id } } })
   const left = round2(pre.balanceDays - pre.usedDays - pre.pendingDays - pre.encashedDays)
-  r = await api(admin, 'POST', `/exits/${exit.id}/compute`, { recoveries: [{ description: 'Unreturned laptop', amount: 500 }] })
+  r = await api(adminPay, 'POST', `/exits/${exit.id}/compute`, { recoveries: [{ description: 'Unreturned laptop', amount: 500 }] })
   const fnf = r.body
-  check('HR computes: status computed', r.status === 200 && fnf.status === 'computed' && fnf.computedBy === admin.userId, r.data)
+  check('a Payroll admin computes: status computed', r.status === 200 && fnf.status === 'computed' && fnf.computedBy === admin.userId, r.data)
   const L = (code) => fnf.lines.find((l) => l.code === code)
   // BASIC = 20000 × 0.40 = 8000/month, prorated by weekdays 1–12 over weekdays in the month (Feb 2027: 10/20 → 4000); 8000/30 = 266.67/day
   const wd = (from, to) => { let n = 0; for (let d = new Date(`${FNF_MONTH}-${from}T00:00:00Z`); d.getUTCMonth() === m - 1 && d.getUTCDate() <= to; d.setUTCDate(d.getUTCDate() + 1)) if (d.getUTCDay() % 6) n++; return n }
@@ -125,15 +126,15 @@ const TAG = `p20-${Date.now()}`
   check(`totals: earnings ${earn} − deductions ${ded} = net ${fnf.netPayable}`, fnf.totalEarnings === earn && fnf.totalDeductions === ded && fnf.netPayable === round2(earn - ded), fnf)
 
   // ─── MAKER-CHECKER ──────────────────────────────────────────
-  r = await api(admin, 'POST', `/exits/${exit.id}/approve`)
-  check('HR who computed cannot approve (403)', r.status === 403, r.data)
+  r = await api(adminPay, 'POST', `/exits/${exit.id}/approve`)
+  check('the Payroll admin who computed cannot approve (403)', r.status === 403, r.data)
   r = await api(john, 'POST', `/exits/${exit.id}/approve`)
   check('manager without payroll:disburse cannot approve (403)', r.status === 403, r.data)
   r = await api(finance, 'POST', `/exits/${exit.id}/pay`)
   check('pay before approval is 400', r.status === 400, r.data)
   r = await api(finance, 'POST', `/exits/${exit.id}/approve`)
   check('finance approves (different user)', r.status === 200 && r.body.status === 'approved' && r.body.approvedBy === finance.userId, r.data)
-  r = await api(admin, 'POST', `/exits/${exit.id}/compute`, {})
+  r = await api(adminPay, 'POST', `/exits/${exit.id}/compute`, {})
   check('recompute after approval is 400', r.status === 400, r.data)
   r = await api(admin, 'POST', `/exits/${exit.id}/cancel`, { reason: 'x' })
   check('cancel after approval is refused (409)', r.status === 409, r.data)
@@ -158,7 +159,7 @@ const TAG = `p20-${Date.now()}`
 
   r = await api(finance, 'POST', `/exits/${exit.id}/pay`)
   check('paying twice is 400 (immutable)', r.status === 400, r.data)
-  r = await api(admin, 'POST', `/exits/${exit.id}/compute`, {})
+  r = await api(adminPay, 'POST', `/exits/${exit.id}/compute`, {})
   check('recompute after payment is 400', r.status === 400, r.data)
 
   // ─── TERMINATION DEFAULTS + CANCEL ──────────────────────────

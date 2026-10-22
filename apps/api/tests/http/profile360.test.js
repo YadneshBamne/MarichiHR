@@ -1,6 +1,6 @@
 // 360° profile: the reporting chain both ways, and each block shown only to people allowed to see it
 // (pay to self/HR/payroll, history to HR), plus isolation. Read-only against the dev company.
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, check, done, prisma, withRoles } = require('./lib')
 
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com'), john = await tokenFor('john.banda@marichihr.com'), jane = await tokenFor('jane.mutale@marichihr.com')
@@ -20,10 +20,11 @@ const { api, tokenFor, check, done, prisma } = require('./lib')
   check("an employee cannot open their manager's 360 (404)", r.status === 404, r.status)
 
   r = await api(admin, 'GET', `/employees/${john.employeeId}/360`)
-  check('HR sees pay, history (with who did it) and the team', r.status === 200 && r.body.can.seeHistory && r.body.history.length > 0 && r.body.history.every((h) => h.action && h.at) && r.body.directReports.length > 0, r.body?.history?.slice(0, 2))
+  check('HR sees history (with who did it) and the team, but no pay', r.status === 200 && r.body.can.seePay === false && r.body.lastPayslip === null && r.body.can.seeHistory && r.body.history.length > 0 && r.body.history.every((h) => h.action && h.at) && r.body.directReports.length > 0, r.body?.history?.slice(0, 2))
   check('history never lists secret fields', r.body.history.every((h) => h.fields.every((f) => !/password|bank|secret|token/i.test(f))))
+  r = await api(withRoles(admin, 'payroll_admin'), 'GET', `/employees/${john.employeeId}/360`)
   const paid = await prisma.payslip.findFirst({ where: { employeeId: john.employeeId, payrollCycle: { status: { in: ['approved', 'disbursed'] } } }, orderBy: { payrollCycle: { payPeriodStart: 'desc' } }, include: { payrollCycle: true } })
-  check('the latest finalised payslip is shown', !paid || (r.body.lastPayslip && r.body.lastPayslip.month === paid.payrollCycle.payPeriodStart.toISOString().slice(0, 7) && r.body.lastPayslip.net === Number(paid.netPay)), { api: r.body.lastPayslip, db: paid && Number(paid.netPay) })
+  check('a Payroll admin sees the latest finalised payslip', !paid || (r.body.lastPayslip && r.body.lastPayslip.month === paid.payrollCycle.payPeriodStart.toISOString().slice(0, 7) && r.body.lastPayslip.net === Number(paid.netPay)), { api: r.body.lastPayslip, db: paid && Number(paid.netPay) })
 
   const foreign = await prisma.employee.findFirst({ where: { tenant: { slug: { not: 'marichi-labs' } } } })
   r = await api(admin, 'GET', `/employees/${foreign.id}/360`)

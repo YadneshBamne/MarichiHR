@@ -1,7 +1,7 @@
 // Self-serve companies: signup, company profile and logo, installed apps (API gating), HR-issued login access with
 // forced password change, email-only login, throttling, tenant isolation. Creates test companies and deactivates them at the end.
 const { Redis } = require('ioredis')
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, check, done, prisma, withRoles } = require('./lib')
 
 const TAG = `p23${Date.now() % 1e7}`
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
@@ -141,7 +141,7 @@ const bearer = (t) => ({ token: t })
   for (let i = 0; i < 11; i++) last = await api(null, 'POST', '/auth/login', { email: ghost, password: 'Nope12345678' })
   check('after 10 failed sign-ins the 11th is refused (429)', last.status === 429, last.data)
 
-  r = await api(await tokenFor('admin@marichihr.com'), 'GET', '/payroll/cycles')
+  r = await api(withRoles(await tokenFor('admin@marichihr.com'), 'payroll_admin'), 'GET', '/payroll/cycles')
   check('existing company keeps every app (payroll still open)', r.status === 200, r.data)
 
   // ─── CLEANUP: test companies are deactivated (jobs skip them) ──

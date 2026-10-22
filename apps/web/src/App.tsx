@@ -64,7 +64,7 @@ const ComingSoonPage = lazy(() => import('./pages/system/StatusPages').then((m) 
 
 const HR = ['hr_admin', 'system_admin']
 const DIRECTORY = ['manager', 'hr_admin', 'system_admin', 'payroll_admin', 'compliance_officer']
-const STAFF = ['hr_admin', 'payroll_admin', 'compliance_officer']
+const STAFF = ['payroll_admin', 'compliance_officer']
 const ADMINS = ['hr_admin', 'system_admin']
 const guard = (el: ReactNode, opts: { roles?: string[]; app?: string } = {}) => <ProtectedRoute {...opts}>{el}</ProtectedRoute>
 

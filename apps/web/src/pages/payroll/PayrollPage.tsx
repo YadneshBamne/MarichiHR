@@ -22,8 +22,8 @@ export default function PayrollPage() {
   const { hasRole } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
-  const isStaff = hasRole('hr_admin') || hasRole('payroll_admin') || hasRole('compliance_officer')
-  const canCreate = hasRole('hr_admin') || hasRole('payroll_admin')
+  const isStaff = hasRole('payroll_admin') || hasRole('compliance_officer')
+  const canCreate = hasRole('payroll_admin')
   const [tab, setTab] = useState<Tab>(isStaff ? 'cycles' : 'mine')
   const [showCreate, setShowCreate] = useState(false)
   const { data: cycles = [], isLoading } = useCycles(isStaff)
@@ -82,7 +82,7 @@ export default function PayrollPage() {
         <section data-card className="card" style={{ padding: '6px 10px', marginTop: 'var(--gap)', overflowX: 'auto' }}>
           {isLoading ? <div style={{ padding: 14 }}>{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 38, marginBottom: 10 }} />)}</div> : cycles.length === 0 ? (
             <div style={{ padding: 14, display: 'grid', gap: 14 }}>
-              {(hasRole('hr_admin') || hasRole('system_admin')) && <SetupChecklist app="payroll" title="Before your first payroll" compact />}
+              {hasRole('payroll_admin') && <SetupChecklist app="payroll" title="Before your first payroll" compact />}
               <EmptyState icon={<Icon name="wallet" size={24} />} title="No payroll cycles yet" body="Create a cycle for a pay period, lock attendance, then run the calculation. An HR admin approves it, then a Payroll admin gives the finance approval and pays." action={canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined} />
             </div>
           ) : (

@@ -1,36 +1,40 @@
 // Prompt 21 verification: admin endpoints behind the salary structure / rules / grade bands / contracts screens.
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, check, done, prisma, withRoles } = require('./lib')
 
 const TAG = `P21${Date.now() % 1_000_000}`
 
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com')
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: pay steps need the role
   const finance = await tokenFor('finance@marichihr.com')
   const john = await tokenFor('john.banda@marichihr.com')
   const jane = await tokenFor('jane.mutale@marichihr.com')
-  const cats = Object.fromEntries((await api(admin, 'GET', '/salary/rule-categories')).body.map((c) => [c.code, c.id]))
+  const cats = Object.fromEntries((await api(adminPay, 'GET', '/salary/rule-categories')).body.map((c) => [c.code, c.id]))
 
   // ─── STRUCTURE TYPES + STRUCTURES ───────────────────────────
-  let r = await api(admin, 'POST', '/salary/structure-types', { name: `Type ${TAG}`, wageType: 'monthly' })
+  let r = await api(adminPay, 'POST', '/salary/structure-types', { name: `Type ${TAG}`, wageType: 'monthly' })
   const type = r.body
   check('create structure type', r.status === 201, r.data)
-  r = await api(admin, 'POST', '/salary/structure-types', { name: `Type ${TAG}` })
+  r = await api(adminPay, 'POST', '/salary/structure-types', { name: `Type ${TAG}` })
   check('duplicate structure type name is 409', r.status === 409, r.data)
-  r = await api(admin, 'POST', '/salary/structure-types', { name: 'x', tenantId: 'other' })
+  r = await api(adminPay, 'POST', '/salary/structure-types', { name: 'x', tenantId: 'other' })
   check('strict body: tenantId rejected 400', r.status === 400, r.data)
+  r = await api(admin, 'POST', '/salary/structure-types', { name: `HR ${TAG}` })
+  check('an HR admin cannot create structure types, pay is for Payroll (403)', r.status === 403, r.data)
   r = await api(finance, 'POST', '/salary/structure-types', { name: `Fin ${TAG}` })
-  check('payroll_admin (no salary:write) cannot create (403)', r.status === 403, r.data)
+  check('a Payroll admin creates structure types', r.status === 201, r.data)
+  if (r.body?.id) await prisma.salaryStructureType.update({ where: { id: r.body.id }, data: { active: false } }).catch(() => {})
 
-  r = await api(admin, 'POST', '/salary/structures', { structureTypeId: type.id, name: `Structure ${TAG}`, code: TAG, countryCode: 'ZM' })
+  r = await api(adminPay, 'POST', '/salary/structures', { structureTypeId: type.id, name: `Structure ${TAG}`, code: TAG, countryCode: 'ZM' })
   const st = r.body
   check('create structure', r.status === 201 && st.code === TAG, r.data)
-  r = await api(admin, 'POST', '/salary/structures', { structureTypeId: type.id, name: 'dup', code: TAG })
+  r = await api(adminPay, 'POST', '/salary/structures', { structureTypeId: type.id, name: 'dup', code: TAG })
   check('duplicate structure code is 409', r.status === 409, r.data)
-  r = await api(admin, 'PATCH', `/salary/structures/${st.id}`, { description: 'Edited' })
+  r = await api(adminPay, 'PATCH', `/salary/structures/${st.id}`, { description: 'Edited' })
   check('update structure', r.status === 200 && r.body.description === 'Edited', r.data)
 
   // ─── RULES + FORMULA VALIDATION ─────────────────────────────
-  const rule = (b) => api(admin, 'POST', '/salary/rules', { salaryStructureId: st.id, ...b })
+  const rule = (b) => api(adminPay, 'POST', '/salary/rules', { salaryStructureId: st.id, ...b })
   r = await rule({ categoryId: cats.BASIC, name: 'Basic', code: 'BASIC', sequence: 10, amountType: 'python_code', pythonCode: 'result = contract.wageMonthly * 0.5' })
   check('formula rule BASIC created', r.status === 201, r.data)
   r = await rule({ categoryId: cats.ALW, name: 'Bad', code: 'BAD', sequence: 20, amountType: 'python_code', pythonCode: 'result = contract.wageMonthly *' })
@@ -54,33 +58,33 @@ const TAG = `P21${Date.now() % 1_000_000}`
   r = await rule({ categoryId: cats.TAX, name: 'PAYE', code: 'PAYE', sequence: 60, amountType: 'python_code', pythonCode: 'result = compute_zra_paye(categories.GROSS)', conditionSelect: 'python_expression', conditionExpr: 'categories.GROSS > 1000' })
   check('conditional tax rule with compute_zra_paye created', r.status === 201, r.data)
 
-  r = await api(admin, 'POST', '/salary/rules/check', { salaryStructureId: st.id, sampleWage: 20000, rule: { categoryId: cats.ALW, name: 'Transport', code: 'TA', sequence: 30, amountType: 'python_code', pythonCode: 'result = rules.BASIC * 0.1' } })
+  r = await api(adminPay, 'POST', '/salary/rules/check', { salaryStructureId: st.id, sampleWage: 20000, rule: { categoryId: cats.ALW, name: 'Transport', code: 'TA', sequence: 30, amountType: 'python_code', pythonCode: 'result = rules.BASIC * 0.1' } })
   check('check endpoint: TA = 10% of BASIC (10000) = 1000 on a 20000 sample', r.status === 200 && r.body.amount === 1000 && r.body.lines.some((l) => l.code === 'HRA' && l.amount === 2000), r.data)
-  r = await api(admin, 'POST', '/salary/rules/check', { salaryStructureId: st.id, rule: { categoryId: cats.ALW, name: 'x', code: 'X', sequence: 30, amountType: 'python_code', pythonCode: 'result = 1 / ' } })
+  r = await api(adminPay, 'POST', '/salary/rules/check', { salaryStructureId: st.id, rule: { categoryId: cats.ALW, name: 'x', code: 'X', sequence: 30, amountType: 'python_code', pythonCode: 'result = 1 / ' } })
   check('check endpoint reports a bad formula as 400 with the reason', r.status === 400 && r.data.message.length > 0, r.data)
   r = await api(john, 'POST', '/salary/rules/check', { salaryStructureId: st.id, rule: { categoryId: cats.ALW, name: 'x', code: 'X', sequence: 30, amountType: 'fixed', amountFixed: 1 } })
   check('manager cannot use the formula check (403)', r.status === 403, r.data)
 
-  r = await api(admin, 'PATCH', `/salary/rules/${hra.id}`, { amountType: 'python_code', pythonCode: 'result = rules.GROSS * 2' })
+  r = await api(adminPay, 'PATCH', `/salary/rules/${hra.id}`, { amountType: 'python_code', pythonCode: 'result = rules.GROSS * 2' })
   check('editing HRA to reference later GROSS rejected 400', r.status === 400, r.data)
-  r = await api(admin, 'PATCH', `/salary/rules/${hra.id}`, { amountPercentage: 0.25 })
+  r = await api(adminPay, 'PATCH', `/salary/rules/${hra.id}`, { amountPercentage: 0.25 })
   check('valid edit accepted', r.status === 200 && r.body.amountPercentage === 0.25, r.data)
 
   // ─── GRADE BANDS ────────────────────────────────────────────
-  r = await api(admin, 'POST', '/salary/grade-bands', { code: TAG, name: 'Band', salaryMin: 100, salaryMid: 50, salaryMax: 200, currency: 'ZMW' })
+  r = await api(adminPay, 'POST', '/salary/grade-bands', { code: TAG, name: 'Band', salaryMin: 100, salaryMid: 50, salaryMax: 200, currency: 'ZMW' })
   check('band with mid < min rejected 400', r.status === 400, r.data)
-  r = await api(admin, 'POST', '/salary/grade-bands', { code: TAG, name: 'Band', salaryMin: 100000, salaryMid: 200000, salaryMax: 300000, currency: 'ZMW' })
+  r = await api(adminPay, 'POST', '/salary/grade-bands', { code: TAG, name: 'Band', salaryMin: 100000, salaryMid: 200000, salaryMax: 300000, currency: 'ZMW' })
   const band = r.body
   check('create band', r.status === 201, r.data)
-  r = await api(admin, 'PATCH', `/salary/grade-bands/${band.id}`, { salaryMax: 150000 })
+  r = await api(adminPay, 'PATCH', `/salary/grade-bands/${band.id}`, { salaryMax: 150000 })
   check('update that breaks mid ≤ max rejected 400', r.status === 400, r.data)
 
   // ─── CONTRACTS ──────────────────────────────────────────────
-  r = await api(admin, 'POST', '/leave/contracts', { ctcAnnual: 1, wageMonthly: 1, currency: 'ZMW', effectiveFrom: '2027-01-01' })
+  r = await api(adminPay, 'POST', '/leave/contracts', { ctcAnnual: 1, wageMonthly: 1, currency: 'ZMW', effectiveFrom: '2027-01-01' })
   check('contract without employeeId is 400 (was 500)', r.status === 400, r.data)
-  r = await api(admin, 'POST', '/leave/contracts', { employeeId: jane.employeeId, ctcAnnual: 240000, wageMonthly: 20000, currency: 'ZMW', effectiveFrom: '2099-01-01', effectiveUntil: '2098-01-01' })
+  r = await api(adminPay, 'POST', '/leave/contracts', { employeeId: jane.employeeId, ctcAnnual: 240000, wageMonthly: 20000, currency: 'ZMW', effectiveFrom: '2099-01-01', effectiveUntil: '2098-01-01' })
   check('contract with until < from is 400', r.status === 400, r.data)
-  r = await api(admin, 'POST', '/leave/contracts', { employeeId: jane.employeeId, ctcAnnual: 240000, wageMonthly: 20000, currency: 'ZMW', effectiveFrom: '2099-01-01', salaryStructureId: st.id, gradeBandId: band.id, noticePeriodDays: 60 })
+  r = await api(adminPay, 'POST', '/leave/contracts', { employeeId: jane.employeeId, ctcAnnual: 240000, wageMonthly: 20000, currency: 'ZMW', effectiveFrom: '2099-01-01', salaryStructureId: st.id, gradeBandId: band.id, noticePeriodDays: 60 })
   const contract = r.body
   check('create contract with structure + band (future date, Jane untouched today)', r.status === 201 && contract.salaryStructureId === st.id && contract.gradeBandId === band.id && contract.noticePeriodDays === 60, r.data)
 
@@ -89,30 +93,30 @@ const TAG = `P21${Date.now() % 1_000_000}`
   check('contracts list (payroll_admin): includes employee, structure and band', listed && listed.employee.employeeCode === 'EMP0003' && listed.salaryStructure.code === TAG && listed.gradeBand.code === TAG, listed)
   check('contracts list is 403 for a manager', (await api(john, 'GET', '/salary/contracts')).status === 403)
 
-  r = await api(admin, 'POST', `/leave/contracts/${contract.id}/activate`, {})
+  r = await api(adminPay, 'POST', `/leave/contracts/${contract.id}/activate`, {})
   check('state machine: new → running is refused (400)', r.status === 400, r.data)
   for (const [step, status] of [['draft', 'draft'], ['confirm', 'confirmed']]) {
-    r = await api(admin, 'POST', `/leave/contracts/${contract.id}/${step}`, { reason: TAG })
+    r = await api(adminPay, 'POST', `/leave/contracts/${contract.id}/${step}`, { reason: TAG })
     check(`contract ${step} → ${status}`, r.status === 200 && r.body.status === status, r.data)
   }
-  r = await api(admin, 'POST', `/leave/contracts/${contract.id}/confirm`, { reason: TAG, extra: 1 })
+  r = await api(adminPay, 'POST', `/leave/contracts/${contract.id}/confirm`, { reason: TAG, extra: 1 })
   check('transition body is strict (400)', r.status === 400, r.data)
 
-  r = await api(admin, 'PATCH', `/salary/structures/${st.id}`, { active: false })
+  r = await api(adminPay, 'PATCH', `/salary/structures/${st.id}`, { active: false })
   check('archiving a structure used by a live contract is 409', r.status === 409, r.data)
 
-  r = await api(admin, 'POST', `/salary/contracts/${contract.id}/link-structure`, { salaryStructureId: st.id })
+  r = await api(adminPay, 'POST', `/salary/contracts/${contract.id}/link-structure`, { salaryStructureId: st.id })
   check('link structure to contract', r.status === 200 && r.body.salaryStructureId === st.id, r.data)
 
-  r = await api(admin, 'POST', `/leave/contracts/${contract.id}/cancel`, { reason: TAG })
+  r = await api(adminPay, 'POST', `/leave/contracts/${contract.id}/cancel`, { reason: TAG })
   check('cancel the test contract', r.status === 200 && r.body.status === 'cancelled', r.data)
   const transitions = await prisma.contractStateTransition.count({ where: { contractId: contract.id } })
   check('state transitions recorded (draft, confirm, cancel)', transitions === 3, transitions)
 
-  r = await api(admin, 'PATCH', `/salary/structures/${st.id}`, { active: false })
+  r = await api(adminPay, 'PATCH', `/salary/structures/${st.id}`, { active: false })
   check('archive structure once no live contract uses it', r.status === 200 && r.body.active === false, r.data)
-  await api(admin, 'PATCH', `/salary/grade-bands/${band.id}`, { active: false })
-  await api(admin, 'PATCH', `/salary/structure-types/${type.id}`, { active: false })
+  await api(adminPay, 'PATCH', `/salary/grade-bands/${band.id}`, { active: false })
+  await api(adminPay, 'PATCH', `/salary/structure-types/${type.id}`, { active: false })
 
   await done()
 })().catch(async (e) => {

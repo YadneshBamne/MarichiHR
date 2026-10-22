@@ -9,8 +9,10 @@ export const exitsRouter = Router()
 
 exitsRouter.use(authenticate)
 
-// HR initiates and computes; finance (payroll:disburse) approves and pays — maker-checker enforced in the service
+// HR initiates and runs clearances; Payroll admins compute, approve and pay the settlement (two different people,
+// enforced in the service). Only Payroll admins see its amounts.
 const hr = requireRoles('hr_admin')
+const payroll = requireRoles('payroll_admin')
 const staff = requireRoles('hr_admin', 'payroll_admin')
 
 exitsRouter.post('/', hr, validate(InitiateExitSchema), c.initiate)
@@ -21,8 +23,8 @@ exitsRouter.get('/clearances/mine', c.myClearances)
 exitsRouter.post('/:id/clearances/:department/sign', validate(SignClearanceSchema), c.sign)
 
 exitsRouter.get('/:id', validate(ExitIdSchema), c.get)
-exitsRouter.post('/:id/compute', hr, validate(ComputeSchema), c.compute)
+exitsRouter.post('/:id/compute', payroll, validate(ComputeSchema), c.compute)
 exitsRouter.post('/:id/approve', requirePermission('payroll:disburse'), validate(ExitIdSchema), c.approve)
 exitsRouter.post('/:id/pay', requirePermission('payroll:disburse'), validate(ExitIdSchema), c.pay)
 exitsRouter.post('/:id/cancel', hr, validate(CancelExitSchema), c.cancel)
-exitsRouter.get('/:id/settlement.pdf', staff, validate(ExitIdSchema), c.pdf)
+exitsRouter.get('/:id/settlement.pdf', payroll, validate(ExitIdSchema), c.pdf)

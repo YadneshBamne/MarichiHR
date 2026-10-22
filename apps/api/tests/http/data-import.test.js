@@ -1,7 +1,7 @@
 // Imports for people already in the company: leave balances, bank details (encrypted, unverified) and contracts
 // (running or confirmed by start date). Dry run lists every problem; real runs are all or nothing. Throwaway company.
 const { Redis } = require('ioredis')
-const { api, check, done, prisma } = require('./lib')
+const { api, check, done, prisma, withRoles } = require('./lib')
 
 const TAG = `di${Date.now() % 1e7}`
 const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 2 })
@@ -19,6 +19,8 @@ const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 2 })
   const [ana, ben] = r.body.rows
   check('two people to import data for', r.body.created === 2, r.data)
   const annual = await prisma.leaveType.findFirst({ where: { tenantId: tenant.id, active: true }, orderBy: { name: 'asc' } })
+  // New people get their leave credited in the background (employee.created); let that land before importing over it
+  for (let i = 0; i < 40 && !(await prisma.leaveAllocation.count({ where: { employeeId: { in: [ana.employeeId, ben.employeeId] }, approvedBy: 'system' } })); i++) await new Promise((res) => setTimeout(res, 500))
 
   // ─── Leave balances ────────────────────────────────────────
   r = await api(owner, 'POST', '/employees/import/leave_balances', { rows: [
@@ -46,19 +48,23 @@ const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 2 })
 
   // ─── Contracts ─────────────────────────────────────────────
   const next = new Date(); next.setUTCMonth(next.getUTCMonth() + 2, 1)
-  r = await api(owner, 'POST', '/employees/import/contracts', { rows: [
+  // Contracts are pay: only Payroll admins import them
+  r = await api(owner, 'POST', '/employees/import/contracts', { rows: [{ employee_id: 'X', wage_monthly: '1', currency: 'ZMW', effective_from: '2025-01-01' }], dryRun: true })
+  check('an HR admin cannot import contracts (403)', r.status === 403, r.status)
+  const payroll = withRoles(owner, 'payroll_admin')
+  r = await api(payroll, 'POST', '/employees/import/contracts', { rows: [
     { employee_id: ana.employeeCode, wage_monthly: '10,000', currency: 'zmw', effective_from: '01/01/2025' },
     { employee_id: ben.employeeCode, wage_monthly: '9000', ctc_annual: '100', currency: 'ZM', effective_from: '2025-13-01', salary_structure: 'Nope' },
   ], dryRun: true })
   check('contracts: CTC, currency, date and structure problems are listed', r.body.rows[1].errors.length >= 4 && r.body.rows[0].status === 'ok', r.body.rows)
-  r = await api(owner, 'POST', '/employees/import/contracts', { rows: [
+  r = await api(payroll, 'POST', '/employees/import/contracts', { rows: [
     { employee_id: ana.employeeCode, wage_monthly: '10,000', currency: 'zmw', effective_from: '01/01/2025' },
     { employee_id: ben.employeeCode, wage_monthly: '9000', currency: 'ZMW', effective_from: next.toISOString().slice(0, 10), notice_days: '60' },
   ], dryRun: false })
   const cs = await prisma.employeeContract.findMany({ where: { employeeId: { in: [ana.employeeId, ben.employeeId] } } })
   const ca = cs.find((c) => c.employeeId === ana.employeeId), cb = cs.find((c) => c.employeeId === ben.employeeId)
   check('a past start is running, a future one confirmed; CTC defaults to 12 × wage', r.body.created === 2 && ca?.status === 'running' && Number(ca.ctcAnnual) === 120000 && cb?.status === 'confirmed' && cb.noticePeriodDays === 60, r.data)
-  r = await api(owner, 'POST', '/employees/import/contracts', { rows: [{ employee_id: ana.employeeCode, wage_monthly: '11000', currency: 'ZMW', effective_from: '2026-01-01' }], dryRun: true })
+  r = await api(payroll, 'POST', '/employees/import/contracts', { rows: [{ employee_id: ana.employeeCode, wage_monthly: '11000', currency: 'ZMW', effective_from: '2026-01-01' }], dryRun: true })
   check('someone with an open contract is sent to revisions instead', r.body.rows[0].errors.some((e) => /open contract/.test(e)), r.body.rows[0].errors)
 
   // ─── Access ────────────────────────────────────────────────

@@ -42,7 +42,7 @@ const admins = requireRoles('system_admin', 'hr_admin')
 companyRouter.patch('/', admins, validate(UpdateCompanySchema), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await companyService.update(req.user!.tenantId, req.user!.userId, req.body) })
 }))
-companyRouter.get('/setup-status', admins, asyncHandler(async (req, res) => {
+companyRouter.get('/setup-status', requireRoles('system_admin', 'hr_admin', 'payroll_admin'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await setupStatus(req.user!.tenantId) })
 }))
 companyRouter.put('/modules', requireRoles('system_admin'), validate(SetModulesSchema), asyncHandler(async (req, res) => {

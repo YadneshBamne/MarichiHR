@@ -19,9 +19,11 @@ const toEmployee = (type: string, title: string, body: (p: any) => string, link?
   if (userId) await notify({ tenantId: e.tenantId, userIds: [userId], type, title, body: body(e.payload), link: link?.(e.payload), eventId: e.id })
 }
 
-const toHR = (type: string, title: string, body: (p: any) => string, link?: (p: any) => string): Handler => async (e) => {
-  await notify({ tenantId: e.tenantId, userIds: await hr(e.tenantId), type, title, body: body(e.payload), link: link?.(e.payload), eventId: e.id })
+const toHR = (type: string, title: string, body: (p: any) => string, link?: (p: any) => string, who = hr): Handler => async (e) => {
+  await notify({ tenantId: e.tenantId, userIds: await who(e.tenantId), type, title, body: body(e.payload), link: link?.(e.payload), eventId: e.id })
 }
+// Contracts are kept by Payroll admins; HR still needs to know when employment ends
+const hrAndPayroll = async (tenantId: string) => [...new Set([...(await hr(tenantId)), ...(await userIdsWithRole(tenantId, 'payroll_admin'))])]
 
 export const EVENT_HANDLERS: Record<string, Handler[]> = {
   // A new person gets this month's accrual and the share of this year's lump sums at once (idempotent)
@@ -100,8 +102,8 @@ export const EVENT_HANDLERS: Record<string, Handler[]> = {
       })
     },
   ],
-  'contract.expiring.soon': [toHR('contract.expiring.soon', 'Contract expiring soon', (p) => `Contract for ${p.name} expires in ${p.daysRemaining} days.`, (p) => `/employees/${p.employeeId}`)],
-  'contract.expired': [toHR('contract.expired', 'Contract expired', (p) => `Contract for ${p.name} has expired. HR action required.`, (p) => `/employees/${p.employeeId}`)],
+  'contract.expiring.soon': [toHR('contract.expiring.soon', 'Contract expiring soon', (p) => `Contract for ${p.name} expires in ${p.daysRemaining} days.`, (p) => `/employees/${p.employeeId}`, hrAndPayroll)],
+  'contract.expired': [toHR('contract.expired', 'Contract expired', (p) => `Contract for ${p.name} has expired. Action needed.`, (p) => `/employees/${p.employeeId}`, hrAndPayroll)],
   'exit.initiated': [toHR('exit.initiated', 'Exit initiated', (p) => `Exit (${p.exitType}) initiated; last working day ${ymd(p.lastWorkingDate)}.`, (p) => (p.exitId ? `/exits/${p.exitId}` : '/exits'))],
   'attendance.absent.marked': [toEmployee('attendance.absent.marked', 'Marked absent', (p) => `No attendance or approved leave on ${p.date}; you were marked absent. Apply for leave or request regularisation if this is wrong.`, () => '/attendance')],
 }

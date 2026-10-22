@@ -153,9 +153,9 @@ export const REPORTS: Record<string, { title: string; description: string; roles
   },
 
   payroll: {
-    title: 'Payroll', description: 'Gross, deductions and net pay per person for a payroll cycle', roles: [...COMPANY, 'payroll_admin'],
+    title: 'Payroll', description: 'Gross, deductions and net pay per person for a payroll cycle', roles: ['payroll_admin', 'compliance_officer'],
     async run(user, f) {
-      assertRoles(user, [...COMPANY, 'payroll_admin'])
+      assertRoles(user, ['payroll_admin', 'compliance_officer'])
       const cycle = f.cycleId
         ? await prisma.payrollCycle.findFirst({ where: { id: f.cycleId, tenantId: user.tenantId } })
         : await prisma.payrollCycle.findFirst({ where: { tenantId: user.tenantId, status: { notIn: ['draft'] } }, orderBy: { payPeriodStart: 'desc' } })

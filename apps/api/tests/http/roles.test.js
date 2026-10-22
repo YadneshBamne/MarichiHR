@@ -18,7 +18,7 @@ const { api, tokenFor, check, done } = require('./lib')
   r = await api(finance, 'GET', '/dashboard')
   check('payroll/finance dashboard: payroll only (no employee record, no team, no company)', r.status === 200 && sections(r.body) === 'payroll', sections(r.body || {}))
   r = await api(admin, 'GET', '/dashboard')
-  check('HR/admin dashboard: own + company-wide team + company + payroll', r.status === 200 && sections(r.body) === 'self,team,company,payroll' && r.body.team.scope === 'company', sections(r.body || {}))
+  check('HR/admin dashboard: own + company-wide team + company, never payroll', r.status === 200 && sections(r.body) === 'self,team,company' && r.body.team.scope === 'company', sections(r.body || {}))
   check('company section has headcount and departments', r.body.company.headcount > 0 && Array.isArray(r.body.company.departments), r.body.company)
 
   r = await api(jane, 'GET', '/dashboard/counts')
@@ -61,10 +61,14 @@ const { api, tokenFor, check, done } = require('./lib')
   r = await api(finance, 'POST', '/employees', { firstName: 'X', lastName: 'Y', workEmail: 'x.y@example.com', orgUnitId: '00000000-0000-0000-0000-000000000000', hireDate: '2026-10-01', employmentType: 'full_time' })
   check('finance cannot add employees (403)', r.status === 403, r.data)
 
-  // ─── HR/admin: everything ──────────────────────────────────
-  for (const path of ['/attendance/team/today', '/leave/requests/pending', '/employees', '/payroll/cycles', '/system/jobs', '/exits']) {
+  // ─── HR/admin: everything but pay ──────────────────────────
+  for (const path of ['/attendance/team/today', '/leave/requests/pending', '/employees', '/system/jobs', '/exits']) {
     r = await api(admin, 'GET', path)
     check(`HR/admin can open ${path}`, r.status === 200, r.data)
+  }
+  for (const path of ['/payroll/cycles', '/salary/structures']) {
+    r = await api(admin, 'GET', path)
+    check(`HR/admin cannot open ${path} (pay is Payroll's) (403)`, r.status === 403, r.status)
   }
   await done()
 })()

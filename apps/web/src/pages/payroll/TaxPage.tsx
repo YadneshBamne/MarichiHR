@@ -13,7 +13,7 @@ interface Col { code: string; name: string }
 interface Filing { cycle: { id: string; payPeriodStart: string; status: string; final: boolean }; columns: Col[]; rows: Record<string, any>[]; totals: Record<string, number> }
 interface Statement { employer: string; employee: { firstName: string; lastName: string; employeeCode: string; taxJurisdiction: string | null }; period: { from: string; to: string; basis: string }; columns: Col[]; months: Record<string, any>[]; totals: Record<string, number>; generatedAt: string }
 
-const STAFF = ['hr_admin', 'payroll_admin', 'compliance_officer']
+const STAFF = ['payroll_admin', 'compliance_officer']
 const n = (v: unknown) => (v == null || v === '' ? '—' : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const pct = (r: number) => `${+(r * 100).toFixed(2)}%`
 const COUNTRY: Record<string, string> = { ZM: 'Zambia', IN: 'India' }

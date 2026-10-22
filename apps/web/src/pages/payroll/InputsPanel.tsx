@@ -8,7 +8,7 @@ import { money } from '../../lib/format'
 
 export default function InputsPanel({ cycleId, editable, currency }: { cycleId: string; editable: boolean; currency: string }) {
   const { user, hasRole } = useAuth()
-  const canAdd = hasRole('hr_admin') || hasRole('payroll_admin')
+  const canAdd = hasRole('payroll_admin')
   const { data: inputs = [] } = useCycleInputs(cycleId)
   const { data: types = [] } = useInputTypes()
   const { data: empData } = useEmployees({ limit: 100 })

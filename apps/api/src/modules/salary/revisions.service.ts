@@ -9,7 +9,7 @@ import { AccessUser } from '../../shared/utils/access'
 // paid that month) is arrears: payroll posts it into an open run as a "Salary Arrear" input, which payroll's own
 // maker-checker then approves.
 
-const STAFF = ['hr_admin', 'payroll_admin']
+const STAFF = ['payroll_admin']
 const isStaff = (u: AccessUser) => u.roleIds.some((r) => STAFF.includes(r))
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
@@ -78,13 +78,13 @@ export const revisionService = {
     if (await prisma.salaryRevision.findFirst({ where: { tenantId: u.tenantId, employeeId: emp.id, status: 'pending' } })) throw new AppError('This person already has a revision waiting for approval', 409)
     const r = await prisma.salaryRevision.create({ data: { tenantId: u.tenantId, employeeId: emp.id, fromContractId: contract.id, newCtcAnnual: b.newCtcAnnual, newWageMonthly: b.newWageMonthly, newSalaryStructureId: b.newSalaryStructureId ?? null, effectiveFrom: day(b.effectiveFrom), reason: b.reason, requestedBy: u.userId } })
     await audit(u, 'SALARY_REVISION_RAISED', r.id, { employeeId: emp.id, from: Number(contract.wageMonthly), to: b.newWageMonthly, effectiveFrom: b.effectiveFrom })
-    const approvers = [...new Set([...(await userIdsWithRole(u.tenantId, 'hr_admin')), ...(await userIdsWithRole(u.tenantId, 'payroll_admin'))])].filter((id) => id !== u.userId && id !== emp.userId)
+    const approvers = (await userIdsWithRole(u.tenantId, 'payroll_admin')).filter((id) => id !== u.userId && id !== emp.userId)
     await notify({ tenantId: u.tenantId, userIds: approvers, type: 'salary.revision', title: `Salary revision for ${emp.firstName} ${emp.lastName} needs approval`, body: `From ${b.effectiveFrom}: ${b.reason}`, link: '/compensation', entityType: 'salary_revision', entityId: r.id })
     return view(r)
   },
 
   async decide(u: AccessUser, id: string, approve: boolean, note?: string) {
-    if (!isStaff(u)) throw new AppError('Only HR and payroll approve salary revisions', 403)
+    if (!isStaff(u)) throw new AppError('Only Payroll admins approve salary revisions', 403)
     const r = await prisma.salaryRevision.findFirst({ where: { id, tenantId: u.tenantId } })
     if (!r) throw new AppError('Revision not found', 404)
     if (r.status !== 'pending') throw new AppError(`This revision is already ${r.status}`, 400)

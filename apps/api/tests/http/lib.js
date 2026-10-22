@@ -55,4 +55,11 @@ async function done() {
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 const sum = (a) => round2(a.reduce((s, x) => s + x, 0))
 
-module.exports = { api, login, tokenFor, check, done, prisma, round2, sum }
+// The same person with extra roles (e.g. an HR admin who is also a Payroll admin): pay needs payroll_admin
+function withRoles(who, ...roles) {
+  const { token, iat: _i, exp: _e, ...payload } = who.userId ? who : { ...who, ...jwt.decode(who.token) }
+  const p = { ...payload, roleIds: [...new Set([...(payload.roleIds || []), ...roles])] }
+  return { ...p, token: jwt.sign(p, process.env.JWT_ACCESS_SECRET, { expiresIn: '2h' }) }
+}
+
+module.exports = { api, login, tokenFor, withRoles, check, done, prisma, round2, sum }

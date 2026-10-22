@@ -54,18 +54,18 @@ async function targetInTenant(user: AccessUser, targetEmployeeId: string) {
   return target && target.tenantId === user.tenantId ? target : null
 }
 
-// Self, hr_admin, system_admin (manages logins and roles; pay and bank stay hidden), or anyone above the target in
-// the reporting chain
+// Self, hr_admin, system_admin (manages logins and roles; pay and bank stay hidden), payroll_admin (keeps contracts and
+// pay), or anyone above the target in the reporting chain
 export async function canAccessProfile(user: AccessUser, targetEmployeeId: string): Promise<boolean> {
   if (!(await targetInTenant(user, targetEmployeeId))) return false
-  if (isSelf(user, targetEmployeeId) || hasRole(user, 'hr_admin', 'system_admin')) return true
+  if (isSelf(user, targetEmployeeId) || hasRole(user, 'hr_admin', 'system_admin', 'payroll_admin')) return true
   return user.employeeId ? isReportingChainOf(user.employeeId, targetEmployeeId) : false
 }
 
-// Self, hr_admin, payroll_admin, compliance_officer. Managers do NOT get compensation access.
+// Self, payroll_admin, compliance_officer. Neither managers nor HR admins see pay.
 export async function canAccessCompensation(user: AccessUser, targetEmployeeId: string): Promise<boolean> {
   if (!(await targetInTenant(user, targetEmployeeId))) return false
-  return isSelf(user, targetEmployeeId) || hasRole(user, 'hr_admin', 'payroll_admin', 'compliance_officer')
+  return isSelf(user, targetEmployeeId) || hasRole(user, 'payroll_admin', 'compliance_officer')
 }
 
 // Self, hr_admin, payroll_admin

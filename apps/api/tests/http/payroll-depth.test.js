@@ -1,13 +1,14 @@
 // Payroll depth: payslip release control (early release after approval, hold one person, disbursing releases),
 // anomaly flags before approval, salary revisions with maker-checker, arrears for months already paid and posting them
 // into an open run. Uses Marichi Labs with a throwaway run in PD_MONTH (default 2034-02) and restores John's contract.
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, check, done, prisma, withRoles } = require('./lib')
 
 const MONTH = process.env.PD_MONTH || '2034-02'
 const round2 = (n) => Math.round(n * 100) / 100
 
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com') // hr_admin
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: pay steps need the role
   const finance = await tokenFor('finance@marichihr.com') // payroll_admin
   const john = await tokenFor('john.banda@marichihr.com')
   const jane = await tokenFor('jane.mutale@marichihr.com')
@@ -18,9 +19,9 @@ const round2 = (n) => Math.round(n * 100) / 100
   const last = new Date(Date.UTC(Number(MONTH.slice(0, 4)), Number(MONTH.slice(5)), 0)).toISOString().slice(0, 10)
   let cycle = await prisma.payrollCycle.findFirst({ where: { tenantId: admin.tenantId, payPeriodStart: new Date(`${MONTH}-01T00:00:00Z`) } })
   if (cycle && !['draft', 'review'].includes(cycle.status)) throw new Error(`${MONTH} is ${cycle.status}; set PD_MONTH to an unused month`)
-  if (!cycle) cycle = (await api(admin, 'POST', '/payroll/cycles', { payPeriodStart: `${MONTH}-01`, payPeriodEnd: last })).body
-  await api(admin, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
-  let r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/run`)
+  if (!cycle) cycle = (await api(adminPay, 'POST', '/payroll/cycles', { payPeriodStart: `${MONTH}-01`, payPeriodEnd: last })).body
+  await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/lock-attendance`)
+  let r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/run`)
   check('a test payroll run is computed', r.status === 200 && r.body.status === 'review', r.data)
 
   // ─── Anomaly flags ─────────────────────────────────────────
@@ -45,12 +46,12 @@ const round2 = (n) => Math.round(n * 100) / 100
   check('one pending revision per person (409)', r.status === 409, r.status)
   const paid = await prisma.payslip.findMany({ where: { employeeId: john.employeeId, payrollCycle: { tenantId: admin.tenantId, status: { in: ['disbursed', 'locked'] }, payPeriodStart: { gte: new Date('2027-01-01') } } }, select: { paidDays: true, workingDays: true } })
   const expected = round2(paid.reduce((t, s) => t + 1000 * (s.workingDays > 0 ? Math.min(1, s.paidDays / s.workingDays) : 1), 0))
-  r = await api(admin, 'GET', '/salary-revisions?status=pending')
+  r = await api(adminPay, 'GET', '/salary-revisions?status=pending')
   const pend = r.body.find((x) => x.id === rev.id)
   check(`the pending revision already shows its arrears (${paid.length} paid months → ${expected})`, pend && pend.arrearsAmount === expected && pend.arrearsDetail.length === paid.length, { got: pend?.arrearsAmount, expected })
   r = await api(finance, 'POST', `/salary-revisions/${rev.id}/approve`, {})
   check('the person who raised it cannot approve it (403)', r.status === 403, r.status)
-  r = await api(admin, 'POST', `/salary-revisions/${rev.id}/approve`, { note: 'OK' })
+  r = await api(adminPay, 'POST', `/salary-revisions/${rev.id}/approve`, { note: 'OK' })
   check('someone else approves it', r.status === 200 && r.body.status === 'approved' && r.body.arrearsAmount === expected, r.data)
   const next = await prisma.employeeContract.findUnique({ where: { id: r.body.newContractId } })
   created.contracts.push(next?.id)
@@ -64,23 +65,23 @@ const round2 = (n) => Math.round(n * 100) / 100
   check('…once (400)', r.status === 400, r.status)
 
   // ─── Release control ───────────────────────────────────────
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/release-payslips`)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/release-payslips`)
   check('payslips cannot be released before approval (400)', r.status === 400, r.data)
   await prisma.payrollInput.update({ where: { id: input.id }, data: { approvedBy: admin.userId, approvedAt: new Date() } }) // so approval isn't blocked by it
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/approve`)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/approve`)
   check('HR approves the run', r.status === 200, r.data)
   const mine = async () => (await api(john, 'GET', '/payroll/payslips/me')).body.some((p) => p.payrollCycleId === cycle.id)
   check('approved but not released: John cannot see it yet', !(await mine()))
   const johnSlip = await prisma.payslip.findFirst({ where: { payrollCycleId: cycle.id, employeeId: john.employeeId } })
-  r = await api(admin, 'POST', `/payroll/payslips/${johnSlip.id}/withhold`, { withheld: true })
+  r = await api(adminPay, 'POST', `/payroll/payslips/${johnSlip.id}/withhold`, { withheld: true })
   check('holding a payslip needs a reason (400)', r.status === 400, r.status)
-  await api(admin, 'POST', `/payroll/payslips/${johnSlip.id}/withhold`, { withheld: true, reason: 'Under review' })
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/release-payslips`)
+  await api(adminPay, 'POST', `/payroll/payslips/${johnSlip.id}/withhold`, { withheld: true, reason: 'Under review' })
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/release-payslips`)
   check('payroll releases payslips early', r.status === 200 && r.body.released >= 1, r.data)
   check('…but a held payslip stays hidden', !(await mine()) && (await api(john, 'GET', `/payroll/payslips/${johnSlip.id}`)).status === 404)
-  await api(admin, 'POST', `/payroll/payslips/${johnSlip.id}/withhold`, { withheld: false })
+  await api(adminPay, 'POST', `/payroll/payslips/${johnSlip.id}/withhold`, { withheld: false })
   check('once unheld, John sees it', await mine())
-  r = await api(admin, 'POST', `/payroll/cycles/${cycle.id}/release-payslips`)
+  r = await api(adminPay, 'POST', `/payroll/cycles/${cycle.id}/release-payslips`)
   check('releasing twice is refused (400)', r.status === 400, r.status)
 
   // ─── Cleanup: the run, the revision, John's contract ───────

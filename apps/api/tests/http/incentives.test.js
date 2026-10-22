@@ -1,13 +1,14 @@
 // Incentives: default types, who may nominate whom, caps, approval by someone other than the nominator, what each
 // person sees, posting approved awards into an open payroll run (and payroll's own maker-checker), isolation.
 // Uses a throwaway payroll run in INC_MONTH (default 2032-01) and removes it at the end.
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, withRoles, check, done, prisma } = require('./lib')
 
 const TAG = `in${Date.now() % 1e6}`
 const MONTH = process.env.INC_MONTH || '2032-01'
 
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com') // hr_admin
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: pay steps need the role
   const john = await tokenFor('john.banda@marichihr.com') // manager of Jane
   const jane = await tokenFor('jane.mutale@marichihr.com')
   const finance = await tokenFor('finance@marichihr.com') // payroll_admin
@@ -69,7 +70,7 @@ const MONTH = process.env.INC_MONTH || '2032-01'
   // ─── Post to payroll ───────────────────────────────────────
   const last = new Date(Date.UTC(Number(MONTH.slice(0, 4)), Number(MONTH.slice(5)), 0)).toISOString().slice(0, 10)
   let cycle = await prisma.payrollCycle.findFirst({ where: { tenantId: admin.tenantId, payPeriodStart: new Date(`${MONTH}-01T00:00:00Z`) } })
-  if (!cycle) cycle = (await api(admin, 'POST', '/payroll/cycles', { payPeriodStart: `${MONTH}-01`, payPeriodEnd: last })).body
+  if (!cycle) cycle = (await api(adminPay, 'POST', '/payroll/cycles', { payPeriodStart: `${MONTH}-01`, payPeriodEnd: last })).body
   r = await api(jane, 'POST', '/incentives/post', { cycleId: cycle.id, incentiveIds: [a1.id] })
   check('an employee cannot post to payroll (403)', r.status === 403, r.status)
   r = await api(finance, 'POST', '/incentives/post', { cycleId: cycle.id, incentiveIds: [a3.id] })
@@ -83,7 +84,7 @@ const MONTH = process.env.INC_MONTH || '2032-01'
   check('posting twice is refused (400)', r.status === 400, r.data)
   r = await api(finance, 'POST', `/payroll/inputs/${input.id}/approve`)
   check("payroll's maker-checker still applies: the poster cannot approve the input (403)", r.status === 403, r.status)
-  r = await api(admin, 'POST', `/payroll/inputs/${input.id}/approve`)
+  r = await api(adminPay, 'POST', `/payroll/inputs/${input.id}/approve`)
   check('…someone else can', r.status === 200, r.data)
 
   // ─── Isolation ─────────────────────────────────────────────

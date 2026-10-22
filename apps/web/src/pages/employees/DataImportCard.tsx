@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import api from '../../lib/api'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
+import { useAuth } from '../../contexts/AuthContext'
 import { parseCsv } from './ImportEmployeesPage'
 
 // Spreadsheet imports for people already in the company (matched by employee ID or work email). All or nothing.
@@ -17,6 +18,7 @@ const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
 export default function DataImportCard() {
   const toast = useToast()
+  const { hasRole } = useAuth()
   const [type, setType] = useState<T>('leave_balances')
   const [rows, setRows] = useState<Record<string, string>[]>([])
   const [fileName, setFileName] = useState('')
@@ -51,7 +53,7 @@ export default function DataImportCard() {
         <h3 style={{ fontSize: 15 }}>Import other data</h3>
         <span className="dim" style={{ fontSize: 13 }}>For people already in the company, matched by employee ID or work email.</span>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{(Object.keys(TYPES) as T[]).map((t) => <button key={t} className="chip" aria-pressed={type === t} onClick={() => pick(t)} style={type === t ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}>{TYPES[t].label}</button>)}</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{(Object.keys(TYPES) as T[]).filter((t) => t !== 'contracts' || hasRole('payroll_admin')).map((t) => <button key={t} className="chip" aria-pressed={type === t} onClick={() => pick(t)} style={type === t ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}>{TYPES[t].label}</button>)}</div>
       <p className="dim" style={{ fontSize: 12, lineHeight: 1.6 }}>Columns: {def.cols.join(', ')}. {def.note}</p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn btn-ghost btn-sm" onClick={template}><Icon name="download" size={14} /> Template</button>

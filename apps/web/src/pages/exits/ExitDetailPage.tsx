@@ -9,7 +9,7 @@ import { inputStyle } from '../../components/ui/FormField'
 import { money, fmtDate } from '../../lib/format'
 import { primaryBtn } from './ExitsPage'
 
-const STEPS = ['Initiated', 'Cleared', 'Computed (HR)', 'Approved (finance)', 'Paid']
+const STEPS = ['Initiated', 'Cleared', 'Computed (payroll)', 'Approved (second payroll admin)', 'Paid']
 const SECTIONS: [string, string][] = [
   ['salary', 'Final month salary (prorated)'],
   ['encashment', 'Leave encashment'],
@@ -35,7 +35,7 @@ export default function ExitDetailPage() {
   if (!x) return <div style={{ color: 'var(--danger)', fontSize: 13 }}>Exit not found.</div>
 
   const isHR = hasRole('hr_admin')
-  const canFinance = hasRole('payroll_admin') || hasRole('hr_admin')
+  const canFinance = hasRole('payroll_admin')
   const allCleared = x.clearances.every((c: any) => c.status === 'cleared')
   const step = x.status === 'paid' ? 4 : x.status === 'approved' ? 3 : x.status === 'computed' ? 2 : allCleared ? 1 : 0
   const cur = x.currency || user?.tenant?.baseCurrency || 'ZMW'
@@ -73,7 +73,7 @@ export default function ExitDetailPage() {
           <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 4, textTransform: 'capitalize' }}>{x.exitType} · last working day {fmtDate(x.lastWorkingDate)} · <Badge label={x.status} /></p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {x.lines && (hasRole('hr_admin') || hasRole('payroll_admin')) && <button onClick={pdf} style={ghost}>Settlement PDF</button>}
+          {x.lines && hasRole('payroll_admin') && <button onClick={pdf} style={ghost}>Settlement PDF</button>}
           {isHR && ['initiated', 'computed'].includes(x.status) && <button onClick={() => setShowCancel(true)} style={{ ...ghost, backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)' }}>Cancel exit</button>}
           {canFinance && x.status === 'computed' && (
             <button disabled={madeIt || action.isPending} title={madeIt ? 'A different user than the one who computed must approve' : ''} onClick={() => setConfirm({ path: 'approve', title: 'Approve settlement?', body: `Net ${money(x.netPayable, cur)}. Next step is payment.` })} style={{ ...primaryBtn, opacity: madeIt ? 0.5 : 1, cursor: madeIt ? 'not-allowed' : 'pointer' }}>Approve (finance)</button>
@@ -112,7 +112,7 @@ export default function ExitDetailPage() {
         </div>
       </div>
 
-      {isHR && ['initiated', 'computed'].includes(x.status) && (
+      {canFinance && ['initiated', 'computed'].includes(x.status) && (
         <div style={{ ...card, marginBottom: 16 }}>
           <div style={cardTitle}>{x.status === 'computed' ? 'Recompute settlement' : 'Compute settlement'}</div>
           <p style={{ fontSize: 12, color: 'var(--faint)', margin: '0 0 10px' }}>Prorated final salary via the payroll engine, leave encashment at basic/day, notice shortfall, approved reimbursements, gratuity placeholder. Add any recoveries below.</p>

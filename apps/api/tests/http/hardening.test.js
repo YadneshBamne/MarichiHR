@@ -3,7 +3,7 @@
 // Creates throwaway employees each run and archives them at the end.
 const crypto = require('crypto')
 const bcrypt = require('bcryptjs')
-const { api, tokenFor, check, done, prisma } = require('./lib')
+const { api, tokenFor, withRoles, check, done, prisma } = require('./lib')
 require('ts-node').register({ transpileOnly: true })
 
 const TAG = `p22-${Date.now()}`
@@ -39,6 +39,7 @@ const stepNow = () => Math.floor(Date.now() / 30000)
 
 ;(async () => {
   const admin = await tokenFor('admin@marichihr.com')
+  const adminPay = withRoles(admin, 'payroll_admin') // the same person as a Payroll admin: pay steps need the role
   const john = await tokenFor('john.banda@marichihr.com')
   const jane = await tokenFor('jane.mutale@marichihr.com')
   const tenantId = admin.tenantId
@@ -113,10 +114,10 @@ const stepNow = () => Math.floor(Date.now() / 30000)
   check('second accrual run in the same month credits nothing', r.status === 200 && r.body[tenantId] === 0 && accrualsB === 1, r.data)
 
   // Contracts: a running contract whose last day was yesterday is expired by the job; HR is notified
-  const zm = (await api(admin, 'GET', '/salary/structures')).body.find((s) => s.countryCode === 'ZM')
-  r = await api(admin, 'POST', '/leave/contracts', { employeeId: worker.emp.id, ctcAnnual: 120000, wageMonthly: 10000, currency: 'ZMW', effectiveFrom: '2026-01-01', salaryStructureId: zm.id })
+  const zm = (await api(adminPay, 'GET', '/salary/structures')).body.find((s) => s.countryCode === 'ZM')
+  r = await api(adminPay, 'POST', '/leave/contracts', { employeeId: worker.emp.id, ctcAnnual: 120000, wageMonthly: 10000, currency: 'ZMW', effectiveFrom: '2026-01-01', salaryStructureId: zm.id })
   const contract = r.body
-  for (const step of ['draft', 'confirm', 'activate']) await api(admin, 'POST', `/leave/contracts/${contract.id}/${step}`, {})
+  for (const step of ['draft', 'confirm', 'activate']) await api(adminPay, 'POST', `/leave/contracts/${contract.id}/${step}`, {})
   const today = lusakaToday()
   await prisma.employeeContract.update({ where: { id: contract.id }, data: { effectiveUntil: new Date(`${today}T00:00:00Z`) } })
   r = await api(admin, 'POST', '/system/jobs/contracts/run')
