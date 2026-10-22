@@ -5,7 +5,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 
 export type Band = { upTo: number | null; rate: number }
 export type StatutoryParams = Record<string, any>
-export interface IndiaYtd { gross: number; tax: number; monthsLeft: number } // monthsLeft includes the current month
+export interface IndiaYtd { gross: number; tax: number; monthsLeft: number; exemption?: number } // monthsLeft includes the current month; exemption = verified declarations allowed under the regime
 export interface StatutoryContext { at: string; tables: Record<string, StatutoryParams>; indiaYtd?: IndiaYtd }
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
@@ -63,7 +63,7 @@ export function statutoryFunctions(ctx: StatutoryContext, warn: (w: string) => v
     compute_india_tds: (gross: number, _ded?: number) => {
       const t = table(ctx, 'IN_TDS_NEW')
       const ytd = ctx.indiaYtd ?? { gross: 0, tax: 0, monthsLeft: 12 }
-      const { annualTax, taxable } = indiaAnnualTax(ytd.gross + Math.max(0, Number(gross)) * ytd.monthsLeft, t)
+      const { annualTax, taxable } = indiaAnnualTax(Math.max(0, ytd.gross + Math.max(0, Number(gross)) * ytd.monthsLeft - (ytd.exemption ?? 0)), t)
       if (taxable > t.surchargeFrom) warn(`Projected taxable income ${Math.round(taxable)} is above ${t.surchargeFrom}: surcharge is not computed, check TDS by hand`)
       return round2(Math.max(0, (annualTax - ytd.tax) / ytd.monthsLeft))
     },

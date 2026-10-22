@@ -8,6 +8,7 @@ import { CreateCycleDto, AddPayrollInputDto } from './payroll.types'
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
+import { verifiedExemption } from '../tax/declarations.service'
 import { renderPayslipHtml, generatePayslipPdf } from './payslip.pdf'
 import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { decryptField, last4 } from '../../shared/utils/crypto'
@@ -188,6 +189,7 @@ export async function computeEmployeePayslip(
       gross: round2(prior.reduce((a, p) => a + Number(p.grossEarnings), 0)),
       tax: round2(prior.reduce((a, p) => a + p.lines.reduce((b, l) => b + Number(l.amount), 0), 0)),
       monthsLeft: indiaMonthsLeft(periodStart),
+      exemption: await verifiedExemption(cycle.tenantId, emp.id, Number(indiaFyStart(periodStart).slice(0, 4))),
     }
   }
 

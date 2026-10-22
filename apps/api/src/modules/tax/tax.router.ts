@@ -7,6 +7,9 @@ import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
 import { assertCompensationAccess, AccessUser } from '../../shared/utils/access'
 import { prisma } from '../../infrastructure/database/prisma'
+import { declarationsService, ItemsBody, VerifyBody } from './declarations.service'
+import { generatePayslipPdf } from '../payroll/payslip.pdf'
+import { certificateHtml } from './certificate.html'
 
 // Tax & compliance: the statutory tables payroll uses (with sources), the statutory return for a payroll run
 // (tax and contributions per employee, CSV for filing) and each employee's annual tax statement.
@@ -72,13 +75,9 @@ taxRouter.get('/filing/export', requireRoles(...PAYROLL_STAFF), validate(Filing)
 }))
 
 // Month-by-month pay, tax and contributions for a year (calendar, or April-March for India), from finalised runs only
-taxRouter.get('/statement', validate(Statement), asyncHandler(async (req, res) => {
-  const user = req.user!
-  const employeeId = (req.query.employeeId as string | undefined) ?? user.employeeId
+export async function statement(user: AccessUser, employeeId: string | undefined, year: number, april: boolean) {
   if (!employeeId) throw new AppError('Not found', 404)
   await assertCompensationAccess(user, employeeId)
-  const year = Number(req.query.year)
-  const april = req.query.basis === 'april'
   const from = new Date(Date.UTC(year, april ? 3 : 0, 1)), to = new Date(Date.UTC(april ? year + 1 : year + 1, april ? 3 : 0, 1))
   const [emp, tenant, slips] = await Promise.all([
     prisma.employee.findFirst({ where: { id: employeeId, tenantId: user.tenantId }, select: { firstName: true, lastName: true, employeeCode: true, taxJurisdiction: true, hireDate: true } }),
@@ -96,5 +95,46 @@ taxRouter.get('/statement', validate(Statement), asyncHandler(async (req, res) =
     ...Object.fromEntries([...columns.keys()].map((c) => [c, round2(s.lines.filter((l) => l.code === c).reduce((a, l) => a + Number(l.amount), 0))])),
   }))
   const totals = Object.fromEntries(['gross', 'net', ...columns.keys()].map((c) => [c, round2(months.reduce((a, m: any) => a + Number(m[c] ?? 0), 0))]))
-  res.json({ success: true, data: { employer: tenant?.name, employee: emp, period: { from: from.toISOString().slice(0, 10), to: new Date(to.getTime() - 86_400_000).toISOString().slice(0, 10), basis: april ? 'april' : 'calendar' }, columns: [...columns].map(([code, name]) => ({ code, name })), months, totals, generatedAt: new Date() } })
+  return { employer: tenant?.name, employee: emp, period: { from: from.toISOString().slice(0, 10), to: new Date(to.getTime() - 86_400_000).toISOString().slice(0, 10), basis: april ? 'april' : 'calendar' }, columns: [...columns].map(([code, name]) => ({ code, name })), months, totals, generatedAt: new Date() }
+}
+
+taxRouter.get('/statement', validate(Statement), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await statement(req.user!, (req.query.employeeId as string | undefined) ?? req.user!.employeeId, Number(req.query.year), req.query.basis === 'april') })
+}))
+
+// The annual tax certificate: the statement as a signed-off PDF, with the verified declarations
+taxRouter.get('/certificate', validate(Statement), asyncHandler(async (req, res) => {
+  const user = req.user!
+  const employeeId = (req.query.employeeId as string | undefined) ?? user.employeeId
+  const year = Number(req.query.year), april = req.query.basis === 'april'
+  const data = await statement(user, employeeId, year, april)
+  if (!data.months.length) throw new AppError('No finalised payroll in that year yet', 400)
+  const decl = await declarationsService.get(user, year, employeeId)
+  const pdf = await generatePayslipPdf(certificateHtml(data, decl?.status === 'verified' ? decl : null))
+  await prisma.auditLog.create({ data: { tenantId: user.tenantId, userId: user.userId, action: 'TAX_CERTIFICATE_ISSUED', entityType: 'employee', entityId: employeeId!, newValue: { year, basis: april ? 'april' : 'calendar' } } })
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `attachment; filename="tax-certificate-${year}-${data.employee?.employeeCode ?? 'employee'}.pdf"`)
+  res.send(pdf)
+}))
+
+// ─── Declarations ────────────────────────────────────────────
+const Year = z.object({ year: z.coerce.number().int().min(2000).max(2100) })
+taxRouter.get('/declarations/sections', asyncHandler(async (_req, res) => { res.json({ success: true, data: declarationsService.sections() }) }))
+taxRouter.get('/declarations/mine', validate(z.object({ query: Year.extend({ employeeId: z.string().uuid().optional() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await declarationsService.get(req.user!, Number(req.query.year), req.query.employeeId as string | undefined) })
+}))
+taxRouter.put('/declarations/mine', validate(z.object({ query: Year, body: ItemsBody })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await declarationsService.save(req.user!, Number(req.query.year), req.body) })
+}))
+taxRouter.post('/declarations/mine/submit', validate(z.object({ query: Year })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await declarationsService.submit(req.user!, Number(req.query.year)) })
+}))
+taxRouter.get('/declarations', validate(z.object({ query: Year.extend({ status: z.enum(['submitted', 'verified', 'returned']).optional() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await declarationsService.list(req.user!, Number(req.query.year), req.query.status as string | undefined) })
+}))
+taxRouter.get('/declarations/:id/proof/:documentId', validate(z.object({ params: z.object({ id: z.string().uuid(), documentId: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await declarationsService.proof(req.user!, String(req.params.id), String(req.params.documentId)) })
+}))
+taxRouter.post('/declarations/:id/verify', validate(z.object({ params: z.object({ id: z.string().uuid() }), body: VerifyBody })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await declarationsService.verify(req.user!, String(req.params.id), req.body) })
 }))

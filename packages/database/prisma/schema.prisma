@@ -2404,3 +2404,25 @@ model ForumReport {
   @@index([tenantId, status])
   @@map("forum_reports")
 }
+
+// Tax declarations: what a person will invest or claim this year, with proofs; Payroll verifies each line.
+// year = start of the financial year (India: April-March) or the calendar year elsewhere.
+model TaxDeclaration {
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  year        Int
+  regime      String    @default("new") // new | old (only the new regime is computed today)
+  status      String    @default("draft") // draft | submitted | verified | returned
+  items       Json      @default("[]") // [{ id, section, description, amount, documentId?, verifiedAmount?, status }]
+  note        String?
+  submittedAt DateTime?
+  verifiedBy  String?
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, employeeId, year])
+  @@index([tenantId, year, status])
+  @@map("tax_declarations")
+}

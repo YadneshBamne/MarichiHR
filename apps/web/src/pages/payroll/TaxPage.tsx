@@ -7,6 +7,7 @@ import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 import { fmtDate } from '../../lib/format'
+import { MyDeclaration, DeclarationReview } from './DeclarationsPanel'
 
 interface Table { id: string; country: string; code: string; name: string; effectiveFrom: string; params: any; sourceUrl: string; sourceNote: string; verified: boolean; inForce: boolean; upcoming: boolean }
 interface Col { code: string; name: string }
@@ -21,18 +22,20 @@ const COUNTRY: Record<string, string> = { ZM: 'Zambia', IN: 'India' }
 export default function TaxPage() {
   const { hasRole } = useAuth()
   const staff = STAFF.some((r) => hasRole(r))
-  const [tab, setTab] = useState<'return' | 'tables' | 'statement'>(staff ? 'return' : 'statement')
+  const isPayroll = hasRole('payroll_admin')
+  const [tab, setTab] = useState<'return' | 'tables' | 'statement' | 'declarations' | 'declaration'>(new URLSearchParams(window.location.search).get('tab') === 'declarations' && isPayroll ? 'declarations' : new URLSearchParams(window.location.search).get('tab') === 'declaration' ? 'declaration' : staff ? 'return' : 'statement')
+  const tabs = [...(staff ? [['return', 'Statutory return'], ['tables', 'Rates & sources']] : []), ['statement', staff ? 'Annual statements' : 'Annual statement'], ...(isPayroll ? [['declarations', 'Declarations']] : []), ['declaration', 'My declaration']] as [typeof tab, string][]
   const root = useReveal<HTMLDivElement>(tab)
   return (
     <div ref={root}>
       <PageHeader title={staff ? 'Tax & compliance' : 'My tax statement'} sub={staff ? 'Statutory returns, the rates payroll uses and where each rate comes from' : 'Your pay, tax and contributions for the year'}>
-        {staff && (
+        {(
           <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-            {([['return', 'Statutory return'], ['tables', 'Rates & sources'], ['statement', 'Annual statements']] as const).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+            {tabs.map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
           </div>
         )}
       </PageHeader>
-      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : <StatementView staff={staff} />}
+      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'declarations' ? <DeclarationReview /> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
     </div>
   )
 }
@@ -137,6 +140,14 @@ function StatementView({ staff }: { staff: boolean }) {
   const [basis, setBasis] = useState<'calendar' | 'april'>('calendar')
   const [employeeId, setEmployeeId] = useState('')
   const { data: people = [] } = useQuery({ queryKey: ['tax-people'], enabled: staff, queryFn: async () => (await api.get('/employees', { params: { limit: 500 } })).data.data as any[] })
+  const toast = useToast()
+  const certificate = async () => {
+    try {
+      const r = await api.get('/tax/certificate', { params: { year, basis, ...(employeeId ? { employeeId } : {}) }, responseType: 'blob' })
+      const url = URL.createObjectURL(r.data as Blob)
+      const a = document.createElement('a'); a.href = url; a.download = `tax-certificate-${year}.pdf`; a.click(); URL.revokeObjectURL(url)
+    } catch { toast('Could not create the certificate', 'error') }
+  }
   const { data: s, isLoading, error } = useQuery({ queryKey: ['tax-statement', year, basis, employeeId], queryFn: async () => (await api.get('/tax/statement', { params: { year, basis, ...(employeeId ? { employeeId } : {}) } })).data.data as Statement, retry: false })
   return (
     <>
@@ -144,7 +155,8 @@ function StatementView({ staff }: { staff: boolean }) {
         {staff && <label className="field" style={{ minWidth: 220 }}><span>Employee</span><select className="input" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}><option value="">Me</option>{people.map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.employeeCode})</option>)}</select></label>}
         <label className="field"><span>Year</span><input className="input" type="number" min={2000} max={2100} value={year} onChange={(e) => setYear(Number(e.target.value) || year)} style={{ width: 110 }} /></label>
         <label className="field"><span>Year runs</span><select className="input" value={basis} onChange={(e) => setBasis(e.target.value as any)}><option value="calendar">January – December</option><option value="april">April – March (India)</option></select></label>
-        <button className="btn btn-ghost btn-sm" disabled={!s?.months.length} onClick={() => window.print()}><Icon name="file" size={14} /> Print / save PDF</button>
+        <button className="btn btn-ghost btn-sm" disabled={!s?.months.length} onClick={() => window.print()}><Icon name="file" size={14} /> Print</button>
+        <button className="btn btn-primary btn-sm" disabled={!s?.months.length} onClick={certificate}><Icon name="download" size={14} /> Tax certificate (PDF)</button>
       </div>
       <section data-card className="card print-area" style={{ padding: 24 }}>
         {isLoading ? <div className="skeleton" style={{ height: 160, borderRadius: 14 }} /> : error || !s ? <p className="dim">No statement available.</p> : (
