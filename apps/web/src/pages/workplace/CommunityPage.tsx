@@ -8,12 +8,13 @@ import Modal from '../../components/ui/Modal'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import { Md, MD_HINT, AttachButton, AttachList, useFollows, NewSpace, Events, CommunitySettings, Engagement, type Att } from './CommunityExtras'
 
 // Community: discussions in spaces (with polls and @mentions), a recognition wall of kudos, and HR moderation.
 const BADGES: Record<string, string> = { teamwork: 'Teamwork', customer: 'Customer hero', innovation: 'Bright idea', leadership: 'Leadership', above_and_beyond: 'Above and beyond' }
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-type Tab = 'discussions' | 'wall' | 'moderation'
+type Tab = 'discussions' | 'events' | 'wall' | 'moderation'
 
 const usePeople = () => useQuery({ queryKey: ['community-people'], queryFn: async () => ((await api.get('/employees/org-chart')).data.data.people as { id: string; name: string; isMe: boolean }[]).filter((p) => !p.isMe) })
 
@@ -23,7 +24,7 @@ export default function CommunityPage() {
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') as Tab) || 'discussions'
   const root = useReveal<HTMLDivElement>(tab)
-  const tabs: [Tab, string][] = [['discussions', 'Discussions'], ['wall', 'Recognition wall'], ...(mod ? [['moderation', 'Moderation'] as [Tab, string]] : [])]
+  const tabs: [Tab, string][] = [['discussions', 'Discussions'], ['events', 'Events'], ['wall', 'Recognition wall'], ...(mod ? [['moderation', 'Moderation'] as [Tab, string]] : [])]
   return (
     <div ref={root}>
       <PageHeader title="Community" sub="Talk, ask, vote and thank each other.">
@@ -32,8 +33,9 @@ export default function CommunityPage() {
         </div>
       </PageHeader>
       {tab === 'discussions' && <Discussions mod={mod} />}
+      {tab === 'events' && <Events />}
       {tab === 'wall' && <Wall mod={mod} />}
-      {tab === 'moderation' && mod && <Moderation />}
+      {tab === 'moderation' && mod && <div style={{ display: 'grid', gap: 'var(--gap)' }}><Moderation /><CommunitySettings /><Engagement /></div>}
     </div>
   )
 }
@@ -41,34 +43,42 @@ export default function CommunityPage() {
 function Discussions({ mod }: { mod: boolean }) {
   const toast = useToast()
   const qc = useQueryClient()
+  const { hasRole } = useAuth()
   const [spaceId, setSpaceId] = useState('')
   const [q, setQ] = useState('')
+  const [tag, setTag] = useState('')
+  const [following, setFollowing] = useState(false)
   const [writing, setWriting] = useState(false)
-  const { data: spaces = [] } = useQuery({ queryKey: ['forum-spaces'], queryFn: async () => (await api.get('/forums/spaces')).data.data as { id: string; name: string; description: string; threads: number }[] })
-  const { data: threads = [], isLoading } = useQuery({ queryKey: ['forum-threads', spaceId, q], queryFn: async () => (await api.get('/forums/threads', { params: { ...(spaceId && { spaceId }), ...(q.trim() && { q: q.trim() }) } })).data.data as any[] })
-  const addSpace = useMutation({
-    mutationFn: (name: string) => api.post('/forums/spaces', { name }),
-    onSuccess: () => { toast('Space added'); qc.invalidateQueries({ queryKey: ['forum-spaces'] }) },
-    onError: (e) => toast(errMsg(e), 'error'),
-  })
+  const [newSpace, setNewSpace] = useState(false)
+  const follows = useFollows()
+  const { data: spaces = [] } = useQuery({ queryKey: ['forum-spaces'], queryFn: async () => (await api.get('/forums/spaces')).data.data as { id: string; name: string; description: string; threads: number; kind: string; canModerate: boolean; following: boolean }[] })
+  const { data: threads = [], isLoading } = useQuery({ queryKey: ['forum-threads', spaceId, q, tag, following], queryFn: async () => (await api.get('/forums/threads', { params: { ...(spaceId && { spaceId }), ...(q.trim() && { q: q.trim() }), ...(tag && { tag }), ...(following && { feed: 'following' }) } })).data.data as any[] })
+  const canAddSpace = mod || (hasRole('manager') && !spaces.some((s) => s.kind === 'team' && s.canModerate))
+  const writable = spaces.filter((s) => s.kind !== 'news' || s.canModerate)
+  void toast; void qc
   return (
     <div style={{ display: 'grid', gap: 'var(--gap)' }}>
       <section data-card className="card" style={{ padding: 14, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div className="chips" style={{ flex: '1 1 300px' }}>
-          <button className={`chip${!spaceId ? ' is-on' : ''}`} onClick={() => setSpaceId('')}>All</button>
-          {spaces.map((s) => <button key={s.id} className={`chip${spaceId === s.id ? ' is-on' : ''}`} onClick={() => setSpaceId(s.id)} title={s.description}>{s.name} <span className="dim">{s.threads}</span></button>)}
-          {mod && <button className="chip" onClick={() => { const n = window.prompt('Name of the new space'); if (n?.trim()) addSpace.mutate(n.trim()) }}><Icon name="plus" size={12} /> Space</button>}
+          <button className={`chip${!spaceId && !following ? ' is-on' : ''}`} onClick={() => { setSpaceId(''); setFollowing(false) }}>All</button>
+          <button className={`chip${following ? ' is-on' : ''}`} onClick={() => { setFollowing(true); setSpaceId('') }} title="Threads from the tags, people and spaces you follow">Following</button>
+          {spaces.map((s) => <button key={s.id} className={`chip${spaceId === s.id ? ' is-on' : ''}`} onClick={() => { setSpaceId(s.id); setFollowing(false) }} title={s.description}>{s.kind === 'team' ? <Icon name="users" size={12} /> : s.kind === 'department' ? <Icon name="layers" size={12} /> : s.kind === 'news' ? <Icon name="bell" size={12} /> : null} {s.name} <span className="dim">{s.threads}</span></button>)}
+          {canAddSpace && <button className="chip" onClick={() => setNewSpace(true)}><Icon name="plus" size={12} /> {mod ? 'Space' : 'Team space'}</button>}
+          {tag && <button className="chip is-on" onClick={() => setTag('')}>#{tag} ×</button>}
+          {spaceId && <button className="chip" onClick={() => follows.toggle('space', spaceId)}>{follows.is('space', spaceId) ? 'Following this space ✓' : 'Follow this space'}</button>}
         </div>
         <input className="input" style={{ width: 200 }} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search discussions" />
-        <button className="btn btn-primary btn-sm" disabled={!spaces.length} onClick={() => setWriting(true)}>New thread</button>
+        <button className="btn btn-primary btn-sm" disabled={!writable.length} onClick={() => setWriting(true)}>New thread</button>
       </section>
       <section data-card className="card" style={{ padding: 8 }}>
-        {isLoading ? <div className="skeleton" style={{ height: 120, borderRadius: 14 }} /> : !threads.length ? <p className="dim" style={{ padding: 16 }}>Nothing here yet. Start the first thread.</p> : threads.map((t) => (
+        {isLoading ? <div className="skeleton" style={{ height: 120, borderRadius: 14 }} /> : !threads.length ? <p className="dim" style={{ padding: 16 }}>{following ? 'Nothing yet from what you follow. Open a thread and follow its tags, author or space.' : 'Nothing here yet. Start the first thread.'}</p> : threads.map((t) => (
           <Link key={t.id} to={`/community/${t.id}`} className="row-link" style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 14 }}>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 {t.pinned && <span className="pill honey">Pinned</span>}{t.locked && <span className="pill mute">Locked</span>}{t.hidden && <span className="pill danger">Hidden</span>}{t.hasPoll && <span className="pill info">Poll</span>}
                 <strong style={{ fontWeight: 600 }}>{t.title}</strong>
+                {t.tags?.map((g: string) => <span key={g} className="pill mute" role="button" onClick={(e) => { e.preventDefault(); setTag(g) }} style={{ cursor: 'pointer', textTransform: 'none' }}>#{g}</span>)}
+                {t.attachments > 0 && <Icon name="paperclip" size={12} />}
               </span>
               <span className="dim" style={{ display: 'block', fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.space} · {t.author} · {when(t.lastActivityAt)} · {t.excerpt}</span>
             </span>
@@ -76,7 +86,8 @@ function Discussions({ mod }: { mod: boolean }) {
           </Link>
         ))}
       </section>
-      {writing && <NewThread spaces={spaces} defaultSpace={spaceId || spaces[0]?.id} onClose={() => setWriting(false)} />}
+      {writing && <NewThread spaces={writable} defaultSpace={writable.some((s) => s.id === spaceId) ? spaceId : writable[0]?.id} onClose={() => setWriting(false)} />}
+      {newSpace && <NewSpace onClose={() => setNewSpace(false)} />}
     </div>
   )
 }
@@ -95,12 +106,13 @@ function MentionPicker({ value, onPick }: { value: string[]; onPick: (id: string
 function NewThread({ spaces, defaultSpace, onClose }: { spaces: { id: string; name: string }[]; defaultSpace?: string; onClose: () => void }) {
   const toast = useToast()
   const qc = useQueryClient()
-  const [f, setF] = useState({ spaceId: defaultSpace ?? '', title: '', body: '' })
+  const [f, setF] = useState({ spaceId: defaultSpace ?? '', title: '', body: '', tags: '' })
+  const [files, setFiles] = useState<Att[]>([])
   const [mentions, setMentions] = useState<string[]>([])
   const [poll, setPoll] = useState<{ question: string; options: string[]; multi: boolean } | null>(null)
   const pollOk = !poll || (poll.question.trim().length >= 3 && poll.options.filter((o) => o.trim()).length >= 2)
   const save = useMutation({
-    mutationFn: () => api.post('/forums/threads', { spaceId: f.spaceId, title: f.title.trim(), body: f.body.trim(), ...(mentions.length && { mentions }), ...(poll && { poll: { question: poll.question.trim(), options: poll.options.map((o) => o.trim()).filter(Boolean), multi: poll.multi } }) }),
+    mutationFn: () => api.post('/forums/threads', { spaceId: f.spaceId, title: f.title.trim(), body: f.body.trim(), ...(mentions.length && { mentions }), ...(f.tags.trim() && { tags: f.tags.split(/[,\s]+/).filter(Boolean).slice(0, 5) }), ...(files.length && { attachmentIds: files.map((x) => x.id) }), ...(poll && { poll: { question: poll.question.trim(), options: poll.options.map((o) => o.trim()).filter(Boolean), multi: poll.multi } }) }),
     onSuccess: () => { toast('Posted'); qc.invalidateQueries({ queryKey: ['forum-threads'] }); qc.invalidateQueries({ queryKey: ['forum-spaces'] }); onClose() },
     onError: (e) => toast(errMsg(e), 'error'),
   })
@@ -109,8 +121,10 @@ function NewThread({ spaces, defaultSpace, onClose }: { spaces: { id: string; na
       <div style={{ display: 'grid', gap: 12 }}>
         <label className="field"><span>Space</span><select className="input" value={f.spaceId} onChange={(e) => setF({ ...f, spaceId: e.target.value })}>{spaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
         <label className="field"><span>Title</span><input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={160} /></label>
-        <label className="field"><span>Message</span><textarea className="input" rows={5} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} style={{ height: 'auto', padding: 12 }} maxLength={10000} /></label>
+        <label className="field"><span>Message <span className="dim" style={{ fontWeight: 400 }}>· {MD_HINT}</span></span><textarea className="input" rows={5} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} style={{ height: 'auto', padding: 12 }} maxLength={10000} /></label>
+        <label className="field"><span>Tags (up to 5, e.g. travel, it-help)</span><input className="input" value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} maxLength={150} /></label>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <AttachButton files={files} onChange={setFiles} />
           <MentionPicker value={mentions} onPick={(id, name) => { setMentions([...mentions, id]); setF({ ...f, body: `${f.body}${f.body && !f.body.endsWith(' ') ? ' ' : ''}@${name} ` }) }} />
           {!poll && <button className="btn btn-ghost btn-sm" onClick={() => setPoll({ question: '', options: ['', ''], multi: false })}>Add a poll</button>}
         </div>
@@ -136,13 +150,15 @@ export function ThreadPage() {
   const toast = useToast()
   const qc = useQueryClient()
   const [reply, setReply] = useState('')
+  const [replyFiles, setReplyFiles] = useState<Att[]>([])
   const [mentions, setMentions] = useState<string[]>([])
+  const follows = useFollows()
   const { data: t, isLoading } = useQuery({ queryKey: ['forum-thread', id], queryFn: async () => (await api.get(`/forums/threads/${id}`)).data.data })
   const root = useReveal<HTMLDivElement>(isLoading)
   const refresh = () => { qc.invalidateQueries({ queryKey: ['forum-thread', id] }); qc.invalidateQueries({ queryKey: ['forum-threads'] }) }
   const act = useMutation({
     mutationFn: ({ path, body }: { path: string; body: object }) => api.post(path, body),
-    onSuccess: (_d, v) => { toast(v.path.endsWith('/comments') ? 'Replied' : v.path === '/forums/reports' ? 'Reported to HR' : 'Saved'); if (v.path.endsWith('/comments')) { setReply(''); setMentions([]) } refresh() },
+    onSuccess: (_d, v) => { toast(v.path.endsWith('/comments') ? 'Replied' : v.path === '/forums/reports' ? 'Reported to HR' : 'Saved'); if (v.path.endsWith('/comments')) { setReply(''); setMentions([]); setReplyFiles([]) } refresh() },
     onError: (e) => toast(errMsg(e), 'error'),
   })
   const report = (targetType: string, targetId: string) => { const reason = window.prompt('Why are you reporting this?'); if (reason && reason.trim().length >= 3) act.mutate({ path: '/forums/reports', body: { targetType, targetId, reason: reason.trim() } }) }
@@ -156,7 +172,12 @@ export function ThreadPage() {
       <div style={{ display: 'grid', gap: 'var(--gap)' }}>
         <section data-card className="card" style={{ padding: 22, display: 'grid', gap: 14 }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{t.pinned && <span className="pill honey">Pinned</span>}{t.locked && <span className="pill mute">Locked</span>}{t.hidden && <span className="pill danger">Hidden</span>}</div>
-          <p style={{ whiteSpace: 'pre-wrap' }}>{t.body}</p>
+          <Md text={t.body} />
+          <AttachList files={t.attachments} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {t.tags?.map((g: string) => <button key={g} className="chip" onClick={() => follows.toggle('tag', g)} title={follows.is('tag', g) ? 'Unfollow this tag' : 'Follow this tag'}>#{g} {follows.is('tag', g) ? '✓' : '+'}</button>)}
+            {!t.mine && <button className="chip" onClick={() => follows.toggle('user', t.authorUserId)}>{follows.is('user', t.authorUserId) ? `Following ${t.author.name} ✓` : `Follow ${t.author.name}`}</button>}
+          </div>
           {p && (
             <div className="well" style={{ padding: 14, borderRadius: 14, display: 'grid', gap: 8 }}>
               <strong>{p.question}</strong>
@@ -177,7 +198,7 @@ export function ThreadPage() {
             {t.canModerate ? <>
               <button className="btn btn-ghost btn-sm" onClick={() => act.mutate({ path: `/forums/threads/${id}/moderate`, body: { pinned: !t.pinned } })}>{t.pinned ? 'Unpin' : 'Pin'}</button>
               <button className="btn btn-ghost btn-sm" onClick={() => act.mutate({ path: `/forums/threads/${id}/moderate`, body: { locked: !t.locked } })}>{t.locked ? 'Unlock' : 'Lock'}</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => act.mutate({ path: `/forums/threads/${id}/moderate`, body: { hidden: !t.hidden } })}>{t.hidden ? 'Show again' : 'Hide'}</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { if (t.hidden) act.mutate({ path: `/forums/threads/${id}/moderate`, body: { hidden: false } }); else { const reason = window.prompt('Why hide it? The author sees this (optional)'); if (reason !== null) act.mutate({ path: `/forums/threads/${id}/moderate`, body: { hidden: true, ...(reason.trim() && { reason: reason.trim() }) } }) } }}>{t.hidden ? 'Show again' : 'Hide'}</button>
             </> : !t.mine && <button className="btn btn-ghost btn-sm" onClick={() => report('thread', t.id)}>Report</button>}
           </div>
         </section>
@@ -186,8 +207,9 @@ export function ThreadPage() {
           {t.comments.map((c: any) => (
             <div key={c.id} style={{ borderTop: '1px solid var(--line)', paddingTop: 10, opacity: c.hidden ? 0.55 : 1 }}>
               <div className="dim" style={{ fontSize: 12 }}>{c.author.name} · {when(c.createdAt)}{c.hidden ? ' · hidden' : ''}</div>
-              <p style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{c.body}</p>
-              {t.canModerate ? <button className="btn btn-ghost btn-sm" onClick={() => act.mutate({ path: `/forums/comments/${c.id}/hide`, body: { hidden: !c.hidden } })}>{c.hidden ? 'Show again' : 'Hide'}</button>
+              <Md text={c.body} size={14} />
+              <AttachList files={c.attachments} />
+              {t.canModerate ? <button className="btn btn-ghost btn-sm" onClick={() => { if (c.hidden) act.mutate({ path: `/forums/comments/${c.id}/hide`, body: { hidden: false } }); else { const reason = window.prompt('Why hide it? The author sees this (optional)'); if (reason !== null) act.mutate({ path: `/forums/comments/${c.id}/hide`, body: { hidden: true, ...(reason.trim() && { reason: reason.trim() }) } }) } }}>{c.hidden ? 'Show again' : 'Hide'}</button>
                 : !c.mine && <button className="btn btn-ghost btn-sm" onClick={() => report('comment', c.id)}>Report</button>}
             </div>
           ))}
@@ -196,7 +218,8 @@ export function ThreadPage() {
               <textarea className="input" rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Write a reply…" style={{ height: 'auto', padding: 12 }} maxLength={5000} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <MentionPicker value={mentions} onPick={(pid, name) => { setMentions([...mentions, pid]); setReply(`${reply}${reply && !reply.endsWith(' ') ? ' ' : ''}@${name} `) }} />
-                <button className="btn btn-primary btn-sm" disabled={act.isPending || !reply.trim()} onClick={() => act.mutate({ path: `/forums/threads/${id}/comments`, body: { body: reply.trim(), ...(mentions.length && { mentions }) } })}>Reply</button>
+                <AttachButton files={replyFiles} onChange={setReplyFiles} />
+                <button className="btn btn-primary btn-sm" disabled={act.isPending || !reply.trim()} onClick={() => act.mutate({ path: `/forums/threads/${id}/comments`, body: { body: reply.trim(), ...(mentions.length && { mentions }), ...(replyFiles.length && { attachmentIds: replyFiles.map((x) => x.id) }) } })}>Reply</button>
               </div>
             </div>
           )}

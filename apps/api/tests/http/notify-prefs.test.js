@@ -27,9 +27,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   r = await api(admin, 'POST', '/announcements', { title: `Prefs ${TAG}`, body: 'Checking delivery choices' })
   const annId = r.body?.id
   let jn = null, jo = null
-  for (let i = 0; i < 40 && !(jn && jo); i++) {
+  for (let i = 0; i < 40 && !(jn?.deliveries?.length && jo?.deliveries?.length); i++) {
     ;[jn, jo] = await Promise.all([jane, john].map((u) => prisma.notification.findFirst({ where: { userId: u.userId, type: 'announcement', body: `Prefs ${TAG}` } })))
-    if (!(jn && jo)) await sleep(500)
+    if (!(jn?.deliveries?.length && jo?.deliveries?.length)) await sleep(500)
   }
   const email = (n) => (n?.deliveries ?? []).find((d) => d.channel === 'email')
   check('Jane still gets it in the bell', !!jn, jn)

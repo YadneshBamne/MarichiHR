@@ -2330,6 +2330,10 @@ model ForumSpace {
   tenantId    String
   name        String
   description String   @default("")
+  kind             String   @default("company") // company | team (a manager's reporting line) | department (an org unit and below) | news
+  ownerEmployeeId  String? // team space: the manager
+  orgUnitId        String? // department space
+  moderatorUserIds String[] @default([]) // besides HR: the manager of a team space, or named people
   active      Boolean  @default(true)
   createdBy   String
   createdAt   DateTime @default(now())
@@ -2350,6 +2354,8 @@ model ForumThread {
   pinned         Boolean   @default(false)
   locked         Boolean   @default(false)
   hidden         Boolean   @default(false) // moderated away
+  tags           String[]  @default([])
+  attachments    Json      @default("[]") // [{ id, fileName, mimeType, size }] (forum_attachments)
   lastActivityAt DateTime  @default(now())
   createdAt      DateTime  @default(now())
 
@@ -2368,6 +2374,7 @@ model ForumComment {
   authorUserId String
   body         String
   hidden       Boolean  @default(false)
+  attachments  Json     @default("[]")
   createdAt    DateTime @default(now())
 
   thread ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -2690,4 +2697,75 @@ model KudosPoint {
 
   @@index([tenantId, employeeId])
   @@map("kudos_points")
+}
+
+// A file attached to a forum post; downloads go through a signed URL after checking the person may see the post
+model ForumAttachment {
+  id         String   @id @default(uuid())
+  tenantId   String
+  fileKey    String
+  fileName   String
+  mimeType   String
+  size       Int
+  uploadedBy String
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("forum_attachments")
+}
+
+// Following a tag, a person or a space: their new threads reach you and fill your "Following" feed
+model ForumFollow {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  kind      String // tag | user | space
+  key       String
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, userId, kind, key])
+  @@index([tenantId, kind, key])
+  @@map("forum_follows")
+}
+
+// Company settings for Community: words that may not be posted, and whether policy/payroll news is posted for everyone
+model ForumSettings {
+  tenantId     String   @id
+  blockedWords String[] @default([])
+  autoNews     Boolean  @default(true)
+
+  @@map("forum_settings")
+}
+
+// Event calendar: townhalls, celebrations, trainings; people answer going / maybe / no
+model ForumEvent {
+  id          String    @id @default(uuid())
+  tenantId    String
+  title       String
+  description String    @default("")
+  kind        String    @default("townhall") // townhall | celebration | training | other
+  startsAt    DateTime
+  endsAt      DateTime?
+  location    String    @default("")
+  spaceId     String? // only that space's members see it; null = everyone
+  createdBy   String
+  cancelled   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  rsvps ForumEventRsvp[]
+
+  @@index([tenantId, startsAt])
+  @@map("forum_events")
+}
+
+model ForumEventRsvp {
+  id      String @id @default(uuid())
+  eventId String
+  userId  String
+  status  String // going | maybe | no
+
+  event ForumEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@map("forum_event_rsvps")
 }

@@ -5,6 +5,7 @@ import { audienceUsers } from '../../shared/utils/audience'
 import { runAutomations } from '../../modules/automation/automation.service'
 import { queueWebhooks } from '../../modules/automation/integrations.service'
 import { creditLeave } from '../../modules/leave/credits.service'
+import { postNews } from '../../modules/forums/forum-extras.service'
 
 // Consumers of domain_events, run by the domain-events worker. Each handler must be safe to run twice:
 // notifications dedupe on (eventId, userId, type) and data fixes are idempotent.
@@ -48,6 +49,25 @@ export const EVENT_HANDLERS: Record<string, Handler[]> = {
       if (!p) return
       const users = (await audienceUsers(e.tenantId, p)).map((u) => u.id)
       await notify({ tenantId: e.tenantId, userIds: users, type: 'policy.published', title: p.requiresAcceptance ? 'Policy to read and accept' : 'Policy updated', body: `${p.title} (version ${e.payload.version})`, link: `/policies/${p.id}`, entityType: 'policy', entityId: p.id, eventId: e.id })
+    },
+    // Company-wide policies are also posted in Community > News (targeted ones stay with their audience)
+    async (e) => {
+      const p = await prisma.policy.findFirst({ where: { id: e.payload.policyId, tenantId: e.tenantId, active: true } })
+      if (!p || p.departmentIds.length || p.workLocationIds.length || p.countries.length) return
+      const v = await prisma.policyVersion.findFirst({ where: { policyId: p.id, version: e.payload.version } })
+      await postNews(e.tenantId, v?.publishedById ?? p.createdById, `${e.payload.version > 1 ? 'Updated' : 'New'} policy: ${p.title}`, `${p.title} (version ${e.payload.version}) is published.${v?.changeNote ? ` What changed: ${v.changeNote}` : ''}\n\n[Read it](/policies/${p.id})${p.requiresAcceptance ? ' and accept it' : ''}.`, ['policy'], e.id)
+    },
+  ],
+  // A payroll was paid: Payroll and System admins get the confirmation; a regular run is announced in News
+  'payroll.cycle.disbursed': [
+    async (e) => {
+      const c = await prisma.payrollCycle.findFirst({ where: { id: e.payload.payrollCycleId, tenantId: e.tenantId } })
+      if (!c) return
+      const [slips, total] = await Promise.all([prisma.payslip.count({ where: { payrollCycleId: c.id } }), prisma.payslip.aggregate({ where: { payrollCycleId: c.id }, _sum: { netPay: true } })])
+      const month = c.payPeriodStart.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      const admins = [...new Set([...(await userIdsWithRole(e.tenantId, 'payroll_admin')), ...(await userIdsWithRole(e.tenantId, 'system_admin'))])]
+      await notify({ tenantId: e.tenantId, userIds: admins, type: 'payroll.disbursed', title: `${c.offCycle ? 'Off-cycle payroll' : 'Payroll'} for ${month} paid`, body: `${slips} payslip${slips === 1 ? '' : 's'}, net ${Number(total._sum.netPay ?? 0).toFixed(2)}. Download the bank file from the run if you have not yet.`, link: `/payroll/cycles/${c.id}`, entityType: 'payroll_cycle', entityId: c.id, eventId: e.id })
+      if (!c.offCycle) await postNews(e.tenantId, e.payload.disbursedBy, `${month} payroll is paid`, `Payslips for ${month} are ready in [My payslips](/payroll).`, ['payroll'], e.id)
     },
   ],
   // Everyone in the audience except the author
