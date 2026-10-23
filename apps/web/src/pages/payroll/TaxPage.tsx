@@ -9,6 +9,7 @@ import { useReveal } from '../../lib/motion'
 import { fmtDate } from '../../lib/format'
 import { MyDeclaration, DeclarationReview } from './DeclarationsPanel'
 import { NewVersionModal, OverridesPanel } from './TaxAdminPanels'
+import { WindowAndCertificates, FilingsPanel } from './TaxNoticesPanels'
 
 interface Table { id: string; country: string; code: string; name: string; effectiveFrom: string; params: any; sourceUrl: string; sourceNote: string; verified: boolean; inForce: boolean; upcoming: boolean; company?: boolean }
 interface Col { code: string; name: string }
@@ -24,8 +25,8 @@ export default function TaxPage() {
   const { hasRole } = useAuth()
   const staff = STAFF.some((r) => hasRole(r))
   const isPayroll = hasRole('payroll_admin')
-  const [tab, setTab] = useState<'return' | 'tables' | 'overrides' | 'statement' | 'declarations' | 'declaration'>(new URLSearchParams(window.location.search).get('tab') === 'overrides' && staff ? 'overrides' : new URLSearchParams(window.location.search).get('tab') === 'declarations' && isPayroll ? 'declarations' : new URLSearchParams(window.location.search).get('tab') === 'declaration' ? 'declaration' : staff ? 'return' : 'statement')
-  const tabs = [...(staff ? [['return', 'Statutory return'], ['tables', 'Rates & sources'], ['overrides', 'Tax overrides']] : []), ['statement', staff ? 'Annual statements' : 'Annual statement'], ...(isPayroll ? [['declarations', 'Declarations']] : []), ['declaration', 'My declaration']] as [typeof tab, string][]
+  const [tab, setTab] = useState<'return' | 'tables' | 'overrides' | 'filings' | 'statement' | 'declarations' | 'declaration'>(['overrides', 'filings'].includes(new URLSearchParams(window.location.search).get('tab') ?? '') && staff ? (new URLSearchParams(window.location.search).get('tab') as 'overrides' | 'filings') : new URLSearchParams(window.location.search).get('tab') === 'declarations' && isPayroll ? 'declarations' : new URLSearchParams(window.location.search).get('tab') === 'declaration' ? 'declaration' : staff ? 'return' : 'statement')
+  const tabs = [...(staff ? [['return', 'Statutory return'], ['tables', 'Rates & sources'], ['overrides', 'Tax overrides'], ['filings', 'Filings']] : []), ['statement', staff ? 'Annual statements' : 'Annual statement'], ...(isPayroll ? [['declarations', 'Declarations']] : []), ['declaration', 'My declaration']] as [typeof tab, string][]
   const root = useReveal<HTMLDivElement>(tab)
   return (
     <div ref={root}>
@@ -36,7 +37,7 @@ export default function TaxPage() {
           </div>
         )}
       </PageHeader>
-      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'overrides' ? <OverridesPanel canDecide={hasRole('compliance_officer')} /> : tab === 'declarations' ? <DeclarationReview /> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
+      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'overrides' ? <OverridesPanel canDecide={hasRole('compliance_officer')} /> : tab === 'filings' ? <FilingsPanel /> : tab === 'declarations' ? <><WindowAndCertificates /><DeclarationReview /></> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
     </div>
   )
 }

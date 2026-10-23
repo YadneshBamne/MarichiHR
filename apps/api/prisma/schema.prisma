@@ -2769,3 +2769,52 @@ model ForumEventRsvp {
   @@unique([eventId, userId])
   @@map("forum_event_rsvps")
 }
+
+// The period in which people may submit tax declarations for a year (set by Payroll). Everyone is told when it opens
+// and reminded 3 days before it closes (daily job declaration-window); outside it, submitting is refused.
+model TaxDeclarationWindow {
+  id          String    @id @default(uuid())
+  tenantId    String
+  year        Int
+  opensOn     DateTime  @db.Date
+  closesOn    DateTime  @db.Date
+  openedAt    DateTime? // "it is open" sent
+  remindedAt  DateTime? // "closes soon" sent
+  createdBy   String
+  createdAt   DateTime  @default(now())
+
+  @@unique([tenantId, year])
+  @@map("tax_declaration_windows")
+}
+
+// Annual tax certificates released to people for a year (they are told once)
+model TaxCertificateRelease {
+  id         String   @id @default(uuid())
+  tenantId   String
+  year       Int
+  basis      String   @default("calendar") // calendar | april
+  releasedBy String
+  releasedAt DateTime @default(now())
+  people     Int      @default(0)
+
+  @@unique([tenantId, year, basis])
+  @@map("tax_certificate_releases")
+}
+
+// A statutory return filed with the authority (outside the app until the filing adapters exist): the reference the
+// authority gave, who filed it and when
+model TaxFiling {
+  id        String   @id @default(uuid())
+  tenantId  String
+  cycleId   String
+  authority String // e.g. ZRA, NAPSA, NHIMA, KRA, FIRS, Income Tax Dept
+  reference String
+  filedOn   DateTime @db.Date
+  filedBy   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, cycleId, authority])
+  @@index([tenantId])
+  @@map("tax_filings")
+}

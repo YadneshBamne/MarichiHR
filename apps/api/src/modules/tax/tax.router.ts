@@ -11,6 +11,7 @@ import { declarationsService, ItemsBody, VerifyBody } from './declarations.servi
 import { generatePayslipPdf } from '../payroll/payslip.pdf'
 import { certificateHtml } from './certificate.html'
 import { taxAdmin, TableVersionBody } from './tax-admin.service'
+import { taxNotices, WindowBody, FilingBody } from './tax-notices.service'
 
 // Tax & compliance: the statutory tables payroll uses (with sources), the statutory return for a payroll run
 // (tax and contributions per employee, CSV for filing) and each employee's annual tax statement.
@@ -151,4 +152,24 @@ taxRouter.get('/declarations/:id/proof/:documentId', validate(z.object({ params:
 }))
 taxRouter.post('/declarations/:id/verify', validate(z.object({ params: z.object({ id: z.string().uuid() }), body: VerifyBody })), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await declarationsService.verify(req.user!, String(req.params.id), req.body) })
+}))
+
+// Declaration window, certificate releases, filing status
+taxRouter.get('/declarations/window', validate(z.object({ query: z.object({ year: z.coerce.number().int().min(2000).max(2100) }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxNotices.window(req.user!, Number(req.query.year)) })
+}))
+taxRouter.put('/declarations/window', requireRoles('payroll_admin'), validate(z.object({ body: WindowBody })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxNotices.setWindow(req.user!, req.body) })
+}))
+taxRouter.get('/certificates/releases', requireRoles(...PAYROLL_STAFF), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxNotices.releases(req.user!) })
+}))
+taxRouter.post('/certificates/release', requireRoles('payroll_admin'), validate(z.object({ body: z.object({ year: z.number().int().min(2000).max(2100), basis: z.enum(['calendar', 'april']).default('calendar') }).strict() })), asyncHandler(async (req, res) => {
+  res.status(201).json({ success: true, data: await taxNotices.releaseCertificates(req.user!, req.body.year, req.body.basis) })
+}))
+taxRouter.get('/filings', requireRoles(...PAYROLL_STAFF), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxNotices.filings(req.user!) })
+}))
+taxRouter.post('/filings', requireRoles(...PAYROLL_STAFF), validate(z.object({ body: FilingBody })), asyncHandler(async (req, res) => {
+  res.status(201).json({ success: true, data: await taxNotices.recordFiling(req.user!, req.body) })
 }))

@@ -22,6 +22,7 @@ export function MyDeclaration() {
   const [year, setYear] = useState(fyNow())
   const { data: sections = [] } = useSections()
   const { data: d, isLoading } = useQuery({ queryKey: ['tax-decl', year], queryFn: async () => (await api.get('/tax/declarations/mine', { params: { year } })).data.data as Decl | null })
+  const { data: win } = useQuery({ queryKey: ['decl-window', year], queryFn: async () => (await api.get('/tax/declarations/window', { params: { year } })).data.data as { opensOn: string; closesOn: string; open: boolean } | null })
   const [items, setItems] = useState<Item[]>([])
   useEffect(() => { setItems(d?.items ?? []) }, [d])
   const editable = !d || ['draft', 'returned'].includes(d.status)
@@ -55,6 +56,7 @@ export function MyDeclaration() {
         <span style={{ flex: 1 }} />
         {d && <span className="dim" style={{ fontSize: 13 }}>Declared {n(d.declared)} · verified {n(d.verified)} · used in tax {n(d.applied)}</span>}
       </div>
+      {win && <div className={`pill ${win.open ? 'ok' : 'warn'}`} style={{ textTransform: 'none', width: 'fit-content' }}>{win.open ? `Open: submit by ${win.closesOn}` : win.opensOn > new Date().toISOString().slice(0, 10) ? `Opens on ${win.opensOn}` : `Closed on ${win.closesOn}`}</div>}
       {d?.note && <div className="well" style={{ padding: 12, fontSize: 14 }}><strong>Payroll:</strong> {d.note}</div>}
       <p className="dim" style={{ fontSize: 13 }}>Tax is worked out under India's new regime, where only the employer's NPS contribution lowers it. Other sections are recorded and verified for your records.</p>
       {isLoading ? <div className="skeleton" style={{ height: 120, borderRadius: 14 }} /> : (

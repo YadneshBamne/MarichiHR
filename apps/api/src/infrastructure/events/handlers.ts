@@ -58,6 +58,15 @@ export const EVENT_HANDLERS: Record<string, Handler[]> = {
       await postNews(e.tenantId, v?.publishedById ?? p.createdById, `${e.payload.version > 1 ? 'Updated' : 'New'} policy: ${p.title}`, `${p.title} (version ${e.payload.version}) is published.${v?.changeNote ? ` What changed: ${v.changeNote}` : ''}\n\n[Read it](/policies/${p.id})${p.requiresAcceptance ? ' and accept it' : ''}.`, ['policy'], e.id)
     },
   ],
+  // Attendance locked for a pay period: the other Payroll admins know the run can be calculated
+  'attendance.locked': [
+    async (e) => {
+      const c = await prisma.payrollCycle.findFirst({ where: { id: e.payload.payrollCycleId, tenantId: e.tenantId } })
+      if (!c) return
+      const month = c.payPeriodStart.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+      await notify({ tenantId: e.tenantId, userIds: (await userIdsWithRole(e.tenantId, 'payroll_admin')).filter((x) => x !== e.payload.lockedBy), type: 'payroll.locked', title: `Attendance locked for ${month}`, body: `${e.payload.recordsLocked} attendance records are now read-only. The payroll can be run.`, link: `/payroll/cycles/${c.id}`, entityType: 'payroll_cycle', entityId: c.id, eventId: e.id })
+    },
+  ],
   // A payroll was paid: Payroll and System admins get the confirmation; a regular run is announced in News
   'payroll.cycle.disbursed': [
     async (e) => {

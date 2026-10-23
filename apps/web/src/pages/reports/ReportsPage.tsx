@@ -40,6 +40,7 @@ export default function ReportsPage() {
     <div ref={root}>
       <PageHeader title="Reports" sub="Ready-made reports with filters and CSV export"
         actions={builder ? <Link to="/reports/builder" className="btn btn-primary btn-sm"><Icon name="plus" size={14} /> Build a report</Link> : undefined} />
+      {builder && <Kpis />}
       {saved.length > 0 && (
         <section className="card" style={{ padding: 18, marginBottom: 'var(--gap)' }}>
           <h3 style={{ fontSize: 15, marginBottom: 10 }}>Your company’s reports</h3>
@@ -139,5 +140,30 @@ export function ReportView({ r }: { r: Report }) {
         )}
       </section>
     </div>
+  )
+}
+
+// Success KPIs: how fast things happen and how many people use the app (pay ones for Payroll / System admins)
+function Kpis() {
+  const [days, setDays] = useState(90)
+  const { data } = useQuery({ queryKey: ['kpis', days], queryFn: async () => (await api.get('/reports/kpis', { params: { days } })).data.data, retry: false })
+  if (!data) return null
+  const v = (x: any, unit = '') => (x == null ? '—' : `${x}${unit}`)
+  const tiles: [string, string, string][] = [
+    ...(data.leave ? [['Leave decided in', v(data.leave.avgHours, ' h'), `${v(data.leave.within24h, '%')} within a day · ${data.leave.decided} requests`] as [string, string, string]] : []),
+    ...(data.adoption ? [['People using the app', v(data.adoption.pct, '%'), `${data.adoption.activeLast30Days} of ${data.adoption.usersWithLogin} signed in, last 30 days`] as [string, string, string]] : []),
+    ...(data.attendance ? [['Clocking in', v(data.attendance.pct, '%'), `${data.attendance.clockedInLast30Days} of ${data.attendance.employees} people, last 30 days`] as [string, string, string]] : []),
+    ...(data.policies ? [['Policies accepted', v(data.policies.acceptedPct, '%'), `${data.policies.overdue} past their due date`] as [string, string, string]] : []),
+    ...(data.attrition ? [['Attrition', v(data.attrition.pctOfHeadcount, '%'), `${data.attrition.leavers} leavers in the period`] as [string, string, string]] : []),
+    ...(data.payroll ? [['Payroll: open to paid', v(data.payroll.avgDaysOpenToPaid, ' days'), `paid ${v(data.payroll.avgDaysAfterPeriodEnd, ' days')} after the period ends · ${data.payroll.runs} runs`] as [string, string, string]] : []),
+    ...(data.expenses ? [['Expense claims paid in', v(data.expenses.avgDaysToPay, ' days'), `${data.expenses.paid} claims`] as [string, string, string]] : []),
+  ]
+  return (
+    <section className="card" style={{ padding: 18, marginBottom: 'var(--gap)', display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><h3 style={{ fontSize: 15, flex: 1 }}>How things are going</h3>{[30, 90, 365].map((d) => <button key={d} className={`btn btn-sm ${days === d ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setDays(d)}>{d === 365 ? 'Year' : `${d} days`}</button>)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+        {tiles.map(([l, big, small]) => <div key={l} className="well" style={{ padding: 14, borderRadius: 14 }}><div className="dim" style={{ fontSize: 12 }}>{l}</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 26 }}>{big}</div><div className="dim" style={{ fontSize: 12 }}>{small}</div></div>)}
+      </div>
+    </section>
   )
 }

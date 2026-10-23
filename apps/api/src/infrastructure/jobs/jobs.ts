@@ -14,6 +14,7 @@ import { publishPeopleDates } from '../../modules/automation/automation.service'
 import { retryWebhooks } from '../../modules/automation/integrations.service'
 import { leaveExtras } from '../../modules/leave/leave-extras.service'
 import { leaveAttendanceCheck } from '../../modules/leave/leave-rules'
+import { declarationWindowJob } from '../../modules/tax/tax-notices.service'
 
 import { attendanceExtras } from '../../modules/attendance/attendance-extras.service'
 // Optionally only companies that installed a given app
@@ -108,6 +109,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '45 1 * * *',
     description: 'Carried-forward leave not used within the leave type\'s expiry window lapses (once per person and type)',
     run: (t) => perTenant(t, (id) => leaveExtras.expireCarryForward(id), 'leave'),
+  },
+  'declaration-window': {
+    pattern: '0 5 * * *',
+    description: 'Tax declaration window: tells everyone when it opens and reminds people who have not submitted 3 days before it closes (each once)',
+    run: (t) => perTenant(t, (id) => declarationWindowJob(id), 'payroll'),
   },
   'leave-accrual': {
     pattern: '0 2 * * *',

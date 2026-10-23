@@ -5,6 +5,7 @@ import { notify, userIdsWithRole, userIdOfEmployee } from '../../infrastructure/
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, assertCompensationAccess } from '../../shared/utils/access'
 import { storage } from '../../infrastructure/storage/storage'
+import { assertWindowOpen } from './tax-notices.service'
 
 // Tax declarations: each person lists what they will invest or claim this year, with proof documents; a Payroll
 // admin verifies each line (accepting all or part of it) or returns the declaration. Verified amounts in sections
@@ -101,6 +102,7 @@ export const declarationsService = {
   },
 
   async submit(u: AccessUser, year: number) {
+    await assertWindowOpen(u.tenantId, year)
     if (!u.employeeId) throw new AppError('Only employees declare', 403)
     const d = await prisma.taxDeclaration.findUnique({ where: { tenantId_employeeId_year: { tenantId: u.tenantId, employeeId: u.employeeId, year } } })
     if (!d || !(d.items as unknown as Item[]).length) throw new AppError('Add at least one item first', 400)

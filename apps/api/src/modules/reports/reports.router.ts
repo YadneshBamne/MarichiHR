@@ -7,6 +7,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { prisma } from '../../infrastructure/database/prisma'
 import { REPORTS, Report, reportCatalog } from './reports.service'
 import { reportBuilder, BuilderDefinition } from './builder.service'
+import { kpis } from './kpis.service'
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const Run = z.object({
@@ -33,6 +34,10 @@ reportsRouter.get('/payroll/cycles', asyncHandler(async (req, res) => {
   if (!req.user!.roleIds.some((r) => REPORTS.payroll.roles.includes(r))) throw new AppError('Not allowed to view this report', 403)
   const cycles = await prisma.payrollCycle.findMany({ where: { tenantId: req.user!.tenantId, status: { notIn: ['draft'] } }, select: { id: true, payPeriodStart: true, payPeriodEnd: true, status: true }, orderBy: { payPeriodStart: 'desc' }, take: 36 })
   res.json({ success: true, data: cycles })
+}))
+// Success KPIs (declared before /:key)
+reportsRouter.get('/kpis', validate(z.object({ query: z.object({ days: z.coerce.number().int().min(7).max(365).default(90) }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await kpis(req.user!, Number(req.query.days) || 90) })
 }))
 // Report builder: fields, preview, saved reports (declared before /:key)
 const Id = z.object({ params: z.object({ id: z.string().uuid() }) })
