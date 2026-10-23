@@ -9,6 +9,27 @@ import { normaliseDateInput } from '../../shared/utils/businessDate'
 export interface PolicyIn {
   title: string; category?: string; body: string; changeNote?: string
   departmentIds?: string[]; workLocationIds?: string[]; requiresAcceptance?: boolean; acceptWithinDays?: number
+  critical?: boolean; countries?: string[]; ownerUserId?: string | null
+}
+
+// Policy owner (e.g. Legal or IT) must be an active login of the company
+async function assertOwner(tenantId: string, ownerUserId?: string | null) {
+  if (ownerUserId && !(await prisma.user.findFirst({ where: { id: ownerUserId, tenantId, active: true } }))) throw new AppError('Policy owner not found', 404)
+}
+
+// Critical policies the person still has to accept, cached a minute per person (cleared when they accept or a
+// critical policy is published). ponytail: per-process cache; with several API instances a new block can take a minute.
+const blockCache = new Map<string, { at: number; rows: { id: string; title: string }[] }>()
+export const clearPolicyBlocks = (userId?: string) => (userId ? blockCache.delete(userId) : blockCache.clear())
+export async function blockingPolicies(user: AccessUser) {
+  const hit = blockCache.get(user.userId)
+  if (hit && Date.now() - hit.at < 60_000) return hit.rows
+  const rows = await prisma.policy.findMany({ where: { tenantId: user.tenantId, active: true, critical: true, requiresAcceptance: true, versions: { some: { status: 'published' } } }, select: { id: true, title: true, departmentIds: true, workLocationIds: true, countries: true, versions: { where: { status: 'published' }, select: { acceptances: { where: { userId: user.userId }, select: { id: true } } } } } })
+  const open = rows.filter((p) => !p.versions[0]?.acceptances.length)
+  const scope = open.length ? await scopeOf(user.tenantId, user.employeeId) : null
+  const out = open.filter((p) => inAudience(p, scope!)).map((p) => ({ id: p.id, title: p.title }))
+  blockCache.set(user.userId, { at: Date.now(), rows: out })
+  return out
 }
 
 const DAY = 86_400_000
@@ -43,7 +64,7 @@ export const policyService = {
       const due = p.requiresAcceptance ? dueOf(v.publishedAt, p.acceptWithinDays) : null
       return {
         id: p.id, title: p.title, category: p.category, version: v.version, effectiveFrom: ymd(v.effectiveFrom), publishedAt: v.publishedAt,
-        requiresAcceptance: p.requiresAcceptance, acceptedAt, dueDate: ymd(due),
+        requiresAcceptance: p.requiresAcceptance, critical: p.critical, acceptedAt, dueDate: ymd(due),
         status: !p.requiresAcceptance ? 'info' : acceptedAt ? 'accepted' : due && due < now ? 'overdue' : 'pending',
       }
     })
@@ -63,7 +84,7 @@ export const policyService = {
     const show = (v: typeof p.versions[number]) => ({ id: v.id, version: v.version, body: v.body, changeNote: v.changeNote, status: v.status, effectiveFrom: ymd(v.effectiveFrom), publishedAt: v.publishedAt })
     return {
       id: p.id, title: p.title, category: p.category, requiresAcceptance: p.requiresAcceptance, acceptWithinDays: p.acceptWithinDays,
-      departmentIds: p.departmentIds, workLocationIds: p.workLocationIds,
+      departmentIds: p.departmentIds, workLocationIds: p.workLocationIds, critical: p.critical, countries: p.countries, ownerUserId: p.ownerUserId,
       current: cur ? show(cur) : null,
       draft: isHR && draft(p) ? show(draft(p)!) : null,
       history: p.versions.filter((v) => v.status !== 'draft').map(show),
@@ -87,7 +108,7 @@ export const policyService = {
       const accepted = cur ? cur.acceptances.filter((a) => ids.has(a.userId)).length : 0
       const due = cur ? dueOf(cur.publishedAt, p.acceptWithinDays) : null
       return {
-        id: p.id, title: p.title, category: p.category, requiresAcceptance: p.requiresAcceptance,
+        id: p.id, title: p.title, category: p.category, requiresAcceptance: p.requiresAcceptance, critical: p.critical, countries: p.countries,
         version: cur?.version ?? null, publishedAt: cur?.publishedAt ?? null, hasDraft: !!draft(p),
         audience: audience.length, accepted, pending: p.requiresAcceptance && cur ? audience.length - accepted : 0,
         overdue: !!(p.requiresAcceptance && cur && due && due < now && accepted < audience.length), dueDate: ymd(due),
@@ -97,10 +118,13 @@ export const policyService = {
 
   async create(user: AccessUser, body: PolicyIn) {
     if (!(await assertTargets(user.tenantId, body))) throw new AppError('Unknown department or office', 404)
+    await assertOwner(user.tenantId, body.ownerUserId)
+    if (body.critical && body.requiresAcceptance === false) throw new AppError('A critical policy needs acceptance', 400)
     const p = await prisma.policy.create({
       data: {
         tenantId: user.tenantId, title: body.title, category: body.category || 'General', departmentIds: body.departmentIds ?? [], workLocationIds: body.workLocationIds ?? [],
         requiresAcceptance: body.requiresAcceptance ?? true, acceptWithinDays: body.acceptWithinDays ?? 7, createdById: user.userId,
+        critical: body.critical ?? false, countries: body.countries ?? [], ownerUserId: body.ownerUserId ?? null,
         versions: { create: { version: 1, body: body.body, changeNote: body.changeNote ?? null } },
       },
     })
@@ -112,8 +136,11 @@ export const policyService = {
     await find(user, id)
     if ((body.departmentIds || body.workLocationIds) && !(await assertTargets(user.tenantId, body))) throw new AppError('Unknown department or office', 404)
     const data: Record<string, unknown> = {}
-    for (const k of ['title', 'category', 'departmentIds', 'workLocationIds', 'requiresAcceptance', 'acceptWithinDays'] as const) if (body[k] !== undefined) data[k] = body[k]
+    await assertOwner(user.tenantId, body.ownerUserId)
+    for (const k of ['title', 'category', 'departmentIds', 'workLocationIds', 'requiresAcceptance', 'acceptWithinDays', 'critical', 'countries', 'ownerUserId'] as const) if (body[k] !== undefined) data[k] = body[k]
+    if (data.critical === true && body.requiresAcceptance === false) throw new AppError('A critical policy needs acceptance', 400)
     const p = await prisma.policy.update({ where: { id }, data })
+    if (data.critical !== undefined || data.countries || data.departmentIds || data.workLocationIds) clearPolicyBlocks()
     await audit(user, 'POLICY_UPDATED', id, data)
     return p
   },
@@ -139,6 +166,7 @@ export const policyService = {
       prisma.policyVersion.update({ where: { id: d.id }, data: { status: 'published', publishedAt: now, publishedById: user.userId, effectiveFrom: effectiveFrom ? normaliseDateInput(effectiveFrom) : normaliseDateInput(now.toISOString().slice(0, 10)) } }),
     ])
     await audit(user, 'POLICY_PUBLISHED', id, { version: d.version })
+    if (p.critical) clearPolicyBlocks()
     await eventBus.publish(user.tenantId, 'policy.published', { policyId: id, version: d.version })
     return { published: true, version: d.version }
   },
@@ -153,6 +181,7 @@ export const policyService = {
       create: { policyVersionId: cur.id, userId: user.userId },
       update: {},
     })
+    clearPolicyBlocks(user.userId)
     return { accepted: true, version: cur.version, acceptedAt: a.acceptedAt }
   },
 
@@ -180,9 +209,21 @@ export const policyService = {
     return { reminded: pending.length }
   },
 
+  // Organisation-wide acknowledgement report: every policy that asks for acceptance, and who is still missing
+  async report(user: AccessUser) {
+    const rows = (await policyService.manage(user)).filter((p) => p.requiresAcceptance && p.version != null)
+    const missing = await Promise.all(rows.map(async (p) => ({ policyId: p.id, people: (await policyService.acceptances(user, p.id)).filter((x) => !x.acceptedAt).map((x) => x.name) })))
+    const totals = rows.reduce((a, p) => ({ audience: a.audience + p.audience, accepted: a.accepted + p.accepted }), { audience: 0, accepted: 0 })
+    return {
+      totals: { policies: rows.length, ...totals, rate: totals.audience ? Math.round((totals.accepted / totals.audience) * 100) : 100, overdue: rows.filter((p) => p.overdue).length },
+      policies: rows.map((p) => ({ ...p, rate: p.audience ? Math.round((p.accepted / p.audience) * 100) : 100, missing: missing.find((m) => m.policyId === p.id)!.people })),
+    }
+  },
+
   async archive(user: AccessUser, id: string) {
     await find(user, id)
     await prisma.policy.update({ where: { id }, data: { active: false } })
+    clearPolicyBlocks()
     await audit(user, 'POLICY_ARCHIVED', id)
     return { archived: true }
   },

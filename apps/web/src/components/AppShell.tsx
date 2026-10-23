@@ -21,6 +21,8 @@ const COLLAPSE_KEY = 'marichihr.sidebar.collapsed'
 export default function AppShell() {
   const { user, logout } = useAuth()
   const location = useLocation()
+  // Critical policies not yet accepted: everything else waits until they are
+  const { data: blocking = [] } = useQuery({ queryKey: ['policy-blocking'], queryFn: async () => (await api.get('/policies/blocking')).data.data as { id: string; title: string }[], staleTime: 60_000 })
   const navigate = useNavigate()
   const roles = user?.roles?.map((r) => r.name) ?? []
   const apps = user?.tenant?.modules ?? []
@@ -120,7 +122,7 @@ export default function AppShell() {
         </header>
 
         <main id="main" ref={main} tabIndex={-1} style={{ outline: 'none', marginTop: 20 }}>
-          <Outlet />
+          {blocking.length > 0 && !location.pathname.startsWith('/policies') ? <PolicyGate rows={blocking} /> : <Outlet />}
         </main>
       </div>
 
@@ -228,4 +230,15 @@ const s: Record<string, React.CSSProperties> = {
   kbd: { fontSize: 10.5, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--line-2)', color: 'var(--faint)', fontFamily: 'var(--font-body)' },
   avatarBtn: { border: 'none', background: 'none', padding: 0, borderRadius: '50%', display: 'inline-flex', boxShadow: '0 0 0 3px var(--card-2)' },
   menuItem: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', borderRadius: 12, border: 'none', background: 'none', fontSize: 13, color: 'var(--ink)', textAlign: 'left' },
+}
+
+function PolicyGate({ rows }: { rows: { id: string; title: string }[] }) {
+  return (
+    <section className="card" style={{ padding: 28, maxWidth: 620, margin: '40px auto', display: 'grid', gap: 14 }}>
+      <Icon name="shield" size={26} />
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 500 }}>Before you continue</h1>
+      <p className="dim" style={{ fontSize: 14 }}>Your company asks everyone to read and accept {rows.length === 1 ? 'this policy' : 'these policies'} before using MarichiHR.</p>
+      <div style={{ display: 'grid', gap: 8 }}>{rows.map((p) => <Link key={p.id} className="btn btn-primary" style={{ justifyContent: 'space-between' }} to={`/policies/${p.id}`}>{p.title} <Icon name="arrowRight" size={16} /></Link>)}</div>
+    </section>
+  )
 }

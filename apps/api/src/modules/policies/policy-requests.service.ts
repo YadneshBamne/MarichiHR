@@ -30,24 +30,29 @@ export const policyRequestsService = {
   async ask(u: AccessUser, b: z.infer<typeof QueryBody>) {
     if (b.policyId && !(await prisma.policy.findFirst({ where: { id: b.policyId, tenantId: u.tenantId, active: true } }))) throw new AppError('Policy not found', 404)
     const q = await prisma.policyQuery.create({ data: { tenantId: u.tenantId, policyId: b.policyId ?? null, askedByUserId: u.userId, question: b.question, dueAt: new Date(Date.now() + QUERY_SLA_HOURS * 3_600_000) } })
-    await notify({ tenantId: u.tenantId, userIds: (await userIdsWithRole(u.tenantId, 'hr_admin')).filter((x) => x !== u.userId), type: 'policy.query', title: 'New policy question', body: b.question.slice(0, 160), link: '/policies?tab=queries', entityType: 'policy_query', entityId: q.id })
+    // Routed to the policy's owner (e.g. Legal or IT) when it has one, else to HR
+    const owner = b.policyId ? (await prisma.policy.findFirst({ where: { id: b.policyId, tenantId: u.tenantId }, select: { ownerUserId: true } }))?.ownerUserId : null
+    const to = owner && owner !== u.userId ? [owner] : (await userIdsWithRole(u.tenantId, 'hr_admin')).filter((x) => x !== u.userId)
+    await notify({ tenantId: u.tenantId, userIds: to, type: 'policy.query', title: 'New policy question', body: b.question.slice(0, 160), link: '/policies?tab=queries', entityType: 'policy_query', entityId: q.id })
     return q
   },
-  async queries(u: AccessUser, scope: 'mine' | 'all') {
+  async queries(u: AccessUser, scope: 'mine' | 'all' | 'owned') {
     if (scope === 'all' && !isHR(u)) throw new AppError('Only HR sees every question', 403)
-    const rows = await prisma.policyQuery.findMany({ where: { tenantId: u.tenantId, ...(scope === 'mine' && { askedByUserId: u.userId }) }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], take: 300 })
+    const owned = scope === 'owned' ? (await prisma.policy.findMany({ where: { tenantId: u.tenantId, ownerUserId: u.userId }, select: { id: true } })).map((p) => p.id) : []
+    const rows = await prisma.policyQuery.findMany({ where: { tenantId: u.tenantId, ...(scope === 'mine' && { askedByUserId: u.userId }), ...(scope === 'owned' && { policyId: { in: owned } }) }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], take: 300 })
     const [titles, users] = await Promise.all([policyTitles(u.tenantId, rows.map((r) => r.policyId)), prisma.user.findMany({ where: { id: { in: rows.flatMap((r) => [r.askedByUserId, r.answeredBy].filter(Boolean) as string[]) } }, select: { id: true, fullName: true } })])
     const nm = new Map(users.map((x) => [x.id, x.fullName]))
     const now = new Date()
     return rows.map((r) => ({ ...r, policy: r.policyId ? titles.get(r.policyId) ?? null : null, askedBy: nm.get(r.askedByUserId) ?? null, answeredByName: r.answeredBy ? nm.get(r.answeredBy) ?? null : null, overdue: r.status === 'open' && r.dueAt < now }))
   },
   async answer(u: AccessUser, id: string, answer: string, close: boolean) {
-    if (!isHR(u)) throw new AppError('Only HR answers policy questions', 403)
     const q = await prisma.policyQuery.findFirst({ where: { id, tenantId: u.tenantId } })
     if (!q) throw new AppError('Question not found', 404)
+    const owner = q.policyId ? (await prisma.policy.findFirst({ where: { id: q.policyId, tenantId: u.tenantId }, select: { ownerUserId: true } }))?.ownerUserId : null
+    if (!isHR(u) && owner !== u.userId) throw new AppError('Only HR or the policy owner answers this question', 403)
     if (q.status === 'closed') throw new AppError('This question is closed', 400)
     const updated = await prisma.policyQuery.update({ where: { id }, data: { answer, answeredBy: u.userId, answeredAt: new Date(), status: close ? 'closed' : 'answered' } })
-    await notify({ tenantId: u.tenantId, userIds: [q.askedByUserId], type: 'policy.query', title: 'HR answered your policy question', body: answer.slice(0, 160), link: '/policies?tab=queries', entityType: 'policy_query', entityId: id })
+    await notify({ tenantId: u.tenantId, userIds: [q.askedByUserId], type: 'policy.query', title: 'Your policy question was answered', body: answer.slice(0, 160), link: '/policies?tab=queries', entityType: 'policy_query', entityId: id })
     return updated
   },
 

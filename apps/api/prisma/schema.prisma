@@ -1386,6 +1386,9 @@ model Policy {
   workLocationIds    String[] @default([])
   requiresAcceptance Boolean  @default(true)
   acceptWithinDays   Int      @default(7)
+  critical           Boolean  @default(false) // the app is blocked (except policies) until the person accepts the current version
+  countries          String[] @default([]) // country variant: only people in these countries (empty = all)
+  ownerUserId        String? // who answers questions on it (e.g. Legal or IT); HR when empty
   active             Boolean  @default(true)
   createdById        String
   createdAt          DateTime @default(now())

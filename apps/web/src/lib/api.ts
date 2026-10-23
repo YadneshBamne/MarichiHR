@@ -68,6 +68,10 @@ api.interceptors.response.use(
     const originalRequest = error.config
 
     // A temporary password must be replaced before anything else works
+    if (error.response?.status === 403 && error.response?.data?.code === 'POLICY_ACCEPTANCE_REQUIRED' && !window.location.pathname.startsWith('/policies')) {
+      window.location.href = '/dashboard' // the shell shows the policies to accept
+      return Promise.reject(error)
+    }
     if (error.response?.status === 403 && error.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED' && window.location.pathname !== '/change-password') {
       window.location.href = '/change-password'
       return Promise.reject(error)

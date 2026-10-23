@@ -1,10 +1,11 @@
 import { prisma } from '../../infrastructure/database/prisma'
 
-// Targeting by department and office (announcements, policies). Empty lists mean "everyone". A department target
+// Targeting by department, office and country (announcements, policies). Empty lists mean "everyone". A person's
+// country is their tax jurisdiction, else the company's main country. A department target
 // includes its sub-units. People without an employee record (e.g. finance-only logins) only see company-wide items.
 
-export interface Targeted { departmentIds: string[]; workLocationIds: string[] }
-export interface Scope { units: Set<string>; workLocationId: string | null }
+export interface Targeted { departmentIds: string[]; workLocationIds: string[]; countries?: string[] }
+export interface Scope { units: Set<string>; workLocationId: string | null; country?: string | null }
 
 async function unitParents(tenantId: string) {
   const units = await prisma.orgUnit.findMany({ where: { tenantId }, select: { id: true, parentId: true } })
@@ -21,28 +22,30 @@ function chain(parents: Map<string, string | null>, unitId: string | null) {
 export async function scopeOf(tenantId: string, employeeId?: string | null): Promise<Scope> {
   if (!employeeId) return { units: new Set(), workLocationId: null }
   const [emp, parents] = await Promise.all([
-    prisma.employee.findFirst({ where: { id: employeeId, tenantId }, select: { orgUnitId: true, workLocationId: true } }),
+    prisma.employee.findFirst({ where: { id: employeeId, tenantId }, select: { orgUnitId: true, workLocationId: true, taxJurisdiction: true, tenant: { select: { primaryCountry: true } } } }),
     unitParents(tenantId),
   ])
-  return { units: chain(parents, emp?.orgUnitId ?? null), workLocationId: emp?.workLocationId ?? null }
+  return { units: chain(parents, emp?.orgUnitId ?? null), workLocationId: emp?.workLocationId ?? null, country: emp?.taxJurisdiction ?? emp?.tenant.primaryCountry ?? null }
 }
 
 export const inAudience = (t: Targeted, s: Scope) =>
   (!t.departmentIds.length || t.departmentIds.some((d) => s.units.has(d))) &&
-  (!t.workLocationIds.length || (!!s.workLocationId && t.workLocationIds.includes(s.workLocationId)))
+  (!t.workLocationIds.length || (!!s.workLocationId && t.workLocationIds.includes(s.workLocationId))) &&
+  (!t.countries?.length || (!!s.country && t.countries.includes(s.country)))
 
 // Every active login in the audience (for notifications and read tracking)
 export async function audienceUsers(tenantId: string, t: Targeted) {
-  const [users, parents] = await Promise.all([
+  const [users, parents, tenant] = await Promise.all([
     prisma.user.findMany({
       where: { tenantId, active: true },
-      select: { id: true, fullName: true, employee: { select: { id: true, orgUnitId: true, workLocationId: true, active: true } } },
+      select: { id: true, fullName: true, employee: { select: { id: true, orgUnitId: true, workLocationId: true, taxJurisdiction: true, active: true } } },
     }),
     unitParents(tenantId),
+    prisma.tenant.findUnique({ where: { id: tenantId }, select: { primaryCountry: true } }),
   ])
   return users.filter((u) => {
     if (u.employee && !u.employee.active) return false
-    const s: Scope = u.employee ? { units: chain(parents, u.employee.orgUnitId), workLocationId: u.employee.workLocationId } : { units: new Set(), workLocationId: null }
+    const s: Scope = u.employee ? { units: chain(parents, u.employee.orgUnitId), workLocationId: u.employee.workLocationId, country: u.employee.taxJurisdiction ?? tenant?.primaryCountry ?? null } : { units: new Set(), workLocationId: null }
     return inAudience(t, s)
   })
 }

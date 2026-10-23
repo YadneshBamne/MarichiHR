@@ -15,31 +15,31 @@ export function PolicyQueries({ hr }: { hr: boolean }) {
   const toast = useToast()
   const qc = useQueryClient()
   const { data: policies = [] } = usePolicies()
-  const [scope, setScope] = useState<'mine' | 'all'>(hr ? 'all' : 'mine')
+  const [scope, setScope] = useState<'mine' | 'all' | 'owned'>(hr ? 'all' : 'mine')
   const [f, setF] = useState({ policyId: '', question: '' })
   const [answering, setAnswering] = useState<any>(null)
   const { data = [], isLoading } = useQuery({ queryKey: ['policy-queries', scope], queryFn: async () => (await api.get('/policies/queries', { params: { scope } })).data.data as any[] })
   const ask = useMutation({
     mutationFn: () => api.post('/policies/queries', { question: f.question.trim(), ...(f.policyId && { policyId: f.policyId }) }),
-    onSuccess: () => { toast('Sent to HR'); setF({ policyId: '', question: '' }); qc.invalidateQueries({ queryKey: ['policy-queries'] }) },
+    onSuccess: () => { toast('Sent'); setF({ policyId: '', question: '' }); qc.invalidateQueries({ queryKey: ['policy-queries'] }) },
     onError: (e) => toast(errMsg(e), 'error'),
   })
   return (
     <div style={{ display: 'grid', gap: 'var(--gap)' }}>
       <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 10 }}>
-        <h3 style={{ fontSize: 16 }}>Ask HR about a policy</h3>
+        <h3 style={{ fontSize: 16 }}>Ask about a policy</h3>
         <select className="input" value={f.policyId} onChange={(e) => setF({ ...f, policyId: e.target.value })} aria-label="Policy"><option value="">General question</option>{policies.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>
         <textarea className="input" rows={3} value={f.question} onChange={(e) => setF({ ...f, question: e.target.value })} placeholder="Your question" style={{ height: 'auto', padding: 12 }} maxLength={2000} />
-        <div><button className="btn btn-primary btn-sm" disabled={ask.isPending || f.question.trim().length < 5} onClick={() => ask.mutate()}>Ask</button> <span className="dim" style={{ fontSize: 12 }}>HR aims to answer within 3 days.</span></div>
+        <div><button className="btn btn-primary btn-sm" disabled={ask.isPending || f.question.trim().length < 5} onClick={() => ask.mutate()}>Ask</button> <span className="dim" style={{ fontSize: 12 }}>The policy’s owner (HR unless another person is named) aims to answer within 3 days.</span></div>
       </section>
       <section data-card className="card" style={{ padding: 8 }}>
-        {hr && <div className="chips" style={{ padding: 8 }}>{(['all', 'mine'] as const).map((s) => <button key={s} className={`chip${scope === s ? ' is-on' : ''}`} onClick={() => setScope(s)}>{s === 'all' ? 'Everyone' : 'Mine'}</button>)}</div>}
+        <div className="chips" style={{ padding: 8 }}>{((hr ? ['all', 'mine', 'owned'] : ['mine', 'owned']) as ('all' | 'mine' | 'owned')[]).map((s) => <button key={s} className={`chip${scope === s ? ' is-on' : ''}`} onClick={() => setScope(s)}>{s === 'all' ? 'Everyone' : s === 'owned' ? 'About policies I own' : 'Mine'}</button>)}</div>
         {isLoading ? <div className="skeleton" style={{ height: 100, borderRadius: 14 }} /> : !data.length ? <p className="dim" style={{ padding: 14 }}>No questions yet.</p> : data.map((q) => (
           <div key={q.id} style={{ padding: 12, borderBottom: '1px solid var(--line)', display: 'grid', gap: 6 }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}><span className={`pill ${QS[q.status]}`}>{q.status}</span>{q.overdue && <span className="pill danger">Overdue</span>}{q.policy && <span className="pill mute">{q.policy}</span>}<span className="dim" style={{ fontSize: 12 }}>{scope === 'all' ? `${q.askedBy} · ` : ''}{when(q.createdAt)}</span></div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}><span className={`pill ${QS[q.status]}`}>{q.status}</span>{q.overdue && <span className="pill danger">Overdue</span>}{q.policy && <span className="pill mute">{q.policy}</span>}<span className="dim" style={{ fontSize: 12 }}>{scope !== 'mine' ? `${q.askedBy} · ` : ''}{when(q.createdAt)}</span></div>
             <p style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{q.question}</p>
             {q.answer && <div className="well" style={{ padding: 10, fontSize: 14 }}><strong>{q.answeredByName ?? 'HR'}:</strong> {q.answer}</div>}
-            {hr && scope === 'all' && q.status !== 'closed' && <div><button className="btn btn-ghost btn-sm" onClick={() => setAnswering(q)}>{q.answer ? 'Update answer' : 'Answer'}</button></div>}
+            {((hr && scope === 'all') || scope === 'owned') && q.status !== 'closed' && <div><button className="btn btn-ghost btn-sm" onClick={() => setAnswering(q)}>{q.answer ? 'Update answer' : 'Answer'}</button></div>}
           </div>
         ))}
       </section>

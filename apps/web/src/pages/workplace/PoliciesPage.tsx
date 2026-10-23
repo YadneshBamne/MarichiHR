@@ -13,10 +13,10 @@ import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 import { flattenUnits } from './AnnouncementsPage'
 
-interface Mine { id: string; title: string; category: string; version: number; effectiveFrom: string | null; requiresAcceptance: boolean; acceptedAt: string | null; dueDate: string | null; status: 'accepted' | 'pending' | 'overdue' | 'info' }
+interface Mine { id: string; title: string; category: string; version: number; effectiveFrom: string | null; requiresAcceptance: boolean; critical?: boolean; acceptedAt: string | null; dueDate: string | null; status: 'accepted' | 'pending' | 'overdue' | 'info' }
 interface Managed { id: string; title: string; category: string; requiresAcceptance: boolean; version: number | null; publishedAt: string | null; hasDraft: boolean; audience: number; accepted: number; pending: number; overdue: boolean; dueDate: string | null }
 interface Version { id: string; version: number; body: string; changeNote: string | null; status: string; effectiveFrom: string | null; publishedAt: string | null }
-interface Detail { id: string; title: string; category: string; requiresAcceptance: boolean; acceptWithinDays: number; departmentIds: string[]; workLocationIds: string[]; current: Version | null; draft: Version | null; history: Version[]; acceptedAt: string | null; dueDate: string | null }
+interface Detail { id: string; title: string; category: string; requiresAcceptance: boolean; acceptWithinDays: number; departmentIds: string[]; workLocationIds: string[]; critical?: boolean; countries?: string[]; ownerUserId?: string | null; current: Version | null; draft: Version | null; history: Version[]; acceptedAt: string | null; dueDate: string | null }
 
 const CATEGORIES = ['General', 'Code of conduct', 'Leave & attendance', 'Travel & expenses', 'IT & security', 'Health & safety', 'Payroll & benefits']
 const day = (d: string | null) => (d ? new Date(`${d.slice(0, 10)}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }) : '')
@@ -24,9 +24,11 @@ const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 const STATUS: Record<Mine['status'], [string, string]> = { accepted: ['ok', 'Accepted'], pending: ['warn', 'To accept'], overdue: ['danger', 'Overdue'], info: ['mute', 'For information'] }
 const useIsAdmin = () => { const { hasRole } = useAuth(); return hasRole('hr_admin') || hasRole('system_admin') }
 
+const COUNTRIES: Record<string, string> = { ZM: 'Zambia', IN: 'India', KE: 'Kenya', NG: 'Nigeria', ZA: 'South Africa', TZ: 'Tanzania', UG: 'Uganda', GH: 'Ghana', AE: 'UAE', GB: 'UK', US: 'USA' }
+
 export default function PoliciesPage() {
   const isAdmin = useIsAdmin()
-  const [tab, setTab] = useState<'mine' | 'manage' | 'queries' | 'exceptions'>(() => { const t = new URLSearchParams(window.location.search).get('tab'); return t === 'queries' || t === 'exceptions' ? t : 'mine' })
+  const [tab, setTab] = useState<'mine' | 'manage' | 'report' | 'queries' | 'exceptions'>(() => { const t = new URLSearchParams(window.location.search).get('tab'); return t === 'queries' || t === 'exceptions' ? t : 'mine' })
   const [creating, setCreating] = useState(false)
   const root = useReveal<HTMLDivElement>(tab)
   return (
@@ -35,11 +37,11 @@ export default function PoliciesPage() {
         actions={isAdmin ? <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New policy</button> : undefined}>
         {(
           <div role="tablist" style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-            {([['mine', 'My policies'], ...(isAdmin ? [['manage', 'Manage']] : []), ['queries', 'Questions'], ['exceptions', 'Exceptions']] as [typeof tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+            {([['mine', 'My policies'], ...(isAdmin ? [['manage', 'Manage'], ['report', 'Acceptance report']] : []), ['queries', 'Questions'], ['exceptions', 'Exceptions']] as [typeof tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
           </div>
         )}
       </PageHeader>
-      {tab === 'mine' ? <MyPolicies /> : tab === 'manage' ? <ManagePolicies /> : tab === 'queries' ? <PolicyQueries hr={isAdmin} /> : <PolicyExceptions hr={isAdmin} />}
+      {tab === 'mine' ? <MyPolicies /> : tab === 'manage' ? <ManagePolicies /> : tab === 'report' ? <AcceptanceReport /> : tab === 'queries' ? <PolicyQueries hr={isAdmin} /> : <PolicyExceptions hr={isAdmin} />}
       {creating && <PolicyForm onClose={() => setCreating(false)} />}
     </div>
   )
@@ -68,7 +70,7 @@ function MyPolicies() {
                 <span style={{ display: 'block', fontWeight: 500 }}>{p.title}</span>
                 <span className="dim" style={{ fontSize: 12 }}>Version {p.version}{p.effectiveFrom ? ` · effective ${day(p.effectiveFrom)}` : ''}{p.status === 'accepted' && p.acceptedAt ? ` · accepted ${day(p.acceptedAt)}` : (p.status === 'pending' || p.status === 'overdue') && p.dueDate ? ` · accept by ${day(p.dueDate)}` : ''}</span>
               </span>
-              <span className={`pill ${STATUS[p.status][0]}`}>{STATUS[p.status][1]}</span>
+              {p.critical && p.status !== 'accepted' && <span className="pill danger">required</span>} <span className={`pill ${STATUS[p.status][0]}`}>{STATUS[p.status][1]}</span>
             </Link>
           ))}
         </section>
@@ -113,7 +115,7 @@ export function PolicyPage() {
   const [drafting, setDrafting] = useState(false)
   const [showOld, setShowOld] = useState<string | null>(null)
   const root = useReveal<HTMLDivElement>(isLoading)
-  const refresh = () => { qc.invalidateQueries({ queryKey: ['policy', id] }); qc.invalidateQueries({ queryKey: ['policies'] }); qc.invalidateQueries({ queryKey: ['policies-manage'] }); qc.invalidateQueries({ queryKey: ['nav-counts'] }) }
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['policy-blocking'] }); qc.invalidateQueries({ queryKey: ['policy', id] }); qc.invalidateQueries({ queryKey: ['policies'] }); qc.invalidateQueries({ queryKey: ['policies-manage'] }); qc.invalidateQueries({ queryKey: ['nav-counts'] }) }
   const act = useMutation({ mutationFn: async (f: () => Promise<any>) => f(), onSuccess: refresh, onError: (e) => toast(errMsg(e), 'error') })
   if (isLoading) return <div className="skeleton" style={{ height: 240, borderRadius: 22 }} />
   if (error || !p) return <section className="card" style={{ padding: 28 }}><h2>Policy not found</h2><Link to="/policies" className="link">Back to policies</Link></section>
@@ -166,6 +168,17 @@ export function PolicyPage() {
                 </div>
               ) : <button className="btn btn-ghost btn-sm" onClick={() => setDrafting(true)}><Icon name="file" size={14} /> Write a new version</button>}
               <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><Icon name="sliders" size={14} /> Title, category & audience</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => {
+                const code = window.prompt(`Country for the variant (${Object.keys(COUNTRIES).join(', ')})`)?.trim().toUpperCase()
+                if (!code) return
+                if (!COUNTRIES[code]) { toast('Use one of: ' + Object.keys(COUNTRIES).join(', '), 'error'); return }
+                act.mutate(async () => {
+                  const body = (p.draft ?? p.current)?.body ?? ''
+                  const r = await api.post('/policies', { title: `${p.title} (${COUNTRIES[code]})`.slice(0, 140), category: p.category, body, changeNote: `Variant of ${p.title} for ${COUNTRIES[code]}`, countries: [code], requiresAcceptance: p.requiresAcceptance, acceptWithinDays: p.acceptWithinDays, critical: !!p.critical, departmentIds: p.departmentIds, workLocationIds: p.workLocationIds })
+                  toast(`Draft variant for ${COUNTRIES[code]} created. Adjust it, then publish. Limit the original to the other countries if needed.`)
+                  navigate(`/policies/${r.data.data.id}`)
+                })
+              }}><Icon name="copy" size={14} /> Copy as a country variant</button>
               <button className="btn btn-ghost btn-sm" disabled={act.isPending} onClick={() => { if (confirm(`Archive “${p.title}”? It disappears for everyone.`)) act.mutate(async () => { await api.post(`/policies/${p.id}/archive`); toast('Archived'); navigate('/policies') }) }}>Archive</button>
             </section>
             {v && p.requiresAcceptance && <Acceptances id={p.id} />}
@@ -208,13 +221,15 @@ function PolicyForm({ policy, onClose }: { policy?: Detail; onClose: () => void 
     title: policy?.title ?? '', category: policy?.category ?? 'General', body: '', changeNote: '',
     requiresAcceptance: policy?.requiresAcceptance ?? true, acceptWithinDays: policy?.acceptWithinDays ?? 7,
     departmentIds: policy?.departmentIds ?? [], workLocationIds: policy?.workLocationIds ?? [],
+    critical: policy?.critical ?? false, countries: policy?.countries ?? [] as string[], ownerUserId: policy?.ownerUserId ?? '',
   })
+  const { data: people = [] } = useQuery({ queryKey: ['policy-owners'], queryFn: async () => (await api.get('/employees', { params: { limit: 500 } })).data.data as any[] })
   const [busy, setBusy] = useState(false)
   const toggle = (k: 'departmentIds' | 'workLocationIds', id: string) => setF({ ...f, [k]: f[k].includes(id) ? f[k].filter((x) => x !== id) : [...f[k], id] })
   const save = async () => {
     setBusy(true)
     try {
-      const meta = { title: f.title.trim(), category: f.category, requiresAcceptance: f.requiresAcceptance, acceptWithinDays: Number(f.acceptWithinDays) || 7, departmentIds: f.departmentIds, workLocationIds: f.workLocationIds }
+      const meta = { title: f.title.trim(), category: f.category, requiresAcceptance: f.requiresAcceptance || f.critical, acceptWithinDays: Number(f.acceptWithinDays) || 7, departmentIds: f.departmentIds, workLocationIds: f.workLocationIds, critical: f.critical, countries: f.countries, ownerUserId: f.ownerUserId || null }
       if (policy) { await api.patch(`/policies/${policy.id}`, meta); toast('Saved') }
       else { const r = await api.post('/policies', { ...meta, body: f.body.trim() }); toast('Draft created. Review it, then publish.'); navigate(`/policies/${r.data.data.id}`) }
       qc.invalidateQueries({ queryKey: ['policies-manage'] })
@@ -230,7 +245,8 @@ function PolicyForm({ policy, onClose }: { policy?: Detail; onClose: () => void 
         </div>
         {!policy && <label className="field"><span>Policy text</span><textarea className="input" rows={10} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} style={{ height: 'auto', padding: 12 }} placeholder="Paste or write the policy. It's saved as a draft until you publish it." /></label>}
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-          <legend className="dim" style={{ fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Applies to: {!f.departmentIds.length && !f.workLocationIds.length ? 'everyone' : 'only the selected departments and/or offices'}</legend>
+          <legend className="dim" style={{ fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Applies to: {!f.departmentIds.length && !f.workLocationIds.length && !f.countries.length ? 'everyone' : 'only the selected departments, offices and/or countries'}</legend>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{Object.entries(COUNTRIES).map(([c, name]) => <button type="button" key={c} className="chip" aria-pressed={f.countries.includes(c)} onClick={() => setF({ ...f, countries: f.countries.includes(c) ? f.countries.filter((x) => x !== c) : [...f.countries, c] })} style={f.countries.includes(c) ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}>{name}</button>)}</div>
           {units.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{units.map((u) => <button type="button" key={u.id} className="chip" aria-pressed={f.departmentIds.includes(u.id)} onClick={() => toggle('departmentIds', u.id)} style={f.departmentIds.includes(u.id) ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}>{u.name}</button>)}</div>}
           {(locations as any[]).length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{(locations as any[]).map((l) => <button type="button" key={l.id} className="chip" aria-pressed={f.workLocationIds.includes(l.id)} onClick={() => toggle('workLocationIds', l.id)} style={f.workLocationIds.includes(l.id) ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}><Icon name="pin" size={12} /> {l.name}</button>)}</div>}
         </fieldset>
@@ -238,6 +254,8 @@ function PolicyForm({ policy, onClose }: { policy?: Detail; onClose: () => void 
           <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.requiresAcceptance} onChange={(e) => setF({ ...f, requiresAcceptance: e.target.checked })} /> People must read and accept it</label>
           {f.requiresAcceptance && <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>within <input className="input" type="number" min={1} max={365} value={f.acceptWithinDays} onChange={(e) => setF({ ...f, acceptWithinDays: Number(e.target.value) })} style={{ width: 72, height: 32 }} /> days</label>}
         </div>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}><input type="checkbox" checked={f.critical} onChange={(e) => setF({ ...f, critical: e.target.checked, requiresAcceptance: e.target.checked || f.requiresAcceptance })} style={{ marginTop: 3 }} /> <span><strong>Critical</strong>: people cannot use MarichiHR until they accept the current version (e.g. a safety or data-protection policy).</span></label>
+        <label className="field"><span>Who answers questions about it</span><select className="input" value={f.ownerUserId} onChange={(e) => setF({ ...f, ownerUserId: e.target.value })}><option value="">HR</option>{people.filter((p) => p.userId).map((p) => <option key={p.userId} value={p.userId}>{p.firstName} {p.lastName}{p.jobPosition?.title ? ` · ${p.jobPosition.title}` : ''}</option>)}</select></label>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" disabled={busy || f.title.trim().length < 2 || (!policy && !f.body.trim())} onClick={save}>{policy ? 'Save' : 'Create draft'}</button>
@@ -270,5 +288,40 @@ function DraftForm({ policy, onClose }: { policy: Detail; onClose: () => void })
         </div>
       </div>
     </Modal>
+  )
+}
+
+// Organisation-wide: how many people have accepted each policy, and who is still missing
+function AcceptanceReport() {
+  const { data, isLoading } = useQuery({ queryKey: ['policy-report'], queryFn: async () => (await api.get('/policies/report')).data.data as { totals: any; policies: any[] } })
+  if (isLoading || !data) return <div className="skeleton" style={{ height: 160, borderRadius: 22 }} />
+  const t = data.totals
+  const csv = () => {
+    const rows = [['Policy', 'Version', 'Audience', 'Accepted', 'Rate %', 'Overdue', 'Not yet accepted'], ...data.policies.map((p) => [p.title, p.version, p.audience, p.accepted, p.rate, p.overdue ? 'yes' : 'no', p.missing.join('; ')])]
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((c: any) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' })); a.download = 'policy-acceptance.csv'; a.click()
+  }
+  return (
+    <div style={{ display: 'grid', gap: 'var(--gap)' }}>
+      <div className="dgrid">
+        {[['Policies asking for acceptance', t.policies], ['Accepted', `${t.accepted} of ${t.audience}`], ['Organisation-wide', `${t.rate}%`], ['Past their due date', t.overdue]].map(([l, v]) => (
+          <section key={l as string} data-card className="card span-3" style={{ padding: 18 }}><div className="dim" style={{ fontSize: 12 }}>{l}</div><div style={{ fontFamily: 'var(--font-display)', fontSize: 28 }}>{v}</div></section>
+        ))}
+      </div>
+      <section data-card className="card" style={{ padding: 8, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 8 }}><button className="btn btn-ghost btn-sm" onClick={csv} disabled={!data.policies.length}>Download CSV</button></div>
+        {!data.policies.length ? <p className="dim" style={{ padding: 14 }}>No published policy asks for acceptance yet.</p> : (
+          <table className="tbl" style={{ width: '100%', minWidth: 640 }}>
+            <thead><tr><th>Policy</th><th>Accepted</th><th>Not yet</th></tr></thead>
+            <tbody>{data.policies.map((p) => (
+              <tr key={p.id}>
+                <td><Link to={`/policies/${p.id}`} style={{ fontWeight: 500 }}>{p.title}</Link> {p.critical && <span className="pill danger">critical</span>} {p.overdue && <span className="pill warn">overdue</span>}<div className="dim" style={{ fontSize: 12 }}>v{p.version}{p.countries?.length ? ` · ${p.countries.join(', ')}` : ''}</div></td>
+                <td style={{ minWidth: 160 }}><div style={{ height: 6, borderRadius: 3, background: 'var(--well)', overflow: 'hidden', marginBottom: 4 }}><div style={{ width: `${p.rate}%`, height: '100%', background: p.rate === 100 ? 'var(--ok)' : 'var(--honey)' }} /></div><span className="dim" style={{ fontSize: 12 }}>{p.accepted} of {p.audience} ({p.rate}%)</span></td>
+                <td className="dim" style={{ fontSize: 12, maxWidth: 360 }}>{p.missing.length ? p.missing.slice(0, 12).join(', ') + (p.missing.length > 12 ? ` and ${p.missing.length - 12} more` : '') : 'Everyone'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </section>
+    </div>
   )
 }
