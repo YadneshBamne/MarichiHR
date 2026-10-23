@@ -2,6 +2,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { notify, userIdsWithRole, userIdOfEmployee } from '../../infrastructure/notifications/notify'
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, getReportingSubtreeIds } from '../../shared/utils/access'
+import { checkBudget, budgetAlerts } from './incentive-extras.service'
 
 // Incentives paid through payroll. Who may do what:
 //  - nominate: HR admins (anyone but themselves) and managers (people in their reporting line)
@@ -32,7 +33,7 @@ const view = (i: any, people: Map<string, string>) => ({
   amount: Number(i.amount), currency: i.currency, reason: i.reason, status: i.status,
   nominatedBy: people.get(`u:${i.nominatedByUserId}`) ?? null, nominatedByUserId: i.nominatedByUserId,
   decidedBy: i.decidedByUserId ? people.get(`u:${i.decidedByUserId}`) ?? null : null, decidedAt: i.decidedAt, decisionNote: i.decisionNote,
-  payrollCycleId: i.payrollCycleId, postedAt: i.postedAt, createdAt: i.createdAt,
+  payrollCycleId: i.payrollCycleId, postedAt: i.postedAt, createdAt: i.createdAt, formula: i.formula ?? null, schemeId: i.schemeId ?? null,
 })
 
 async function names(rows: { employeeId: string; nominatedByUserId: string; decidedByUserId: string | null }[]) {
@@ -115,8 +116,10 @@ export const incentiveService = {
       if (!team.includes(emp.id)) throw new AppError('You can only nominate people in your team', 403)
     }
     if (type.maxAmount != null && body.amount > Number(type.maxAmount)) throw new AppError(`${type.name} is capped at ${Number(type.maxAmount)}`, 400)
+    const budget = await checkBudget(user, body.amount)
     const i = await prisma.incentive.create({ data: { tenantId: user.tenantId, employeeId: emp.id, typeId: type.id, amount: body.amount, currency: tenant?.baseCurrency ?? 'USD', reason: body.reason, nominatedByUserId: user.userId } })
     await audit(user, 'INCENTIVE_NOMINATED', i.id, { employeeId: emp.id, type: type.name, amount: body.amount })
+    if (budget) await budgetAlerts(user, budget.id)
     const hrs = (await userIdsWithRole(user.tenantId, 'hr_admin')).filter((id) => id !== user.userId)
     await notify({ tenantId: user.tenantId, userIds: hrs, type: 'incentive.nominated', title: `${type.name} nomination`, body: `${emp.firstName} ${emp.lastName} · ${body.amount} ${i.currency}`, link: '/incentives', entityType: 'incentive', entityId: i.id })
     return i
@@ -131,6 +134,8 @@ export const incentiveService = {
     const done = await prisma.incentive.updateMany({ where: { id, status: 'nominated' }, data: { status: approve ? 'approved' : 'rejected', decidedByUserId: user.userId, decidedAt: new Date(), decisionNote: note ?? null } })
     if (!done.count) throw new AppError('This incentive was just decided by someone else', 409)
     await audit(user, approve ? 'INCENTIVE_APPROVED' : 'INCENTIVE_REJECTED', id, { note: note ?? null })
+    // Redeemed kudos points come back when the redemption is rejected
+    if (!approve) await prisma.kudosPoint.deleteMany({ where: { tenantId: user.tenantId, incentiveId: id, points: { lt: 0 } } })
     const employeeUser = await userIdOfEmployee(user.tenantId, i.employeeId)
     await notify({ tenantId: user.tenantId, userIds: [i.nominatedByUserId], type: 'incentive.decided', title: `${i.type.name} ${approve ? 'approved' : 'rejected'}`, body: note ?? `${Number(i.amount)} ${i.currency}`, link: '/incentives', entityType: 'incentive', entityId: id })
     if (approve && employeeUser) await notify({ tenantId: user.tenantId, userIds: [employeeUser], type: 'incentive.awarded', title: `You received a ${i.type.name.toLowerCase()}`, body: `${Number(i.amount)} ${i.currency} · ${i.reason}`, link: '/incentives', entityType: 'incentive', entityId: id })
@@ -142,6 +147,7 @@ export const incentiveService = {
     if (i.nominatedByUserId !== user.userId && !isHR(user)) throw new AppError('Only the nominator or HR can cancel this', 403)
     if (i.status !== 'nominated') throw new AppError(`This incentive is already ${i.status}`, 400)
     await prisma.incentive.update({ where: { id }, data: { status: 'cancelled' } })
+    await prisma.kudosPoint.deleteMany({ where: { tenantId: user.tenantId, incentiveId: id, points: { lt: 0 } } })
     await audit(user, 'INCENTIVE_CANCELLED', id)
     return { cancelled: true }
   },

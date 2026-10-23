@@ -4,6 +4,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { notify, userIdOfEmployee } from '../../infrastructure/notifications/notify'
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser } from '../../shared/utils/access'
+import { awardKudosPoints } from '../incentives/incentive-extras.service'
 
 // Community: spaces → threads (with an optional poll) → comments; a recognition wall of kudos; reports that HR
 // moderates. Hidden content disappears for everyone but moderators. @mentions notify the people mentioned.
@@ -163,6 +164,7 @@ export const forumsService = {
     const to = await prisma.employee.findFirst({ where: { id: b.toEmployeeId, tenantId: u.tenantId, active: true } })
     if (!to) throw new AppError('Person not found', 404)
     const k = await prisma.kudos.create({ data: { tenantId: u.tenantId, fromUserId: u.userId, toEmployeeId: to.id, badge: b.badge, message: b.message } })
+    await awardKudosPoints(u.tenantId, k.id, to.id)
     const uid = await userIdOfEmployee(u.tenantId, to.id)
     const me = await prisma.user.findUnique({ where: { id: u.userId }, select: { fullName: true } })
     if (uid) await notify({ tenantId: u.tenantId, userIds: [uid], type: 'kudos.received', title: `${me?.fullName ?? 'Someone'} gave you kudos`, body: b.message, link: '/community?tab=wall', entityType: 'kudos', entityId: k.id })
@@ -171,6 +173,9 @@ export const forumsService = {
   async hideKudos(u: AccessUser, id: string, hidden: boolean) {
     if (!isMod(u)) throw new AppError('Only HR moderates', 403)
     const r = await prisma.kudos.updateMany({ where: { id, tenantId: u.tenantId }, data: { hidden } })
+    // ponytail: hiding removes the points even if already redeemed (balance can dip); restoring gives them back
+    if (r.count && hidden) await prisma.kudosPoint.deleteMany({ where: { tenantId: u.tenantId, kudosId: id } })
+    if (r.count && !hidden) { const k = await prisma.kudos.findFirst({ where: { id, tenantId: u.tenantId } }); if (k) await awardKudosPoints(u.tenantId, k.id, k.toEmployeeId) }
     if (!r.count) throw new AppError('Kudos not found', 404)
     return { hidden }
   },
@@ -210,7 +215,7 @@ export const forumsService = {
     if (hide) {
       if (r.targetType === 'thread') await prisma.forumThread.updateMany({ where: { id: r.targetId, tenantId: u.tenantId }, data: { hidden: true } })
       if (r.targetType === 'comment') await prisma.forumComment.updateMany({ where: { id: r.targetId, tenantId: u.tenantId }, data: { hidden: true } })
-      if (r.targetType === 'kudos') await prisma.kudos.updateMany({ where: { id: r.targetId, tenantId: u.tenantId }, data: { hidden: true } })
+      if (r.targetType === 'kudos') { await prisma.kudos.updateMany({ where: { id: r.targetId, tenantId: u.tenantId }, data: { hidden: true } }); await prisma.kudosPoint.deleteMany({ where: { tenantId: u.tenantId, kudosId: r.targetId } }) }
     }
     // Every open report about the same content is settled together
     await prisma.forumReport.updateMany({ where: { tenantId: u.tenantId, targetType: r.targetType, targetId: r.targetId, status: 'open' }, data: { status: 'resolved', resolution: hide ? 'hidden' : 'kept', resolvedBy: u.userId, resolvedAt: new Date() } })

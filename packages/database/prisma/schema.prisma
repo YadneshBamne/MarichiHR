@@ -1512,6 +1512,9 @@ model Incentive {
   payrollCycleId    String?
   payrollInputId    String?
   postedAt          DateTime?
+  schemeId          String? // made by a scheme run
+  formula           String? // how the amount was worked out, shown to the person ("why this amount")
+  formulaInputs     Json?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -2621,4 +2624,67 @@ model TaxOverride {
   @@index([tenantId, status])
   @@index([cycleId, employeeId])
   @@map("tax_overrides")
+}
+
+// Incentive scheme: a formula (sandboxed mathjs) over named values entered per person for a period, e.g. commission
+// "max(0, sales - target) * 0.05", a KPI bonus "score >= 100 ? 10000 : 0" or a milestone. A run creates nominations.
+model IncentiveScheme {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  kind      String // commission | kpi | milestone | other
+  formula   String
+  variables Json // [{ key, label }]
+  typeId    String // the incentive type it pays as
+  active    Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@map("incentive_schemes")
+}
+
+// A manager's delegated budget for nominations in a period; alerts at 80% and 100% are sent once each
+model IncentiveBudget {
+  id                String    @id @default(uuid())
+  tenantId          String
+  managerEmployeeId String
+  periodStart       DateTime  @db.Date
+  periodEnd         DateTime  @db.Date
+  amount            Decimal   @db.Decimal(18, 2)
+  alerted80At       DateTime?
+  alerted100At      DateTime?
+  createdBy         String
+  createdAt         DateTime  @default(now())
+
+  @@unique([tenantId, managerEmployeeId, periodStart])
+  @@map("incentive_budgets")
+}
+
+// Company incentive settings: rating -> % of the variable pay suggested, and the kudos points scheme
+model IncentiveSettings {
+  tenantId           String  @id
+  ratingPayout       Json    @default("{}") // { "Exceeds expectations": 120, ... } in % of the period's variable pay
+  kudosPoints        Int     @default(10) // points each kudos gives
+  pointValue         Decimal @default(1) @db.Decimal(18, 4) // money per point when redeemed
+  pointsExpireMonths Int     @default(12)
+  minRedeem          Int     @default(100)
+
+  @@map("incentive_settings")
+}
+
+// Kudos points ledger: + earned from a kudos (expires), - redeemed (paid as an incentive)
+model KudosPoint {
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  points      Int
+  reason      String
+  kudosId     String?   @unique
+  incentiveId String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, employeeId])
+  @@map("kudos_points")
 }

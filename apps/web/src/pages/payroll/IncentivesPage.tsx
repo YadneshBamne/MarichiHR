@@ -7,8 +7,9 @@ import Modal from '../../components/ui/Modal'
 import Icon from '../../components/ui/Icon'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
+import { SchemesPanel, BudgetsPanel, VariablePayPanel, PointsPanel } from './IncentivePanels'
 
-interface Award { id: string; employeeId: string; employee: string | null; type: string; typeId: string; amount: number; currency: string; reason: string; status: string; nominatedBy: string | null; nominatedByUserId: string; decidedBy: string | null; decisionNote: string | null; payrollCycleId: string | null; createdAt: string }
+interface Award { id: string; employeeId: string; employee: string | null; type: string; typeId: string; amount: number; currency: string; reason: string; status: string; nominatedBy: string | null; nominatedByUserId: string; decidedBy: string | null; decisionNote: string | null; payrollCycleId: string | null; createdAt: string; formula?: string | null }
 interface IType { id: string; code: string; name: string; description: string | null; defaultAmount: number | null; maxAmount: number | null; payrollInputTypeId: string | null; active: boolean }
 
 const STATUS: Record<string, string> = { nominated: 'warn', approved: 'info', posted: 'ok', rejected: 'danger', cancelled: 'mute' }
@@ -22,7 +23,9 @@ export default function IncentivesPage() {
   const canNominate = isHR || hasRole('manager')
   const qc = useQueryClient()
   const toast = useToast()
-  const [tab, setTab] = useState<'awards' | 'types'>('awards')
+  type Tab = 'awards' | 'points' | 'budgets' | 'schemes' | 'variable' | 'types'
+  const [tab, setTab] = useState<Tab>('awards')
+  const tabs = ([['awards', 'Awards'], ['points', 'Kudos points'], ...(canNominate ? [['budgets', isHR ? 'Budgets' : 'My budget']] : []), ...(isHR ? [['schemes', 'Schemes']] : []), ...(canPost ? [['variable', 'Variable pay']] : []), ...(isHR ? [['types', 'Incentive types']] : [])] as [Tab, string][])
   const [status, setStatus] = useState('')
   const [nominating, setNominating] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
@@ -41,12 +44,12 @@ export default function IncentivesPage() {
       <PageHeader title="Incentives" sub={canNominate || canPost ? 'Awards and bonuses, approved by HR and paid through payroll' : 'Awards and bonuses you have received'}
         actions={canNominate ? <button className="btn btn-primary btn-sm" onClick={() => setNominating(true)}><Icon name="gift" size={14} /> Nominate</button> : undefined}>
         <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-          {isHR && ([['awards', 'Awards'], ['types', 'Incentive types']] as const).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+          {tabs.map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
           {tab === 'awards' && ['', 'nominated', 'approved', 'posted', 'rejected'].map((s) => <button key={s} className="chip" aria-pressed={status === s} onClick={() => { setStatus(s); setPicked([]) }} style={status === s ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}>{s || 'All'}</button>)}
         </div>
       </PageHeader>
 
-      {tab === 'types' ? <Types /> : (
+      {tab === 'types' ? <Types /> : tab === 'points' ? <PointsPanel /> : tab === 'budgets' ? <BudgetsPanel /> : tab === 'schemes' ? <SchemesPanel /> : tab === 'variable' ? <VariablePayPanel /> : (
         <section data-card className="card" style={{ padding: 8, overflowX: 'auto' }}>
           {canPost && approved.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, flexWrap: 'wrap' }}>
@@ -63,7 +66,7 @@ export default function IncentivesPage() {
                   <tr key={a.id}>
                     {canPost && <td>{a.status === 'approved' && <input type="checkbox" aria-label={`Select ${a.employee}`} checked={picked.includes(a.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, a.id] : picked.filter((x) => x !== a.id))} />}</td>}
                     <td style={{ fontWeight: 500 }}>{a.employee}</td>
-                    <td><div>{a.type}</div><div className="dim" style={{ fontSize: 12, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.reason}>{a.reason}</div></td>
+                    <td><div>{a.type}</div><div className="dim" style={{ fontSize: 12, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.reason}>{a.reason}</div>{a.formula && <div className="dim" style={{ fontSize: 11, maxWidth: 320, overflowWrap: 'anywhere' }}>How: {a.formula}</div>}</td>
                     <td className="num" style={{ textAlign: 'right' }}>{money(a.amount, a.currency)}</td>
                     <td><span className={`pill ${STATUS[a.status]}`}>{a.status === 'posted' ? 'in payroll' : a.status}</span>{a.decisionNote && <div className="dim" style={{ fontSize: 11, marginTop: 2 }} title={a.decisionNote}>{a.decidedBy}: {a.decisionNote.slice(0, 40)}</div>}</td>
                     <td className="dim">{a.nominatedBy}</td>
