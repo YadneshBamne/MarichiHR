@@ -261,6 +261,9 @@ export async function computeEmployeePayslip(
   const basicNow = result.lines.filter((l: any) => l.categoryCode === 'BASIC').reduce((a: number, l: any) => a + l.amount, 0)
   const shareWarn = await basicShareWarning(emp.tenantId, emp.id, basicNow, result.gross)
   if (shareWarn) warnings.push(shareWarn)
+  // Said here, before approval, rather than first at the bank file after payment
+  if (cycle.tenantId && (!emp.bankName || !emp.bankAccountNo)) warnings.push('No bank details: the bank file will leave this person out. HR adds them on the person’s profile.')
+  else if (cycle.tenantId && !emp.bankVerified) warnings.push('Bank details not verified yet: the bank file will leave this person out until a second person verifies them.')
   const workDays = Math.max(0, round2(windowWorking.length - lwpDays - paidLeaveDays))
   const hoursPerDay = PAYROLL_CONFIG.STANDARD_HOURS_PER_DAY
 

@@ -154,7 +154,10 @@ function Sidebar({ sections, counts, collapsed, onToggle, mode, companyName, log
     }
     move()
     const t = setTimeout(move, 360) // after the width transition when collapsing
-    return () => clearTimeout(t)
+    // Items above can change height after the first measure (badges, sections loading): follow them
+    const ro = new ResizeObserver(() => { first.current = true; move() })
+    nav.current?.querySelectorAll(':scope > div').forEach((d) => ro.observe(d))
+    return () => { clearTimeout(t); ro.disconnect() }
   }, [activePath, collapsed, sections.length])
 
   const badge = (path: string) => (path === '/approvals' ? counts?.approvals : path === '/activities' ? counts?.tasks : path === '/announcements' ? counts?.announcements : path === '/policies' ? counts?.policies : 0) || 0

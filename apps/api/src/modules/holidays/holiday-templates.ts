@@ -25,25 +25,39 @@ const LUNAR: Record<number, Record<string, string>> = {
 type H = { name: string; date: string; isOptional?: boolean }
 export const HOLIDAY_COUNTRIES = { ZM: 'Zambia', KE: 'Kenya', NG: 'Nigeria', IN: 'India' } as const
 
+// Zambia and Kenya: a holiday falling on a Sunday is observed on the next day that is not already a holiday
+function sundayToMonday(list: H[]): H[] {
+  const taken = new Set(list.map((h) => h.date))
+  const extra: H[] = []
+  for (const h of list) {
+    if (new Date(`${h.date}T00:00:00Z`).getUTCDay() !== 0) continue
+    let d = addDays(h.date, 1)
+    while (taken.has(d)) d = addDays(d, 1)
+    taken.add(d)
+    extra.push({ name: `${h.name} (observed)`, date: d })
+  }
+  return [...list, ...extra].sort((a, b) => a.date.localeCompare(b.date))
+}
+
 export function holidayTemplate(country: keyof typeof HOLIDAY_COUNTRIES, y: number): H[] {
   const e = easter(y), lunar = LUNAR[y] ?? {}
   const moon = (key: string, name: string, extraDay = false): H[] => lunar[key] ? [{ name: `${name} (date to confirm)`, date: lunar[key] }, ...(extraDay ? [{ name: `${name} holiday (date to confirm)`, date: addDays(lunar[key], 1) }] : [])] : []
   if (country === 'ZM') {
     const heroes = nthWeekday(y, 7, 1, 1)
-    return [
+    return sundayToMonday([
       { name: "New Year's Day", date: iso(y, 1, 1) }, { name: "International Women's Day", date: iso(y, 3, 8) }, { name: 'Youth Day', date: iso(y, 3, 12) },
       { name: 'Good Friday', date: addDays(e, -2) }, { name: 'Holy Saturday', date: addDays(e, -1) }, { name: 'Easter Monday', date: addDays(e, 1) },
       { name: 'Kenneth Kaunda Day', date: iso(y, 4, 28) }, { name: 'Labour Day', date: iso(y, 5, 1) }, { name: 'Africa Freedom Day', date: iso(y, 5, 25) },
       { name: "Heroes' Day", date: heroes }, { name: 'Unity Day', date: addDays(heroes, 1) }, { name: "Farmers' Day", date: nthWeekday(y, 8, 1, 1) },
       { name: 'National Day of Prayer', date: iso(y, 10, 18) }, { name: 'Independence Day', date: iso(y, 10, 24) }, { name: 'Christmas Day', date: iso(y, 12, 25) },
-    ]
+    ])
   }
-  if (country === 'KE') return [
+  if (country === 'KE') return sundayToMonday([
     { name: "New Year's Day", date: iso(y, 1, 1) }, { name: 'Good Friday', date: addDays(e, -2) }, { name: 'Easter Monday', date: addDays(e, 1) },
     { name: 'Labour Day', date: iso(y, 5, 1) }, { name: 'Madaraka Day', date: iso(y, 6, 1) }, ...moon('eidFitr', 'Idd-ul-Fitr'),
     { name: 'Mazingira Day', date: iso(y, 10, 10) }, { name: 'Mashujaa Day', date: iso(y, 10, 20) }, { name: 'Jamhuri Day', date: iso(y, 12, 12) },
     { name: 'Christmas Day', date: iso(y, 12, 25) }, { name: 'Boxing Day', date: iso(y, 12, 26) },
-  ]
+  ])
   if (country === 'NG') return [
     { name: "New Year's Day", date: iso(y, 1, 1) }, { name: 'Good Friday', date: addDays(e, -2) }, { name: 'Easter Monday', date: addDays(e, 1) },
     { name: "Workers' Day", date: iso(y, 5, 1) }, { name: 'Democracy Day', date: iso(y, 6, 12) }, ...moon('eidFitr', 'Eid-el-Fitr', true), ...moon('eidAdha', 'Eid-el-Kabir', true),
@@ -56,4 +70,13 @@ export function holidayTemplate(country: keyof typeof HOLIDAY_COUNTRIES, y: numb
     ...moon('eidFitr', 'Id-ul-Fitr').map((h) => ({ ...h, isOptional: true })), ...moon('diwali', 'Diwali').map((h) => ({ ...h, isOptional: true })),
     { name: 'Christmas Day', date: iso(y, 12, 25), isOptional: true },
   ]
+}
+
+if (require.main === module) {
+  const zm = holidayTemplate('ZM', 2026)
+  console.assert(zm.some((h) => h.name === "International Women's Day (observed)" && h.date === '2026-03-09'), 'ZM 8 Mar 2026 Sunday -> 9 Mar')
+  console.assert(zm.some((h) => h.name === 'National Day of Prayer (observed)' && h.date === '2026-10-19'), 'ZM 18 Oct 2026 Sunday -> 19 Oct')
+  const ke = holidayTemplate('KE', 2027)
+  console.assert(!ke.some((h) => h.date === '2027-12-27' && h.name.startsWith('Christmas')) || ke.some((h) => h.date === '2027-12-28'), 'KE 2027: Boxing Day Sunday -> next free day')
+  console.log('holiday templates ok')
 }

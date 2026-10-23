@@ -135,10 +135,10 @@ export default function CycleDetailPage() {
         </div>
         <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
-          {cycle.status === 'approved' && !cycle.financeApprovedBy && isMakerOfApproval && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for a second Payroll admin to give the second approval</span>}
-          {(cycle as any).attendanceAdjustments > 0 && cycle.status !== 'disbursed' && <button className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right', border: 0, cursor: 'pointer' }} onClick={() => setShowAdj(true)}>{(cycle as any).attendanceAdjustments} attendance change{(cycle as any).attendanceAdjustments === 1 ? '' : 's'} after an earlier lock: review</button>}
-          {cycle.status === 'approved' && !!cycle.financeApprovedBy && (cycle as any).signoffRequired && !(cycle as any).signoffBy && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Above the sign-off amount ({(cycle as any).signoffThreshold?.toLocaleString()}): waiting for a System admin's sign-off</span>}
-          {['review', 'approved'].includes(cycle.status) && !cycle.financeApprovedBy && (cycle as any).payrollAdmins < 2 && <span className="pill danger" style={{ whiteSpace: 'normal', textAlign: 'right', maxWidth: 380 }}>Every payroll needs approvals from two different Payroll admins, and this company has only {(cycle as any).payrollAdmins}. Give a second person the Payroll admin role in their Login &amp; access tab.</span>}
+          {cycle.status === 'approved' && !cycle.financeApprovedBy && isMakerOfApproval && <span className="pill warn" style={{ whiteSpace: 'normal', textTransform: 'none', textAlign: 'right' }}>Waiting for a second Payroll admin to give the second approval</span>}
+          {(cycle as any).attendanceAdjustments > 0 && cycle.status !== 'disbursed' && <button className="pill warn" style={{ whiteSpace: 'normal', textTransform: 'none', textAlign: 'right', border: 0, cursor: 'pointer' }} onClick={() => setShowAdj(true)}>{(cycle as any).attendanceAdjustments} attendance change{(cycle as any).attendanceAdjustments === 1 ? '' : 's'} after an earlier lock: review</button>}
+          {cycle.status === 'approved' && !!cycle.financeApprovedBy && (cycle as any).signoffRequired && !(cycle as any).signoffBy && <span className="pill warn" style={{ whiteSpace: 'normal', textTransform: 'none', textAlign: 'right' }}>Above the sign-off amount ({(cycle as any).signoffThreshold?.toLocaleString()}): waiting for a System admin's sign-off</span>}
+          {['review', 'approved'].includes(cycle.status) && !cycle.financeApprovedBy && (cycle as any).payrollAdmins < 2 && <span className="pill danger" style={{ whiteSpace: 'normal', textTransform: 'none', textAlign: 'right', maxWidth: 380 }}>Every payroll needs approvals from two different Payroll admins, and this company has only {(cycle as any).payrollAdmins}. Give a second person the Payroll admin role in their Login &amp; access tab.</span>}
         </div>
       </div>
 
@@ -147,7 +147,7 @@ export default function CycleDetailPage() {
       <div style={{ display: 'flex', backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '14px 18px', marginBottom: 16, gap: 8 }}>
         {STEPS.map((s, i) => (
           <div key={s} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: i <= step ? 'var(--brand)' : 'var(--well)', color: i <= step ? 'var(--card-2)' : 'var(--faint)', flexShrink: 0 }}>{i < step || step === STEPS.length - 1 ? '✓' : i + 1}</div>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: i <= step ? 'var(--brand)' : 'var(--well)', color: i <= step ? 'var(--card-2)' : 'var(--faint)', flexShrink: 0 }}>{i <= step ? '✓' : i + 1}</div>
             <span style={{ fontSize: 12, color: i <= step ? 'var(--ink)' : 'var(--faint)', fontWeight: i === step ? 500 : 400 }}>{s}</span>
           </div>
         ))}
@@ -196,7 +196,7 @@ export default function CycleDetailPage() {
       {tab === 'payslips' && (
         <div style={{ backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' }}>
           {payslips.length === 0 ? (
-            <div style={{ padding: 30, textAlign: 'center', color: 'var(--faint)', fontSize: 13 }}>No payslips yet. Lock attendance, then run payroll.</div>
+            <div style={{ padding: 30, textAlign: 'center', color: 'var(--faint)', fontSize: 13 }}>No payslips yet. {cycle.offCycle ? 'Add inputs, then run payroll.' : cycle.attendanceLockedAt ? 'Run payroll to calculate them.' : 'Lock attendance, then run payroll.'}</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>{['Employee', 'Paid / working days', 'LWP', 'Gross', 'Deductions', 'Net pay', 'Status', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
