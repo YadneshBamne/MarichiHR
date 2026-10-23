@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#252523" />
+  <title>Offline · MarichiHR</title>
+  <style>
+    :root { --paper: #f5f3ee; --ink: #252523; --dim: #77746c; --honey: #f6c343; }
+    @media (prefers-color-scheme: dark) { :root { --paper: #1c1c1a; --ink: #f4f2ec; --dim: #a9a59b; } }
+    html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: Inter, system-ui, sans-serif; }
+    main { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; box-sizing: border-box; text-align: center; }
+    img { width: 64px; height: 64px; }
+    h1 { font-size: 22px; font-weight: 600; margin: 16px 0 6px; }
+    p { color: var(--dim); margin: 0 0 20px; max-width: 320px; }
+    button { background: var(--honey); color: #252523; border: 0; border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <div>
+      <img src="/icon-192.png" alt="" />
+      <h1>You're offline</h1>
+      <p>MarichiHR needs a connection to show your leave, attendance and pay. Check your network and try again.</p>
+      <button onclick="location.reload()">Try again</button>
+    </div>
+  </main>
+</body>
+</html>
