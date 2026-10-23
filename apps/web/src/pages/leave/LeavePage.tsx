@@ -21,6 +21,7 @@ export default function LeavePage() {
   const { data: requestsData } = useMyLeaveRequests()
   const requests = requestsData?.requests || []
   const cancelLeave = useCancelLeave()
+  const [resubmitting, setResubmitting] = useState<any>(null)
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Balances' },
@@ -120,6 +121,12 @@ export default function LeavePage() {
                     <td style={s.td}><span style={{ color: 'var(--dim)' }}>{req.reason || '—'}</span></td>
                     <td style={s.td}><Badge label={req.status} /></td>
                     <td style={s.td}>
+                      {req.status === 'returned' && (
+                        <span style={{ display: 'grid', gap: 4 }}>
+                          {req.returnNote && <span style={{ fontSize: 12, color: 'var(--dim)' }}>“{req.returnNote}”</span>}
+                          <button style={s.cancelBtn} onClick={() => setResubmitting(req)}>Edit and send again</button>
+                        </span>
+                      )}
                       {req.status === 'pending' && (
                         <button
                           style={s.cancelBtn}
@@ -147,6 +154,7 @@ export default function LeavePage() {
       )}
 
       <ApplyLeaveModal open={showApply} onClose={() => setShowApply(false)} />
+      {resubmitting && <ApplyLeaveModal open resubmit={resubmitting} onClose={() => setResubmitting(null)} />}
       <AllocationRequestModal open={showAllocation} onClose={() => setShowAllocation(false)} />
     </div>
   )

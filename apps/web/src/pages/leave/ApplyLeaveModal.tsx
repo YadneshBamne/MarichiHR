@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
@@ -9,6 +9,8 @@ import { useAuth } from '../../contexts/AuthContext'
 interface Props {
   open: boolean
   onClose: () => void
+  // Editing a request the approver sent back: prefilled, sent as a new request
+  resubmit?: { id: string; leaveTypeId: string; startDate: string; endDate: string; reason?: string | null; returnNote?: string | null }
 }
 
 // Weekdays in the range minus public holidays (date-only values: UTC throughout); matches the server's count
@@ -22,19 +24,21 @@ function getWorkingDays(start: string, end: string, holidays: Set<string>): numb
   return count
 }
 
-export default function ApplyLeaveModal({ open, onClose }: Props) {
+export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
   const { data: leaveTypes = [] } = useLeaveTypes()
   const { data: balances = [] } = useMyLeaveBalances()
   const applyLeave = useApplyLeave()
+  const qc = useQueryClient()
 
   const [form, setForm] = useState({
-    leaveTypeId: '',
-    startDate: '',
-    endDate: '',
+    leaveTypeId: resubmit?.leaveTypeId ?? '',
+    startDate: resubmit?.startDate.slice(0, 10) ?? '',
+    endDate: resubmit?.endDate.slice(0, 10) ?? '',
     startHalf: '',
     endHalf: '',
-    reason: '',
+    reason: resubmit?.reason ?? '',
   })
+  const [hours, setHours] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const { user } = useAuth()
@@ -64,7 +68,8 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
       setCert({ id: doc.id, name: file.name })
     } catch (err: any) { setError(err?.response?.data?.message || 'Could not upload the certificate') } finally { setUploading(false) }
   }
-  const workingDays = getWorkingDays(form.startDate, form.endDate, new Set(offDays.map((h) => h.date)))
+  const hourly = !!selectedType?.hourlyAllowed && !!form.startDate && form.startDate === form.endDate && Number(hours) > 0
+  const workingDays = hourly ? Math.round((Number(hours) / 8) * 100) / 100 : getWorkingDays(form.startDate, form.endDate, new Set(offDays.map((h) => h.date)))
   const available = selectedBalance
     ? Math.max(0, selectedBalance.balanceDays - selectedBalance.usedDays - selectedBalance.pendingDays)
     : null
@@ -85,7 +90,7 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
       return
     }
     try {
-      await applyLeave.mutateAsync({
+      const body = {
         leaveTypeId: form.leaveTypeId,
         startDate: form.startDate,
         endDate: form.endDate,
@@ -93,7 +98,10 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
         endHalf: form.endHalf || undefined,
         reason: form.reason || undefined,
         ...(cert && { attachmentDocumentId: cert.id }),
-      })
+        ...(hourly && { hours: Number(hours) }),
+      }
+      if (resubmit) { await api.post(`/leave/requests/${resubmit.id}/resubmit`, body); qc.invalidateQueries({ queryKey: ['leave-requests-me'] }); qc.invalidateQueries({ queryKey: ['leave-balances-me'] }) }
+      else await applyLeave.mutateAsync(body as any)
       setSuccess(true)
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to apply for leave')
@@ -162,7 +170,14 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
           </FormField>
         </div>
 
-        {selectedType?.halfDayAllowed && (
+        {resubmit?.returnNote && <div style={{ padding: '10px 12px', borderRadius: '12px', backgroundColor: 'var(--honey-soft)', fontSize: '13px' }}><strong>Your approver asked:</strong> {resubmit.returnNote}</div>}
+        {selectedType?.hourlyAllowed && form.startDate && form.startDate === form.endDate && (
+          <FormField label="Hours (leave blank for a full or half day)">
+            <input style={inputStyle} type="number" min={0.5} max={12} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="e.g. 2" />
+          </FormField>
+        )}
+
+        {selectedType?.halfDayAllowed && !hourly && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <FormField label="Start half">
               <select style={selectStyle} value={form.startHalf} onChange={(e) => setForm({ ...form, startHalf: e.target.value })}>

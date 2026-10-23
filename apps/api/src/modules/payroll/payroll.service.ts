@@ -102,7 +102,8 @@ export async function computeEmployeePayslip(
     for (const day of eachDay(maxStr(s, windowStart), minStr(e, windowEnd))) {
       if (!isWorking(day, calDays)) continue
       let v = 1
-      if (s === e && (lr.startHalf || lr.endHalf)) v = 0.5
+      if ((lr as any).hours) v = lr.totalDays
+      else if (s === e && (lr.startHalf || lr.endHalf)) v = 0.5
       else {
         if (day === s && lr.startHalf) v -= 0.5
         if (day === e && lr.endHalf) v -= 0.5

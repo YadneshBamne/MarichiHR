@@ -11,6 +11,10 @@ import { validate } from '../../middleware/validate.middleware'
 import { CreateContractSchema, ContractTransitionSchema } from '../employees/employees.schema'
 import { CreateLeaveTypeSchema, UpdateLeaveTypeSchema } from './leave.schema'
 import { leaveExtras, ApplyLeaveSchema, BlackoutBody } from './leave-extras.service'
+import { returnLeave } from './leave-rules'
+import { leaveService } from './leave.service'
+import { prisma } from '../../infrastructure/database/prisma'
+import { AppError } from '../../shared/utils/AppError'
 
 export const leaveRouter = Router()
 
@@ -46,6 +50,18 @@ leaveRouter.get('/requests/pending', requirePermission('leave:approve'), leaveCo
 leaveRouter.post('/requests/:id/approve', requirePermission('leave:approve'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ comments: z.string().trim().max(500).optional(), shortfall: z.enum(['paid', 'unpaid']).optional() }).strict() })), leaveController.approve)
 leaveRouter.post('/requests/:id/reject', requirePermission('leave:approve'), leaveController.reject)
 leaveRouter.post('/requests/:id/cancel', requirePermission('leave:write'), leaveController.cancel)
+// The approver sends a request back for changes; the person edits it and sends it again
+leaveRouter.post('/requests/:id/return', requirePermission('leave:approve'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ note: z.string().trim().min(3).max(500) }).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await returnLeave(req.user!, String(req.params.id), req.body.note) })
+}))
+leaveRouter.post('/requests/:id/resubmit', requirePermission('leave:write'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: ApplyLeaveSchema.shape.body })), asyncHandler(async (req, res) => {
+  const u = req.user!
+  const old = await prisma.leaveRequest.findFirst({ where: { id: String(req.params.id), employeeId: u.employeeId ?? '-', status: 'returned' } })
+  if (!old) throw new AppError('Only your own returned request can be sent again', 404)
+  const fresh = await leaveService.applyLeave(u.employeeId!, u.tenantId, req.body)
+  await prisma.leaveRequest.update({ where: { id: old.id }, data: { status: 'resubmitted' } })
+  res.status(201).json({ success: true, data: fresh })
+}))
 
 // ─── TEAM CALENDAR ────────────────────────────────────────────
 leaveRouter.get('/calendar/team', requirePermission('leave:read'), requireRoles('manager', 'hr_admin', 'system_admin'), leaveController.getTeamCalendar)

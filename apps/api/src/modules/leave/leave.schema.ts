@@ -11,6 +11,7 @@ const leaveTypeFields = {
   accrualType: z.enum(['monthly_prorate', 'annual_lumpsum', 'manual']).nullable(),
   accrualAmount: z.number().min(0).max(366).nullable(),
   accrualDayOfMonth: z.number().int().min(1).max(28).nullable(),
+  tenureSlabs: z.array(z.object({ fromYears: z.number().min(0).max(60), amount: z.number().min(0).max(366) }).strict()).max(10).nullable(),
   carryForward: z.boolean(),
   carryForwardMax: z.number().min(0).nullable(),
   carryForwardExpiryMonths: z.number().int().min(1).max(60).nullable(),

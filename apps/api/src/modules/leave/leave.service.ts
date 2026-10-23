@@ -12,7 +12,7 @@ export const LEAVE_APPROVAL_SLA_HOURS = 24
 
 // Explicit whitelist of configurable leave-type columns (never spread a request body into Prisma)
 const LEAVE_TYPE_FIELDS = [
-  'name', 'category', 'isPaid', 'isStatutory', 'statutoryCountry', 'accrualType', 'accrualAmount', 'accrualDayOfMonth',
+  'name', 'category', 'isPaid', 'isStatutory', 'statutoryCountry', 'accrualType', 'accrualAmount', 'accrualDayOfMonth', 'tenureSlabs',
   'carryForward', 'carryForwardMax', 'carryForwardExpiryMonths', 'allowNegative', 'allowOverBalance', 'encashable', 'encashMaxDays', 'halfDayAllowed',
   'hourlyAllowed', 'leaveUnit', 'approvalLevels', 'requiresHrForStatutory', 'attachmentRequiredAfterDays', 'sandwichRule',
 ] as const
@@ -25,6 +25,7 @@ import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/
 import { consistent } from './leave.schema'
 import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
 import { leaveExtras } from './leave-extras.service'
+import { assertStatutoryFloor, statutoryFloor } from './leave-rules'
 
 // Weekdays in the range minus the employee's (mandatory) public holidays
 function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string, holidays: Map<string, string> = new Map()): number {
@@ -58,12 +59,15 @@ export const leaveService = {
 
   // ─── Leave-type configuration (HR) ──────────────────────────
   async listAllTypes(tenantId: string) {
-    return prisma.leaveType.findMany({ where: { tenantId }, orderBy: [{ active: 'desc' }, { name: 'asc' }] })
+    const types = await prisma.leaveType.findMany({ where: { tenantId }, orderBy: [{ active: 'desc' }, { name: 'asc' }] })
+    // Each statutory type carries its country's legal minimum, so the page can show it
+    return Promise.all(types.map(async (t) => ({ ...t, statutoryMinimum: await statutoryFloor(tenantId, t) })))
   },
 
   async createType(tenantId: string, userId: string, body: any) {
     const dup = await prisma.leaveType.findFirst({ where: { tenantId, code: body.code }, select: { id: true } })
     if (dup) throw new AppError(`Leave type code ${body.code} already exists`, 409)
+    await assertStatutoryFloor(tenantId, { category: body.category, isStatutory: !!body.isStatutory, statutoryCountry: body.statutoryCountry ?? null, accrualAmount: body.accrualAmount ?? null })
     const created = await prisma.leaveType.create({ data: { ...pickLeaveTypeFields(body), code: body.code, name: body.name, category: body.category, tenantId } })
     await prisma.auditLog.create({ data: { tenantId, userId, action: 'LEAVE_TYPE_CREATED', entityType: 'leave_type', entityId: created.id, newValue: created as any } })
     return created
@@ -74,6 +78,7 @@ export const leaveService = {
     if (!existing) throw new AppError('Leave type not found', 404)
     const data = pickLeaveTypeFields(body)
     if (!consistent({ ...existing, ...data } as any)) throw new AppError('Accruing leave types need an accrual amount above 0', 400)
+    await assertStatutoryFloor(tenantId, { ...existing, ...data } as any)
     if (body.active !== undefined) Object.assign(data, { active: body.active, archivedAt: body.active ? null : new Date() })
     const updated = await prisma.leaveType.update({ where: { id: existing.id }, data })
     await prisma.auditLog.create({
@@ -105,7 +110,13 @@ export const leaveService = {
     await leaveExtras.assertNoBlackout(tenantId, employeeId, data.leaveTypeId, startDate, endDate)
     if (data.attachmentDocumentId) await leaveExtras.assertOwnDocument(tenantId, employeeId, data.attachmentDocumentId)
     const [holidayRows, target] = await Promise.all([holidaysBetween(tenantId, startDate, endDate), holidayTargetOf(employeeId)])
-    const totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf, holidayMap(holidayRows, target))
+    let totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf, holidayMap(holidayRows, target))
+    // Hourly leave: some hours on one working day (8 hours = 1 day)
+    if (data.hours != null) {
+      if (!leaveType.hourlyAllowed) throw new AppError(`${leaveType.name} cannot be taken by the hour`, 400)
+      if (data.startDate !== data.endDate || data.startHalf || data.endHalf) throw new AppError('Hourly leave is for one day', 400)
+      if (totalDays > 0) totalDays = Math.round((data.hours / 8) * 100) / 100
+    }
     if (totalDays <= 0) throw new AppError('No working days in that range (weekends and public holidays do not count)', 400)
 
     const lwpDays = leaveType.isPaid ? 0 : totalDays

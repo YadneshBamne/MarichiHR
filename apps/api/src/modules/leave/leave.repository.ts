@@ -68,6 +68,7 @@ export const leaveRepository = {
         totalDays,
         lwpDays,
         shortfallDays,
+        hours: data.hours ?? null,
         reason: data.reason,
         attachmentUrl: data.attachmentDocumentId ? `doc:${data.attachmentDocumentId}` : null,
         status: 'pending',

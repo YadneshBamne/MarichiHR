@@ -14,7 +14,7 @@ const ACCRUALS: [string, string][] = [['manual', 'Manual allocation'], ['monthly
 type Form = Record<string, any>
 const BLANK: Form = {
   name: '', code: '', category: 'annual', isPaid: true, accrualType: 'manual', accrualAmount: '', carryForward: false, carryForwardMax: '',
-  carryForwardExpiryMonths: '', allowNegative: false, allowOverBalance: true, encashable: false, encashMaxDays: '', halfDayAllowed: true, approvalLevels: 1, attachmentRequiredAfterDays: '',
+  carryForwardExpiryMonths: '', allowNegative: false, allowOverBalance: true, hourlyAllowed: false, tenureSlabs: [], encashable: false, encashMaxDays: '', halfDayAllowed: true, approvalLevels: 1, attachmentRequiredAfterDays: '',
   sandwichRule: false, isStatutory: false, statutoryCountry: '',
 }
 const num = (v: any) => (v === '' || v == null ? null : Number(v))
@@ -39,7 +39,7 @@ export default function LeaveTypesPage() {
     const body: Form = {
       name: f.name.trim(), category: f.category, isPaid: f.isPaid, accrualType: f.accrualType, accrualAmount: num(f.accrualAmount),
       carryForward: f.carryForward, carryForwardMax: f.carryForward ? num(f.carryForwardMax) : null,
-      carryForwardExpiryMonths: f.carryForward ? num(f.carryForwardExpiryMonths) : null, allowNegative: f.allowNegative, allowOverBalance: f.allowOverBalance, encashable: f.encashable, encashMaxDays: f.encashable ? num(f.encashMaxDays) : null,
+      carryForwardExpiryMonths: f.carryForward ? num(f.carryForwardExpiryMonths) : null, allowNegative: f.allowNegative, allowOverBalance: f.allowOverBalance, hourlyAllowed: f.hourlyAllowed, tenureSlabs: (f.tenureSlabs ?? []).filter((x: any) => x.fromYears !== '' && x.amount !== '').map((x: any) => ({ fromYears: Number(x.fromYears), amount: Number(x.amount) })), encashable: f.encashable, encashMaxDays: f.encashable ? num(f.encashMaxDays) : null,
       halfDayAllowed: f.halfDayAllowed, approvalLevels: Number(f.approvalLevels), attachmentRequiredAfterDays: num(f.attachmentRequiredAfterDays),
       sandwichRule: f.sandwichRule, isStatutory: f.isStatutory, statutoryCountry: f.isStatutory && f.statutoryCountry ? f.statutoryCountry.toUpperCase() : null,
     }
@@ -53,7 +53,7 @@ export default function LeaveTypesPage() {
     setError('')
     try { await write.mutateAsync({ id: t.id, body: { active: !t.active } }) } catch (err) { setError(errMsg(err)) }
   }
-  const edit = (t: any) => setForm(Object.fromEntries(Object.keys(BLANK).concat('id').map((k) => [k, t[k] ?? (typeof BLANK[k] === 'boolean' ? false : '')])))
+  const edit = (t: any) => setForm({ ...Object.fromEntries(Object.keys(BLANK).concat('id').map((k) => [k, t[k] ?? (typeof BLANK[k] === 'boolean' ? false : Array.isArray(BLANK[k]) ? [] : '')])), statutoryMinimum: t.statutoryMinimum ?? null })
 
   const check = (k: string, label: string) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
@@ -122,6 +122,7 @@ export default function LeaveTypesPage() {
             <div style={{ ...grid2, gap: 10 }}>
               {check('isPaid', 'Paid leave')}
               {check('halfDayAllowed', 'Half days allowed')}
+              {check('hourlyAllowed', 'Can be taken by the hour (8 hours = 1 day)')}
               {check('allowNegative', 'Allow negative balance')}
               {check('allowOverBalance', 'Allow requests beyond the balance (the approver decides paid or unpaid)')}
               {check('encashable', 'Encashable (exit and year end)')}
@@ -129,6 +130,20 @@ export default function LeaveTypesPage() {
               {check('carryForward', 'Carry forward unused days')}
               {check('isStatutory', 'Statutory leave')}
             </div>
+            {form.accrualType && form.accrualType !== 'manual' && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>More leave with longer service (optional)</span>
+                {(form.tenureSlabs ?? []).map((sl: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                    From <input style={{ ...inputStyle, width: 70 }} type="number" min={0} value={sl.fromYears} onChange={(e) => set('tenureSlabs', form.tenureSlabs.map((x: any, j: number) => (j === i ? { ...x, fromYears: e.target.value } : x)))} aria-label="From years of service" /> years:
+                    <input style={{ ...inputStyle, width: 80 }} type="number" min={0} step={0.01} value={sl.amount} onChange={(e) => set('tenureSlabs', form.tenureSlabs.map((x: any, j: number) => (j === i ? { ...x, amount: e.target.value } : x)))} aria-label="Days" /> {form.accrualType === 'monthly_prorate' ? 'days a month' : 'days a year'}
+                    <button style={ghostBtn} onClick={() => set('tenureSlabs', form.tenureSlabs.filter((_: any, j: number) => j !== i))}>Remove</button>
+                  </div>
+                ))}
+                <div><button style={ghostBtn} onClick={() => set('tenureSlabs', [...(form.tenureSlabs ?? []), { fromYears: '', amount: '' }])}>+ Add a service step</button></div>
+              </div>
+            )}
+            {form.statutoryMinimum && <div style={{ fontSize: 12.5, color: 'var(--dim)' }}>Legal minimum for this leave: {form.statutoryMinimum.days} days ({form.statutoryMinimum.source}). It cannot be set lower.</div>}
             {form.carryForward && (
               <div style={grid2}>
                 <FormField label="Carry forward max (days)"><input style={inputStyle} type="number" min={0} value={form.carryForwardMax} onChange={(e) => set('carryForwardMax', e.target.value)} /></FormField>

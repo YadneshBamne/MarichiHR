@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../../infrastructure/database/prisma'
 import { businessToday } from '../../shared/utils/businessDate'
 import { lastYearEnd } from './yearend.service'
+import { accrualFor } from './leave-rules'
 
 // Automatic leave credits, safe to run any number of times (daily job, on joining, by hand):
 //  - Monthly accrual: the type's days once per person and month.
@@ -58,13 +59,13 @@ export async function creditLeave(tenantId: string, only?: { employeeId: string 
     for (const p of people) {
       for (const t of types) {
         if (t.accrualType === 'monthly_prorate' && !done.has(`${p.id}|${t.id}|accrual`)) {
-          rows.push({ employeeId: p.id, leaveTypeId: t.id, daysAllocated: t.accrualAmount!, allocationType: 'accrual', validFrom: monthStart, reason: `Monthly accrual — ${monthLabel}` })
+          rows.push({ employeeId: p.id, leaveTypeId: t.id, daysAllocated: accrualFor(t, p.hireDate, today), allocationType: 'accrual', validFrom: monthStart, reason: `Monthly accrual — ${monthLabel}` })
           monthly++
         }
         if (t.accrualType === 'annual_lumpsum' && lumpSumReady && !done.has(`${p.id}|${t.id}|annual`)) {
           const joined = p.hireDate > yearStart ? p.hireDate : yearStart
           const monthsLeft = (yearEndDay.getUTCFullYear() - joined.getUTCFullYear()) * 12 + yearEndDay.getUTCMonth() - joined.getUTCMonth() + 1
-          const days = halfDays((t.accrualAmount! * Math.min(12, monthsLeft)) / 12)
+          const days = halfDays((accrualFor(t, p.hireDate, yearStart) * Math.min(12, monthsLeft)) / 12)
           if (days <= 0) continue
           const share = monthsLeft >= 12 ? '' : ` (${monthsLeft} of 12 months)`
           rows.push({ employeeId: p.id, leaveTypeId: t.id, daysAllocated: days, allocationType: 'annual', validFrom: yearStart, validUntil: yearEndDay, reason: `Yearly credit ${ymd(yearStart)} – ${ymd(yearEndDay)}${share}` })

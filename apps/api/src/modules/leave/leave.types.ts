@@ -6,6 +6,7 @@ export interface ApplyLeaveDto {
   endHalf?: 'first_half' | 'second_half'
   reason?: string
   attachmentDocumentId?: string
+  hours?: number
 }
 
 export interface ApproveLeaveDto {

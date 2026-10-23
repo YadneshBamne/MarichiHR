@@ -13,6 +13,7 @@ import { autoYearEnd } from '../../modules/leave/yearend.service'
 import { publishPeopleDates } from '../../modules/automation/automation.service'
 import { retryWebhooks } from '../../modules/automation/integrations.service'
 import { leaveExtras } from '../../modules/leave/leave-extras.service'
+import { leaveAttendanceCheck } from '../../modules/leave/leave-rules'
 
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
@@ -91,6 +92,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '30 1 * * *',
     description: 'On the first day of the leave year, carry forward, encash and lapse the leave left from the year that ended (once)',
     run: (t) => perTenant(t, (id) => autoYearEnd(id), 'leave'),
+  },
+  'leave-attendance-check': {
+    pattern: '15 2 * * *',
+    description: 'Approved leave on a day the person clocked in becomes a task for their manager to correct (last 7 days, once per day)',
+    run: (t) => perTenant(t, (id) => leaveAttendanceCheck(id), 'leave'),
   },
   'carry-forward-expiry': {
     pattern: '45 1 * * *',

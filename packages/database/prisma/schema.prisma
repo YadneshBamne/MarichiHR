@@ -536,6 +536,7 @@ model LeaveType {
   accrualType                 String?
   accrualAmount               Float?
   accrualDayOfMonth           Int?
+  tenureSlabs                 Json? // [{ fromYears, amount }]: accrual by years of service; null = accrualAmount for everyone
   carryForward                Boolean   @default(false)
   carryForwardMax             Float?
   carryForwardExpiryMonths    Int?
@@ -633,6 +634,8 @@ model LeaveRequest {
   endHalf       String?
   totalDays     Float
   shortfallDays Float     @default(0) // days asked beyond the available balance
+  hours         Float? // hourly leave: hours on one day (totalDays = hours / 8)
+  returnNote    String? // sent back by the approver for changes
   reason        String?
   attachmentUrl String?
   status        String    @default("pending")

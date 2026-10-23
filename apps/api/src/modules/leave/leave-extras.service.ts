@@ -23,6 +23,7 @@ export const ApplyLeaveSchema = z.object({
     endHalf: z.enum(['first_half', 'second_half']).optional(),
     reason: z.string().trim().max(1000).optional(),
     attachmentDocumentId: z.string().uuid().optional(), // e.g. a medical certificate uploaded to the person's documents
+    hours: z.number().min(0.5).max(12).multipleOf(0.5).optional(), // hourly leave on one day
   }).strict(),
 })
 export const BlackoutBody = z.object({

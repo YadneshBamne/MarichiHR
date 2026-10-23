@@ -87,6 +87,12 @@ export default function LeaveApprovalsPanel() {
             >
               ✕ Reject
             </button>
+            <button
+              style={s.rejectBtn}
+              onClick={async () => { const note = window.prompt('What should they change?'); if (note && note.trim().length >= 3) { try { await api.post(`/leave/requests/${req.id}/return`, { note: note.trim() }); window.location.reload() } catch (e: any) { window.alert(e?.response?.data?.message ?? 'Could not send it back') } } }}
+            >
+              ↩ Send back
+            </button>
           </div>
         </div>
       ))}

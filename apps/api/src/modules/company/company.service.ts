@@ -12,6 +12,7 @@ import { takeGoogleSignup } from '../auth/google.sso'
 import {
   APP_KEYS,
 } from './company.catalog'
+import { raiseToStatutoryFloors } from '../leave/leave-rules'
 
 const slugify = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_]+/g, '-').replace(/-+/g, '-').slice(0, 40) || 'company'
 
@@ -56,6 +57,7 @@ export const companyService = {
     if (body.primaryCountry) data.countryCodes = { set: [...new Set([body.primaryCountry, ...before.countryCodes])] }
     if (body.fiscalYearStartMonth) data.fiscalYearStart = new Date(Date.UTC(new Date().getUTCFullYear(), body.fiscalYearStartMonth - 1, 1))
     const t = await prisma.tenant.update({ where: { id: tenantId }, data })
+    if (body.primaryCountry) await raiseToStatutoryFloors(tenantId)
     // The root org unit carries the company name; keep it in step on rename
     if (body.name && body.name !== before.name) await prisma.orgUnit.updateMany({ where: { tenantId, parentId: null, name: before.name }, data: { name: body.name } })
     if (body.timezone) {
