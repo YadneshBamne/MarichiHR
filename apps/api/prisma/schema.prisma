@@ -213,6 +213,7 @@ model WorkLocation {
   latitude             Float?
   longitude            Float?
   geoFenceRadiusMeters Int?
+  qrToken              String?  @unique // printed as a QR code at the office; scanning it clocks the person in here
   active               Boolean  @default(true)
   createdAt            DateTime @default(now())
 
@@ -691,6 +692,8 @@ model ShiftTemplate {
   shiftType              String   @default("fixed")
   startTime              String?
   endTime                String?
+  splitStartTime         String? // split shift: second part of the day
+  splitEndTime           String?
   graceLateMinutes       Int      @default(0)
   graceEarlyOutMinutes   Int      @default(0)
   halfDayHours           Float    @default(4)
@@ -1892,6 +1895,7 @@ model AttendancePolicy {
   priority                Int      @default(100)
   isDefault               Boolean  @default(false)
   active                  Boolean  @default(true)
+  lwpFlagAfterAbsences    Int? // unapproved absences in a month that flag the person for LWP review
   // Who it applies to (empty = everyone); ids or master codes
   orgUnitIds              String[] @default([])
   workLocationIds         String[] @default([])
@@ -2528,4 +2532,37 @@ model LeaveBlackout {
 
   @@index([tenantId, startDate])
   @@map("leave_blackouts")
+}
+
+// Rosters: the shift (or a day off) for a person on a date; overrides their standing shift for that day
+model RosterDay {
+  id              String   @id @default(uuid())
+  tenantId        String
+  employeeId      String
+  date            DateTime @db.Date
+  shiftTemplateId String? // null = day off
+  createdBy       String
+  createdAt       DateTime @default(now())
+
+  @@unique([employeeId, date])
+  @@index([tenantId, date])
+  @@map("roster_days")
+}
+
+// Attendance changed after the month was locked for payroll: kept as an adjustment for the next payroll run
+model AttendanceAdjustment {
+  id             String    @id @default(uuid())
+  tenantId       String
+  employeeId     String
+  date           DateTime  @db.Date
+  fromStatus     String
+  toStatus       String
+  reason         String
+  adjustedBy     String
+  appliedCycleId String? // the payroll run that took it into account
+  appliedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId, appliedCycleId])
+  @@map("attendance_adjustments")
 }

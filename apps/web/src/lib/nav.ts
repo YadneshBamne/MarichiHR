@@ -46,6 +46,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out timesheet regularisation overtime' },
       { label: 'Leave', selfLabel: 'My leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'time off holiday vacation balance' },
       { label: 'Attendance policies', path: '/attendance-policies', icon: 'sliders', roles: ROLE.ADMIN, app: 'attendance', keywords: 'office hours shift grace late penalty regularisation overtime comp off scheme' },
+      { label: 'Shifts & rosters', path: '/rosters', icon: 'calendar', roles: ROLE.ADMIN, app: 'attendance', keywords: 'shift roster rota rotation split night schedule' },
       { label: 'Leave policies', path: '/leave-types', icon: 'sliders', roles: ['hr_admin'], app: 'leave', keywords: 'leave types accrual configuration' },
       { label: 'Holiday calendar', path: '/holidays', icon: 'calendar', keywords: 'public holidays festivals days off calendar' },
     ],

@@ -4,6 +4,7 @@ export interface ClockInDto {
   longitude?: number
   method?: 'web' | 'mobile' | 'biometric' | 'qr' | 'nfc'
   notes?: string
+  qrToken?: string
 }
 
 export interface ClockOutDto {

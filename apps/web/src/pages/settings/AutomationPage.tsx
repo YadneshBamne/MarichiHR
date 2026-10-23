@@ -273,7 +273,7 @@ function HookEditor({ cat, hook, onClose }: { cat: Catalog; hook: Hook | null; o
 }
 
 // ─── API keys ───────────────────────────────────────────────
-const SCOPE_LABEL: Record<string, string> = { 'employees:read': 'People directory', 'org:read': 'Departments', 'leave:read': 'Approved leave', 'attendance:read': 'Attendance' }
+const SCOPE_LABEL: Record<string, string> = { 'attendance:write': 'Device punches (biometric, turnstile)', 'employees:read': 'People directory', 'org:read': 'Departments', 'leave:read': 'Approved leave', 'attendance:read': 'Attendance' }
 function ApiKeys() {
   const toast = useToast()
   const qc = useQueryClient()

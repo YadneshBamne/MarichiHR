@@ -11,6 +11,7 @@ import { useReveal } from '../../lib/motion'
 import EmployeeFormBuilder from './EmployeeFormBuilder'
 import { useMasters, type MasterListData, type MasterValue } from '../../lib/hooks/useMasters'
 
+import { OfficeQr } from '../attendance/AttendanceExtras'
 // One place for every list the rest of the product picks from. Departments, positions, locations and expense
 // categories are edited here; the others link to the screen that already manages them.
 interface Unit { id: string; name: string; type: string; parentId: string | null; costCenter: string | null; headcount: number }
@@ -171,6 +172,7 @@ function Positions({ units }: { units: Unit[] }) {
 }
 
 function Locations() {
+  const [qr, setQr] = useState<{ id: string; name: string } | null>(null)
   const save = useSave([['masters'], ['work-locations']])
   const { data = [] } = useQuery({ queryKey: ['work-locations'], queryFn: async () => (await api.get('/employees/work-locations')).data.data as any[] })
   const [edit, setEdit] = useState<any>(null)
@@ -191,10 +193,11 @@ function Locations() {
             <tr key={l.id}>
               <td><strong style={{ fontWeight: 600 }}>{l.name}</strong>{l.address && <div className="dim" style={{ fontSize: 12 }}>{l.address}</div>}</td><td>{l.city ?? '—'}</td><td>{l.countryCode ?? '—'}</td>
               <td>{l.latitude != null && l.geoFenceRadiusMeters ? `${l.geoFenceRadiusMeters} m` : <span className="dim">off</span>}</td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><button className="btn btn-ghost btn-sm" onClick={() => setEdit(l)}>Edit</button><button className="btn btn-ghost btn-sm" onClick={() => confirm(`Archive ${l.name}?`) && save.mutate(() => api.post(`/employees/work-locations/${l.id}/archive`))}>Archive</button></td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><button className="btn btn-ghost btn-sm" onClick={() => setQr(l)}>QR</button><button className="btn btn-ghost btn-sm" onClick={() => setEdit(l)}>Edit</button><button className="btn btn-ghost btn-sm" onClick={() => confirm(`Archive ${l.name}?`) && save.mutate(() => api.post(`/employees/work-locations/${l.id}/archive`))}>Archive</button></td>
             </tr>))}</tbody>
         </table>
       )}
+      {qr && <OfficeQr location={qr} onClose={() => setQr(null)} />}
       {edit && (
         <Modal open onClose={() => setEdit(null)} title={edit.id ? 'Edit location' : 'New location'}>
           <form onSubmit={(e) => { e.preventDefault(); submit() }} style={{ display: 'grid', gap: 12 }}>

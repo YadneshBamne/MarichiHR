@@ -15,6 +15,7 @@ import { retryWebhooks } from '../../modules/automation/integrations.service'
 import { leaveExtras } from '../../modules/leave/leave-extras.service'
 import { leaveAttendanceCheck } from '../../modules/leave/leave-rules'
 
+import { attendanceExtras } from '../../modules/attendance/attendance-extras.service'
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
 
@@ -92,6 +93,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '30 1 * * *',
     description: 'On the first day of the leave year, carry forward, encash and lapse the leave left from the year that ended (once)',
     run: (t) => perTenant(t, (id) => autoYearEnd(id), 'leave'),
+  },
+  'absence-flags': {
+    pattern: '45 2 * * *',
+    description: 'Tell HR when someone\'s unapproved absences this month reach their attendance policy\'s threshold (once a month per person)',
+    run: (t) => perTenant(t, (id) => attendanceExtras.absenceFlags(id), 'attendance'),
   },
   'leave-attendance-check': {
     pattern: '15 2 * * *',

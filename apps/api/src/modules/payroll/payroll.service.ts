@@ -342,6 +342,7 @@ export const payrollService = {
     return {
       ...cycle,
       payrollAdmins,
+      attendanceAdjustments: await prisma.attendanceAdjustment.count({ where: { tenantId, appliedCycleId: null, date: { lt: cycle.payPeriodStart } } }),
       signoffThreshold: threshold,
       signoffRequired: threshold != null && round2(Number(totals._sum.netPay ?? 0)) > threshold,
       totals: {
@@ -607,6 +608,7 @@ export const payrollService = {
     await repo.createAudit({ tenantId, userId, action: 'PAYROLL_CYCLE_DISBURSED', entityType: 'payroll_cycle', entityId: cycleId })
     if (!cycle.payslipsReleasedAt) await payrollService.releasePayslips(cycleId, tenantId, userId)
 
+    await prisma.attendanceAdjustment.updateMany({ where: { tenantId, appliedCycleId: null, date: { lt: cycle.payPeriodStart } }, data: { appliedCycleId: cycleId, appliedAt: new Date() } })
     await eventBus.publish(tenantId, 'payroll.cycle.disbursed', { payrollCycleId: cycleId, disbursedBy: userId })
 
     return getCycleOrThrow(cycleId, tenantId)

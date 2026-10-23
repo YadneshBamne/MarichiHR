@@ -5,6 +5,7 @@ import { requireRoles } from '../../middleware/rbac.middleware'
 import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { holidayService } from './holidays.service'
+import { holidayTemplate, HOLIDAY_COUNTRIES } from './holiday-templates'
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
 const id = z.object({ id: z.string().uuid() })
@@ -41,6 +42,16 @@ holidaysRouter.get('/mine', validate(RangeQuery), asyncHandler(async (req, res) 
   res.json({ success: true, data: await holidayService.mine(req.user!, String(req.query.from), String(req.query.to)) })
 }))
 
+// Ready-made country holiday lists (moon-dependent dates marked to confirm), previewed or created as a calendar
+const Template = z.object({ country: z.enum(['ZM', 'KE', 'NG', 'IN']), year: z.coerce.number().int().min(2000).max(2100) })
+holidaysRouter.get('/templates', validate(z.object({ query: Template })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { countries: HOLIDAY_COUNTRIES, holidays: holidayTemplate(req.query.country as any, Number(req.query.year)) } })
+}))
+holidaysRouter.post('/calendars/from-template', admins, validate(z.object({ body: Template.extend({ workLocationId: z.string().uuid().nullable().optional() }).strict() })), asyncHandler(async (req, res) => {
+  const { country, year, workLocationId } = req.body
+  const cal = await holidayService.createCalendar(req.user!, { name: `${HOLIDAY_COUNTRIES[country as keyof typeof HOLIDAY_COUNTRIES]} public holidays ${year}`, year, countryCode: country, workLocationId: workLocationId ?? null, holidays: holidayTemplate(country, year) } as any)
+  res.status(201).json({ success: true, data: cal })
+}))
 holidaysRouter.post('/calendars', admins, validate(CreateCalendar), asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: await holidayService.createCalendar(req.user!, req.body) })
 }))

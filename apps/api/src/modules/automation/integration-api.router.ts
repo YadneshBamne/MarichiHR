@@ -7,6 +7,7 @@ import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
 import { apiKeyService } from './integrations.service'
 
+import { attendanceExtras, PunchesBody } from '../attendance/attendance-extras.service'
 // Read-only API for other systems (payroll bureaus, BI tools, access control), authenticated with an API key:
 // `Authorization: Bearer mhr_…`. Each key carries scopes; every query is scoped to the key's company.
 export const integrationApiRouter = Router()
@@ -28,6 +29,11 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const page = { limit: z.coerce.number().int().min(1).max(500).default(100), offset: z.coerce.number().int().min(0).default(0) }
 const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null)
 const tenantOf = (req: Request) => (req as KeyReq).apiKey!.tenantId
+
+// Punches from biometric devices or turnstiles: [{ employeeId (code or work email), at (ISO time), type in|out, deviceId? }]
+integrationApiRouter.post('/punches', scope('attendance:write'), validate(z.object({ body: PunchesBody })), asyncHandler(async (req, res) => {
+  res.json(await attendanceExtras.ingestPunches(tenantOf(req), req.body.punches))
+}))
 
 // People directory: work details only (no personal, identity, pay or bank data)
 integrationApiRouter.get('/employees', scope('employees:read'), validate(z.object({ query: z.object({ ...page, status: z.enum(['active', 'all']).default('active'), updatedSince: z.string().datetime().optional() }) })), asyncHandler(async (req, res) => {

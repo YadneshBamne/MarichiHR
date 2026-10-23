@@ -42,6 +42,7 @@ export default function HolidaysPage() {
   const { data, isLoading } = useQuery({ queryKey: ['holidays', year], queryFn: async () => (await api.get('/holidays', { params: { year } })).data.data as { calendars: Calendar[] } })
   const calendars = data?.calendars ?? []
   const [creating, setCreating] = useState(false)
+  const [templating, setTemplating] = useState(false)
   const [editing, setEditing] = useState<Calendar | null>(null)
   const [adding, setAdding] = useState<Calendar | null>(null)
   const root = useReveal<HTMLDivElement>(isLoading)
@@ -72,6 +73,7 @@ export default function HolidaysPage() {
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setYear(year - 1)} aria-label="Previous year"><Icon name="chevronLeft" size={14} /></button>
             <span className="btn btn-ghost btn-sm num" style={{ pointerEvents: 'none', minWidth: 64 }}>{year}</span>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setYear(year + 1)} aria-label="Next year"><Icon name="chevronRight" size={14} /></button>
+            {canManage && <button className="btn btn-ghost btn-sm" onClick={() => setTemplating(true)}>From a country list</button>}
             {canManage && <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> New calendar</button>}
           </div>
         }
@@ -137,6 +139,7 @@ export default function HolidaysPage() {
         ))}
       </div>
 
+      {templating && <TemplateModal year={year} onClose={() => setTemplating(false)} onSaved={() => { setTemplating(false); refresh() }} />}
       {canManage && <CalendarModal open={creating} year={year} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); refresh() }} />}
       {canManage && editing && <CalendarModal open year={editing.year} calendar={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
       {canManage && adding && <AddHolidaysModal calendar={adding} onClose={() => setAdding(null)} onSaved={() => { setAdding(null); refresh() }} />}
@@ -254,5 +257,24 @@ function PasteBox({ year, value, onChange, parsed }: { year: number; value: stri
         {parsed.bad.length > 0 && <span style={{ color: 'var(--danger)' }}>{parsed.ok.length ? ' · ' : ''}{parsed.bad.length} line{parsed.bad.length === 1 ? '' : 's'} not understood (need a {year} date and a name): “{parsed.bad[0]}”</span>}
       </span>
     </label>
+  )
+}
+
+// Ready-made public holidays for Zambia, Kenya, Nigeria or India; moon-dependent dates say "date to confirm"
+function TemplateModal({ year, onClose, onSaved }: { year: number; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast()
+  const [country, setCountry] = useState('ZM')
+  const { data } = useQuery({ queryKey: ['holiday-template', country, year], queryFn: async () => (await api.get('/holidays/templates', { params: { country, year } })).data.data as { countries: Record<string, string>; holidays: { name: string; date: string; isOptional?: boolean }[] } })
+  const create = useMutation({ mutationFn: () => api.post('/holidays/calendars/from-template', { country, year }), onSuccess: () => { toast('Calendar created; edit it any time'); onSaved() }, onError: (e: any) => toast(e?.response?.data?.message ?? 'Could not create it', 'error') })
+  return (
+    <Modal open onClose={onClose} title={`Public holidays ${year}`}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        <label className="field"><span>Country</span><select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>{Object.entries(data?.countries ?? { ZM: 'Zambia', KE: 'Kenya', NG: 'Nigeria', IN: 'India' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+          <table className="tbl" style={{ width: '100%' }}><tbody>{(data?.holidays ?? []).map((h) => <tr key={h.date + h.name}><td className="num">{h.date}</td><td>{h.name}{h.isOptional && <span className="dim"> · optional</span>}</td></tr>)}</tbody></table>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" disabled={create.isPending || !data?.holidays.length} onClick={() => create.mutate()}>Create this calendar</button></div>
+      </div>
+    </Modal>
   )
 }

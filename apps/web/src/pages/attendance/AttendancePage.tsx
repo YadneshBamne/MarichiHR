@@ -11,11 +11,13 @@ import ApprovalsPanel from './ApprovalsPanel'
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import TeamTodayPanel from './TeamTodayPanel'
 
-type Tab = 'my' | 'team' | 'approvals'
+import { RosterWeek, Heatmap } from './AttendanceExtras'
+type Tab = 'my' | 'team' | 'approvals' | 'heatmap'
 
 export default function AttendancePage() {
   const pageTitle = usePageLabel('/attendance')
-  const { isManager } = useAuth()
+  const { isManager, hasRole } = useAuth()
+  const hr = hasRole('hr_admin') || hasRole('system_admin')
   const [activeTab, setActiveTab] = useState<Tab>('my')
   const [showReg, setShowReg] = useState(false)
   const [showOT, setShowOT] = useState(false)
@@ -27,6 +29,7 @@ export default function AttendancePage() {
       { key: 'team' as Tab, label: 'Team Today' },
       { key: 'approvals' as Tab, label: 'Approvals' },
     ] : []),
+    ...(hr ? [{ key: 'heatmap' as Tab, label: 'Heatmap' }] : []),
   ]
 
   return (
@@ -54,6 +57,8 @@ export default function AttendancePage() {
           <AttendanceCalendarView />
         </div>
       )}
+      {activeTab === 'my' && <div style={{ marginTop: 'var(--gap)' }}><RosterWeek /></div>}
+      {activeTab === 'heatmap' && hr && <Heatmap />}
 
       {activeTab === 'team' && isManager && <TeamTodayPanel />}
 

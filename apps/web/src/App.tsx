@@ -19,6 +19,8 @@ const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettings
 const CommunityPage = lazy(() => import('./pages/workplace/CommunityPage'))
 const ThreadPage = lazy(() => import('./pages/workplace/CommunityPage').then((m) => ({ default: m.ThreadPage })))
 const PayReviewPage = lazy(() => import('./pages/salary/PayReviewPage'))
+const RostersPage = lazy(() => import('./pages/attendance/AttendanceExtras'))
+const QrClockInPage = lazy(() => import('./pages/attendance/AttendanceExtras').then((m) => ({ default: m.QrClockInPage })))
 const PerformancePage = lazy(() => import('./pages/employees/PerformancePage'))
 const GrievancesPage = lazy(() => import('./pages/workplace/GrievancesPage'))
 const AuditPage = lazy(() => import('./pages/reports/AuditPage'))
@@ -108,6 +110,8 @@ export default function App() {
                     <Route path="policies" element={page(<PoliciesPage />)} />
                     <Route path="policies/:id" element={page(<PolicyPage />)} />
                     <Route path="performance" element={page(<PerformancePage />)} />
+                    <Route path="rosters" element={page(guard(<RostersPage />, { roles: ['hr_admin', 'system_admin'], app: 'attendance' }))} />
+                    <Route path="attendance/qr/:token" element={page(<QrClockInPage />)} />
                     <Route path="compensation-review" element={page(guard(<PayReviewPage />, { app: 'payroll', roles: ['payroll_admin', 'manager'] }))} />
                     <Route path="community" element={page(<CommunityPage />)} />
                     <Route path="community/:id" element={page(<ThreadPage />)} />

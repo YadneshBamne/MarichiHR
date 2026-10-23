@@ -7,6 +7,7 @@ import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { policyService } from './policy.service'
 
+import { attendanceExtras, ShiftBody, RosterBody } from './attendance-extras.service'
 export const attendanceRouter = Router()
 
 attendanceRouter.use(authenticate)
@@ -53,8 +54,22 @@ const PolicyBody = z.object({
   regularisationDaysBack: z.number().int().min(0).max(366), regularisationPerMonth: z.number().int().min(0).max(31),
   overtimeEnabled: z.boolean(), overtimeAfterHours: hours, overtimeRate: z.number().min(0).max(4), overtimeMaxHoursPerMonth: z.number().min(0).max(744).nullable(),
   compOffEnabled: z.boolean(), compOffHalfDayHours: hours, compOffFullDayHours: hours, allowWeb: z.boolean(), requireGeofence: z.boolean(),
+  lwpFlagAfterAbsences: z.number().int().min(1).max(31).nullable(),
 }).partial().strict()
 const policyAdmins = requireRoles('hr_admin', 'system_admin')
+
+// ─── Shifts, rosters, QR, heatmap, adjustments ──────────────────
+const id = z.object({ id: z.string().uuid() })
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+attendanceRouter.get('/shifts', asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.shifts(req.user!.tenantId) })))
+attendanceRouter.post('/shifts', policyAdmins, validate(z.object({ body: ShiftBody })), asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await attendanceExtras.saveShift(req.user!, null, req.body) })))
+attendanceRouter.patch('/shifts/:id', policyAdmins, validate(z.object({ params: id, body: ShiftBody.partial() })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.saveShift(req.user!, String(req.params.id), req.body as any) })))
+attendanceRouter.post('/roster', policyAdmins, validate(z.object({ body: RosterBody })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.assignRoster(req.user!, req.body) })))
+attendanceRouter.get('/roster', validate(z.object({ query: z.object({ from: day, to: day, employeeId: z.string().uuid().optional() }) })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.roster(req.user!, String(req.query.from), String(req.query.to), req.query.employeeId as string | undefined) })))
+attendanceRouter.get('/locations/:id/qr', policyAdmins, validate(z.object({ params: id })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.qrToken(req.user!, String(req.params.id)) })))
+attendanceRouter.post('/locations/:id/qr/rotate', policyAdmins, validate(z.object({ params: id })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.qrToken(req.user!, String(req.params.id), true) })))
+attendanceRouter.get('/heatmap', policyAdmins, validate(z.object({ query: z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }) })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.heatmap(req.user!.tenantId, String(req.query.month)) })))
+attendanceRouter.get('/adjustments', requireRoles('hr_admin', 'payroll_admin'), validate(z.object({ query: z.object({ pending: z.enum(['true', 'false']).optional() }) })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.adjustments(req.user!.tenantId, req.query.pending === 'true') })))
 attendanceRouter.get('/policies', policyAdmins, asyncHandler(async (req, res) => res.json({ success: true, data: await policyService.list(req.user!.tenantId) })))
 attendanceRouter.get('/policies/mine', asyncHandler(async (req, res) => res.json({ success: true, data: await policyService.mine(req.user!.employeeId) })))
 attendanceRouter.post('/policies', policyAdmins, validate(z.object({ body: PolicyBody.required({ name: true }) })), asyncHandler(async (req, res) => {

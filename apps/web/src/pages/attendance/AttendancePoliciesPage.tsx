@@ -16,7 +16,7 @@ interface Policy {
   flexible: boolean; startTime: string; endTime: string; graceInMinutes: number; graceOutMinutes: number; halfDayHours: number; fullDayHours: number
   lateEarlyAllowedPerMonth: number; latePenalty: 'none' | 'half_day_lop' | 'full_day_lop'; regularisationDaysBack: number; regularisationPerMonth: number
   overtimeEnabled: boolean; overtimeAfterHours: number; overtimeRate: number; overtimeMaxHoursPerMonth: number | null
-  compOffEnabled: boolean; compOffHalfDayHours: number; compOffFullDayHours: number; allowWeb: boolean; requireGeofence: boolean
+  compOffEnabled: boolean; compOffHalfDayHours: number; compOffFullDayHours: number; allowWeb: boolean; requireGeofence: boolean; lwpFlagAfterAbsences?: number | null
 }
 const PENALTY: Record<string, string> = { none: 'Flag only', half_day_lop: 'Half a day of pay', full_day_lop: 'A full day of pay' }
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
@@ -150,6 +150,7 @@ function PolicyModal({ p, units, locations, onClose }: { p: Policy; units: { id:
         </div>}
         {head('Marking attendance')}
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>{yes('allowWeb', 'Allow clocking in from the web')}{yes('requireGeofence', 'Require location (geofence) to clock in')}</div>
+        <label className="field" style={{ maxWidth: 360 }}><span>Tell HR after this many unapproved absences in a month (for unpaid-leave review)</span><input className="input" type="number" min={1} max={31} placeholder="Off" value={f.lwpFlagAfterAbsences ?? ''} onChange={(e) => set({ lwpFlagAfterAbsences: e.target.value === '' ? null : Number(e.target.value) })} /></label>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button type="button" className="btn btn-ghost" onClick={() => onClose()}>Cancel</button><button className="btn btn-primary" disabled={save.isPending}>Save policy</button></div>
       </form>
     </Modal>

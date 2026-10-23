@@ -42,6 +42,8 @@ export const minutesOf = (hhmm: string) => { const [h, m] = hhmm.split(':').map(
 
 // Is this date a working day for the person (their working week, not a mandatory holiday)?
 export async function isWorkingDay(employeeId: string, tenantId: string, date: Date) {
+  const rostered = await prisma.rosterDay.findUnique({ where: { employeeId_date: { employeeId, date: new Date(`${date.toISOString().slice(0, 10)}T00:00:00Z`) } } })
+  if (rostered) return !!rostered.shiftTemplateId
   const emp = await prisma.employee.findUnique({ where: { id: employeeId }, select: { resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } } } })
   const days = new Set((emp?.resourceCalendar?.days ?? []).map((d) => d.dayOfWeek))
   const weekday = (date.getUTCDay() + 6) % 7 // calendars use 0 = Monday

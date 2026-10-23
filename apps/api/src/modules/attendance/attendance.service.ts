@@ -4,6 +4,7 @@ import { ClockInDto, ClockOutDto, RegularisationDto, OvertimeRequestDto, Attenda
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
+import { attendanceExtras } from './attendance-extras.service'
 import {
   businessToday, getTenantTimezone, normaliseDateInput, monthRange, zonedTimeToUtc, localTimeString,
 } from '../../shared/utils/businessDate'
@@ -43,16 +44,17 @@ function computeOvertimeHours(workedHours: number, threshold: number): number {
 
 // The employee's own shift (if assigned for the day) sets the hours; otherwise their attendance policy does
 async function dayRules(employeeId: string, when: Date) {
-  const [policy, assigned] = await Promise.all([
+  const [policy, assigned, rostered] = await Promise.all([
     policyFor(employeeId),
     prisma.employeeShift.findFirst({ where: { employeeId, effectiveFrom: { lte: when }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: when } }] }, include: { shiftTemplate: true }, orderBy: { effectiveFrom: 'desc' } }),
+    attendanceExtras.rosterShift(employeeId, when),
   ])
-  const shift = assigned?.shiftTemplate
+  const shift = rostered === undefined ? assigned?.shiftTemplate : rostered ?? undefined
   return {
     policy,
     flexible: shift ? shift.shiftType === 'flexible' : policy.flexible,
     startTime: shift?.startTime ?? policy.startTime,
-    endTime: shift?.endTime ?? policy.endTime,
+    endTime: shift?.splitEndTime ?? shift?.endTime ?? policy.endTime,
     graceIn: shift ? shift.graceLateMinutes : policy.graceInMinutes,
     graceOut: shift ? shift.graceEarlyOutMinutes : policy.graceOutMinutes,
     halfDayHours: shift?.halfDayHours ?? policy.halfDayHours,
@@ -117,9 +119,10 @@ export const attendanceService = {
     const [open, existing] = await Promise.all([findOpenRecord(employeeId, today), attendanceRepository.findTodayRecord(employeeId, today)])
     if (open) throw new AppError('You are already clocked in', 400)
     if (existing?.isLocked) throw new AppError('Attendance record is locked and cannot be modified', 400)
+    if (data.qrToken) { const loc = await attendanceExtras.locationForQr(tenantId, data.qrToken); data = { ...data, method: 'qr', locationId: loc.id, latitude: undefined, longitude: undefined } }
     const rules = await dayRules(employeeId, new Date())
     if (!rules.policy.allowWeb && (data.method || 'web') === 'web') throw new AppError('Your attendance policy does not allow clocking in from the web', 403)
-    if (rules.policy.requireGeofence && !(data.locationId && data.latitude != null && data.longitude != null)) throw new AppError('Your attendance policy needs your location to clock in', 400)
+    if (rules.policy.requireGeofence && data.method !== 'qr' && !(data.locationId && data.latitude != null && data.longitude != null)) throw new AppError('Your attendance policy needs your location to clock in', 400)
 
     if (data.locationId && data.latitude && data.longitude) {
       const location = await prisma.workLocation.findUnique({ where: { id: data.locationId } })
@@ -463,6 +466,10 @@ export const attendanceService = {
   async overrideAttendance(tenantId: string, data: AttendanceOverrideDto, overrideBy: string) {
     const employee = await prisma.employee.findFirst({ where: { id: data.employeeId, tenantId }, select: { id: true } })
     if (!employee) throw new AppError('Employee not found', 404)
+    const before = await prisma.attendanceRecord.findUnique({ where: { employeeId_date: { employeeId: data.employeeId, date: normaliseDateInput(data.date) } } })
+    if (before?.isLocked && before.status !== data.status) {
+      await prisma.attendanceAdjustment.create({ data: { tenantId, employeeId: data.employeeId, date: normaliseDateInput(data.date), fromStatus: before.status, toStatus: data.status, reason: data.reason, adjustedBy: overrideBy } })
+    }
     return attendanceRepository.overrideStatus(
       data.employeeId,
       normaliseDateInput(data.date),

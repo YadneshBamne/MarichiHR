@@ -11,6 +11,7 @@ import BankFileModal from './BankFileModal'
 import InputsPanel from './InputsPanel'
 import { money, fmtPeriod, fmtDate } from '../../lib/format'
 
+import { AdjustmentsModal } from '../attendance/AttendanceExtras'
 type Tab = 'payslips' | 'variance' | 'inputs'
 
 const STEPS = ['Draft', 'Attendance locked', 'In review', 'First approval', 'Second approval', 'Disbursed']
@@ -37,6 +38,7 @@ export default function CycleDetailPage() {
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('payslips')
   const [error, setError] = useState('')
+  const [showAdj, setShowAdj] = useState(false)
   const [runResult, setRunResult] = useState<any>(null)
   const [showBank, setShowBank] = useState(false)
   const [glBusy, setGlBusy] = useState(false)
@@ -134,11 +136,13 @@ export default function CycleDetailPage() {
         <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>
           {cycle.status === 'approved' && !cycle.financeApprovedBy && isMakerOfApproval && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Waiting for a second Payroll admin to give the second approval</span>}
+          {(cycle as any).attendanceAdjustments > 0 && cycle.status !== 'disbursed' && <button className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right', border: 0, cursor: 'pointer' }} onClick={() => setShowAdj(true)}>{(cycle as any).attendanceAdjustments} attendance change{(cycle as any).attendanceAdjustments === 1 ? '' : 's'} after an earlier lock: review</button>}
           {cycle.status === 'approved' && !!cycle.financeApprovedBy && (cycle as any).signoffRequired && !(cycle as any).signoffBy && <span className="pill warn" style={{ whiteSpace: 'normal', textAlign: 'right' }}>Above the sign-off amount ({(cycle as any).signoffThreshold?.toLocaleString()}): waiting for a System admin's sign-off</span>}
           {['review', 'approved'].includes(cycle.status) && !cycle.financeApprovedBy && (cycle as any).payrollAdmins < 2 && <span className="pill danger" style={{ whiteSpace: 'normal', textAlign: 'right', maxWidth: 380 }}>Every payroll needs approvals from two different Payroll admins, and this company has only {(cycle as any).payrollAdmins}. Give a second person the Payroll admin role in their Login &amp; access tab.</span>}
         </div>
       </div>
 
+      {showAdj && <AdjustmentsModal onClose={() => setShowAdj(false)} />}
       {/* Stepper */}
       <div style={{ display: 'flex', backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '14px 18px', marginBottom: 16, gap: 8 }}>
         {STEPS.map((s, i) => (
