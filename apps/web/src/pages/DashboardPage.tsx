@@ -18,7 +18,7 @@ export { TimeTracker } from '../components/dashboard/Widgets'
 
 const utc = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00Z`)
 const fmt = (s: string, o: Intl.DateTimeFormatOptions) => utc(s).toLocaleDateString(undefined, { timeZone: 'UTC', ...o })
-const STAGE: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'HR review', approved: 'HR approved', finance_approved: 'Finance approved', disbursed: 'Paid' }
+const STAGE: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'Review', approved: 'First approval', finance_approved: 'Second approval', disbursed: 'Paid' }
 const STAGES = ['draft', 'processing', 'review', 'approved', 'finance_approved', 'disbursed']
 
 function greeting() {

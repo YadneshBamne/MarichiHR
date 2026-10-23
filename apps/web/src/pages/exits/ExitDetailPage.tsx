@@ -76,7 +76,7 @@ export default function ExitDetailPage() {
           {x.lines && hasRole('payroll_admin') && <button onClick={pdf} style={ghost}>Settlement PDF</button>}
           {isHR && ['initiated', 'computed'].includes(x.status) && <button onClick={() => setShowCancel(true)} style={{ ...ghost, backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)' }}>Cancel exit</button>}
           {canFinance && x.status === 'computed' && (
-            <button disabled={madeIt || action.isPending} title={madeIt ? 'A different user than the one who computed must approve' : ''} onClick={() => setConfirm({ path: 'approve', title: 'Approve settlement?', body: `Net ${money(x.netPayable, cur)}. Next step is payment.` })} style={{ ...primaryBtn, opacity: madeIt ? 0.5 : 1, cursor: madeIt ? 'not-allowed' : 'pointer' }}>Approve (finance)</button>
+            <button disabled={madeIt || action.isPending} title={madeIt ? 'A different user than the one who computed must approve' : ''} onClick={() => setConfirm({ path: 'approve', title: 'Approve settlement?', body: `Net ${money(x.netPayable, cur)}. Next step is payment.` })} style={{ ...primaryBtn, opacity: madeIt ? 0.5 : 1, cursor: madeIt ? 'not-allowed' : 'pointer' }}>Approve</button>
           )}
           {canFinance && x.status === 'approved' && (
             <button onClick={() => setConfirm({ path: 'pay', title: 'Pay settlement?', body: 'Marks the settlement paid, closes the contract and archives the employee and their login. This cannot be undone.' })} style={primaryBtn}>Mark paid</button>

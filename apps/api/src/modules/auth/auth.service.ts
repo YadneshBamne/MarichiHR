@@ -33,7 +33,7 @@ const mfaSecretKey = () => `${process.env.JWT_ACCESS_SECRET}.mfa`
 const MFA_MAX_FAILURES = 5
 
 type LoginUser = NonNullable<Awaited<ReturnType<typeof authRepository.findUserByEmail>>>
-type LoginTenant = { id: string; name: string; slug: string; logoUrl?: string | null; modules?: string[]; onboardedAt?: Date | null; ownerUserId?: string | null }
+type LoginTenant = { id: string; name: string; slug: string; baseCurrency?: string; timezone?: string; primaryCountry?: string | null; logoUrl?: string | null; modules?: string[]; onboardedAt?: Date | null; ownerUserId?: string | null }
 
 // pwc = "password change required": authenticate() only lets such tokens reach the change-password endpoints
 const claimsFor = (user: { id: string; email: string; mustChangePassword?: boolean; userRoles: { role: { name: string } }[]; employee?: { id: string } | null }, tenantId: string): JwtPayload => ({
@@ -45,7 +45,7 @@ const claimsFor = (user: { id: string; email: string; mustChangePassword?: boole
   ...(user.mustChangePassword && { pwc: true }),
 })
 
-export const tenantPayload = (t: LoginTenant) => ({ id: t.id, name: t.name, slug: t.slug, logoUrl: t.logoUrl ?? null, modules: t.modules ?? [], onboardedAt: t.onboardedAt ?? null, ownerUserId: t.ownerUserId ?? null })
+export const tenantPayload = (t: LoginTenant) => ({ id: t.id, name: t.name, slug: t.slug, baseCurrency: t.baseCurrency ?? null, timezone: t.timezone ?? null, primaryCountry: t.primaryCountry ?? null, logoUrl: t.logoUrl ?? null, modules: t.modules ?? [], onboardedAt: t.onboardedAt ?? null, ownerUserId: t.ownerUserId ?? null })
 
 export const PASSWORD_RULE = 'Use at least 10 characters with a letter and a number'
 export const strongPassword = (pw: string) => pw.length >= 10 && /[A-Za-z]/.test(pw) && /\d/.test(pw)

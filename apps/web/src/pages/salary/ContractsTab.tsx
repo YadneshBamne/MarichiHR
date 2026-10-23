@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
 import { useContracts, useStructures, useGradeBands, useSalaryWrite, errMsg } from '../../lib/hooks/useSalary'
 import { useEmployees } from '../../lib/hooks/useEmployees'
 import Modal from '../../components/ui/Modal'
@@ -52,7 +53,7 @@ export default function ContractsTab({ canEdit }: { canEdit: boolean }) {
         {canEdit && <button style={primaryBtn} onClick={() => setCreating(true)}>+ New contract</button>}
       </div>
       <div style={card}>
-        {isLoading ? <div style={empty}>Loading...</div> : shown.length === 0 ? <div style={empty}>No contracts.</div> : (
+        {isLoading ? <div style={empty}>Loading...</div> : shown.length === 0 ? <div style={empty}>No contracts here. Payroll pays only people with a running contract: add one per person with + New contract.</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>{['Employee', 'Monthly wage', 'Structure', 'Grade band', 'Effective', 'Notice', 'Status', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
@@ -106,9 +107,13 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
   const { data: structures = [] } = useStructures()
   const { data: bands = [] } = useGradeBands()
   const write = useSalaryWrite()
-  const [f, setF] = useState({ employeeId: '', wageMonthly: '', ctcAnnual: '', currency: 'ZMW', effectiveFrom: '', effectiveUntil: '', noticePeriodDays: '30', salaryStructureId: '', gradeBandId: '', revisionReason: '' })
+  const { user } = useAuth()
+  const [startNow, setStartNow] = useState(true)
+  const [f, setF] = useState({ employeeId: '', wageMonthly: '', ctcAnnual: '', currency: user?.tenant?.baseCurrency || 'ZMW', effectiveFrom: '', effectiveUntil: '', noticePeriodDays: '30', salaryStructureId: '', gradeBandId: '', revisionReason: '' })
   const [error, setError] = useState('')
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }))
+  // One structure (the usual start): pick it, so the contract isn't skipped by payroll for having none
+  useEffect(() => { if (structures.length === 1) setF((p) => (p.salaryStructureId ? p : { ...p, salaryStructureId: structures[0].id })) }, [structures])
   const employees: any[] = empRes?.data ?? []
   const band = bands.find((b: any) => b.id === f.gradeBandId)
   const ctc = Number(f.ctcAnnual || Number(f.wageMonthly) * 12)
@@ -117,7 +122,7 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
   const save = async () => {
     setError('')
     try {
-      await write.mutateAsync({
+      const created: any = await write.mutateAsync({
         method: 'post', path: '/leave/contracts', body: {
           employeeId: f.employeeId, wageMonthly: Number(f.wageMonthly), ctcAnnual: ctc, currency: f.currency.toUpperCase(), effectiveFrom: f.effectiveFrom,
           noticePeriodDays: Number(f.noticePeriodDays),
@@ -127,6 +132,9 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
           ...(f.revisionReason.trim() && { revisionReason: f.revisionReason.trim() }),
         },
       })
+      // Start it now: new → draft → confirmed → running, so payroll picks it up
+      const id = created?.id ?? created?.data?.id
+      if (startNow && id) for (const step of ['draft', 'confirm', 'activate']) await write.mutateAsync({ method: 'post', path: `/leave/contracts/${id}/${step}`, body: {} })
       onClose()
     } catch (err) { setError(errMsg(err)) }
   }
@@ -163,7 +171,7 @@ function NewContractModal({ onClose }: { onClose: () => void }) {
         <FormField label="Revision reason" style={{ gridColumn: '1 / -1' }}><input style={inputStyle} value={f.revisionReason} onChange={(e) => set('revisionReason', e.target.value)} /></FormField>
       </div>
       {flag && <div style={{ fontSize: 12, color: 'var(--warn)', marginTop: 10 }}>⚠ Annual CTC {money(ctc, f.currency)} is {flag} ({band.code}: {money(band.salaryMin, band.currency)}–{money(band.salaryMax, band.currency)})</div>}
-      <p style={{ fontSize: 12, color: 'var(--faint)', marginBottom: 0 }}>New contracts start in “new”. Move them through draft → confirmed → running from the list.</p>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, marginTop: 12 }}><input type="checkbox" checked={startNow} onChange={(e) => setStartNow(e.target.checked)} style={{ marginTop: 3 }} /> <span><strong>Start it now</strong>: the contract becomes running, so payroll pays it. Untick to keep it as a new draft and move it through draft → confirmed → running from the list.</span></label>
       {error && <div style={errorBox}>{error}</div>}
       <div style={footer}><button style={ghostBtn} onClick={onClose}>Cancel</button><button style={{ ...primaryBtn, opacity: ready ? 1 : 0.5 }} disabled={!ready || write.isPending} onClick={save}>Create contract</button></div>
     </Modal>

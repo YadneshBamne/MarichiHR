@@ -157,7 +157,7 @@ export default function OnboardingPage() {
                 {apps.length} {apps.length === 1 ? 'app' : 'apps'} installed{added.filter((a) => !a.error).length ? `, ${added.filter((a) => !a.error).length} people invited` : ''}. Your workspace address is <code style={{ background: 'var(--well)', padding: '2px 8px', borderRadius: 8 }}>{user?.tenant?.slug}</code>; people can sign in with just their email.
               </p>
               <p className="dim" style={{ marginTop: 8, lineHeight: 1.6, fontSize: 14 }}>
-                Your dashboard has a <b>Next steps</b> list: departments and offices, who reports to whom, holidays{apps.includes('payroll') ? ', a salary structure and contracts for payroll' : ''}. Each step links straight to the right screen.
+                Your dashboard has a <b>Next steps</b> list: departments and offices, who reports to whom, holidays{apps.includes('payroll') ? ', and for a Payroll admin, a salary structure and contracts' : ''}. Each step links straight to the right screen.
               </p>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 24, flexWrap: 'wrap' }}>
                 <button className="btn btn-ghost" onClick={() => go(2)}><Icon name="chevronLeft" size={15} /> Back</button>

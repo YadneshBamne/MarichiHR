@@ -6,6 +6,8 @@ import { FormField, inputStyle, selectStyle } from '../../components/ui/FormFiel
 import { useLeaveTypes, useMyLeaveBalances, useApplyLeave } from '../../lib/hooks/useLeave'
 import { useAuth } from '../../contexts/AuthContext'
 
+// Leave days to two decimals without trailing zeros (1.67, 10, 0.5)
+const days = (n?: number) => String(+(n ?? 0).toFixed(2))
 interface Props {
   open: boolean
   onClose: () => void
@@ -86,7 +88,7 @@ export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
       return
     }
     if (insufficient) {
-      setError(`Insufficient balance. Available: ${available?.toFixed(1)} days, Requested: ${workingDays} days`)
+      setError(`Insufficient balance. Available: ${days(available)} days, Requested: ${workingDays} days`)
       return
     }
     try {
@@ -153,7 +155,7 @@ export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
             fontSize: '13px',
             color: insufficient ? 'var(--danger)' : over ? 'var(--ink)' : 'var(--ok)',
           }}>
-            Balance available: <strong>{available.toFixed(1)} days</strong>
+            Balance available: <strong>{days(available)} days</strong>
             {workingDays > 0 && ` · Requesting: ${workingDays} working day${workingDays !== 1 ? 's' : ''}`}
             {ranged && offDays.length > 0 && ` · ${offDays.map((h) => h.name).join(', ')} ${offDays.length === 1 ? 'is a holiday' : 'are holidays'} (not counted)`}
             {over && !insufficient && <div style={{ marginTop: 4 }}>This request is {overBy} day{overBy === 1 ? '' : 's'} over your balance. You can still send it: your approver decides whether the extra days are paid or unpaid.</div>}

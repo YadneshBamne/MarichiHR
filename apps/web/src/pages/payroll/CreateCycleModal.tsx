@@ -20,7 +20,7 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
   const [offCycle, setOffCycle] = useState(false)
   const [reason, setReason] = useState('')
   const [corrects, setCorrects] = useState('')
-  const { data: cycles = [] } = useCycles(true)
+  const { data: cycles = [] } = useCycles(offCycle)
   const paid = (cycles as any[]).filter((c) => c.status === 'disbursed' && !c.offCycle)
 
   const submit = async (e: React.FormEvent) => {

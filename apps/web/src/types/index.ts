@@ -20,8 +20,9 @@ export interface User {
     id: string
     name: string
     slug: string
-    baseCurrency?: string
-    timezone?: string
+    baseCurrency?: string | null
+    timezone?: string | null
+    primaryCountry?: string | null
     logoUrl?: string | null
     modules?: string[]
     onboardedAt?: string | null

@@ -8,6 +8,8 @@ import LeaveApprovalsPanel from './LeaveApprovalsPanel'
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import TeamLeaveCalendar from './TeamLeaveCalendar'
 
+// Leave days to two decimals without trailing zeros (1.67, 10, 0.5)
+const days = (n?: number) => String(+(n ?? 0).toFixed(2))
 type Tab = 'overview' | 'requests' | 'approvals' | 'calendar'
 
 export default function LeavePage() {
@@ -75,16 +77,16 @@ export default function LeavePage() {
                   <div key={b.leaveTypeId || b.leaveType?.id} style={s.balanceCard}>
                     <div style={s.balanceName}>{b.leaveType?.name || b.leaveType}</div>
                     <div style={s.balanceNumbers}>
-                      <span style={s.availNum}>{available.toFixed(1)}</span>
-                      <span style={s.totalNum}>/ {b.balanceDays.toFixed(1)} days</span>
+                      <span style={s.availNum}>{days(available)}</span>
+                      <span style={s.totalNum}>/ {days(b.balanceDays)} days</span>
                     </div>
                     <div style={s.progressTrack}>
                       <div style={{ ...s.progressFill, width: `${Math.min(100, pct)}%` }} />
                     </div>
                     <div style={s.balanceFooter}>
-                      <span>{b.usedDays.toFixed(1)} used</span>
-                      {b.pendingDays > 0 && <span style={{ color: 'var(--warn)' }}>{b.pendingDays.toFixed(1)} pending</span>}
-                      <span style={{ marginLeft: 'auto' }}>{available.toFixed(1)} available</span>
+                      <span>{days(b.usedDays)} used</span>
+                      {b.pendingDays > 0 && <span style={{ color: 'var(--warn)' }}>{days(b.pendingDays)} pending</span>}
+                      <span style={{ marginLeft: 'auto' }}>{days(available)} available</span>
                     </div>
                     <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>{creditHint(b.leaveType)}</div>
                     {!b.leaveType?.isPaid && (

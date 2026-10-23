@@ -101,7 +101,7 @@ export default function LandingPage() {
               ['Create your workspace', 'Your company name, logo, country, currency and time zone. You become the owner.', 'briefcase'],
               ['Pick your apps', 'Attendance, leave, payroll, expenses, exits: switch on what you need today.', 'grid'],
               ['Add your team', 'Add managers and employees, set their roles and hand them a temporary password.', 'users'],
-              ['Everyone has a portal', 'Employees clock in and apply for leave, managers approve, HR and finance run payroll.', 'sparkle'],
+              ['Everyone has a portal', 'Employees clock in and apply for leave, managers approve, Payroll admins run payroll.', 'sparkle'],
             ] as [string, string, IconName][]).map(([t, b, ic], i) => (
               <div key={t} data-in className="card" style={{ padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -13,10 +13,27 @@ const optNum = <K extends string>(key: K) => ({
   compute: (row: { [P in K]: Dec | null }) => (row[key] == null ? null : Number(row[key])),
 })
 
+const READS = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy'])
+
 function createClient() {
   return new PrismaClient({
     log: process.env.PRISMA_LOG_QUERIES === 'true' ? ['query', 'error', 'warn'] : ['error', 'warn'],
   }).$extends({
+    // Neon drops a connection now and then (P1001/P1017, pool timeout P2024): retry a read once instead of showing an error.
+    // Writes are never retried, so nothing is applied twice.
+    query: {
+      $allModels: {
+        async $allOperations({ operation, args, query }) {
+          try {
+            return await query(args)
+          } catch (e: any) {
+            if (!READS.has(operation) || !['P1001', 'P1017', 'P2024'].includes(e?.code ?? e?.errorCode)) throw e
+            await new Promise((r) => setTimeout(r, 400))
+            return query(args)
+          }
+        },
+      },
+    },
     result: {
       employeeContract: { ctcAnnual: num('ctcAnnual'), wageMonthly: num('wageMonthly') },
       salaryRule: { amountFixed: optNum('amountFixed') },

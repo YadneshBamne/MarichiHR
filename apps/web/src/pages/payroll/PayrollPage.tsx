@@ -16,7 +16,7 @@ import { MyFlexi } from './FlexiPanel'
 type Tab = 'cycles' | 'mine'
 // The maker-checker path every cycle walks
 const STAGES = ['draft', 'processing', 'review', 'approved', 'finance_approved', 'disbursed'] as const
-const STAGE_LABEL: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'HR review', approved: 'HR approved', finance_approved: 'Finance approved', disbursed: 'Disbursed' }
+const STAGE_LABEL: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'Review', approved: 'First approval', finance_approved: 'Second approval', disbursed: 'Disbursed' }
 
 export default function PayrollPage() {
   const pageTitle = usePageLabel('/payroll')
@@ -46,7 +46,7 @@ export default function PayrollPage() {
     <div ref={ref}>
       <PageHeader
         title={pageTitle}
-        sub={isStaff ? 'Calculate, approve and pay, with HR and finance sign-off on every cycle.' : 'Your payslips and pay history.'}
+        sub={isStaff ? 'Calculate, approve and pay, with two Payroll admins approving every run.' : 'Your payslips and pay history.'}
         actions={isStaff && canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined}
       >
         <div className="chips">
@@ -84,7 +84,7 @@ export default function PayrollPage() {
           {isLoading ? <div style={{ padding: 14 }}>{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 38, marginBottom: 10 }} />)}</div> : cycles.length === 0 ? (
             <div style={{ padding: 14, display: 'grid', gap: 14 }}>
               {hasRole('payroll_admin') && <SetupChecklist app="payroll" title="Before your first payroll" compact />}
-              <EmptyState icon={<Icon name="wallet" size={24} />} title="No payroll cycles yet" body="Create a cycle for a pay period, lock attendance, then run the calculation. An HR admin approves it, then a Payroll admin gives the finance approval and pays." action={canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined} />
+              <EmptyState icon={<Icon name="wallet" size={24} />} title="No payroll cycles yet" body="Create a cycle for a pay period, lock attendance, then run the calculation. One Payroll admin approves it, a second Payroll admin gives the second approval, then it is paid." action={canCreate ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> New cycle</button> : undefined} />
             </div>
           ) : (
             <table className="tbl" style={{ minWidth: 640 }}>

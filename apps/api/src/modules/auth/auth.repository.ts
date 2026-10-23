@@ -112,6 +112,7 @@ export const authRepository = {
             slug: true,
             baseCurrency: true,
             timezone: true,
+            primaryCountry: true,
             logoUrl: true,
             modules: true,
             onboardedAt: true,
