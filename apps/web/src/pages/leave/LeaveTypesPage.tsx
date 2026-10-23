@@ -14,7 +14,7 @@ const ACCRUALS: [string, string][] = [['manual', 'Manual allocation'], ['monthly
 type Form = Record<string, any>
 const BLANK: Form = {
   name: '', code: '', category: 'annual', isPaid: true, accrualType: 'manual', accrualAmount: '', carryForward: false, carryForwardMax: '',
-  carryForwardExpiryMonths: '', allowNegative: false, encashable: false, encashMaxDays: '', halfDayAllowed: true, approvalLevels: 1, attachmentRequiredAfterDays: '',
+  carryForwardExpiryMonths: '', allowNegative: false, allowOverBalance: true, encashable: false, encashMaxDays: '', halfDayAllowed: true, approvalLevels: 1, attachmentRequiredAfterDays: '',
   sandwichRule: false, isStatutory: false, statutoryCountry: '',
 }
 const num = (v: any) => (v === '' || v == null ? null : Number(v))
@@ -39,7 +39,7 @@ export default function LeaveTypesPage() {
     const body: Form = {
       name: f.name.trim(), category: f.category, isPaid: f.isPaid, accrualType: f.accrualType, accrualAmount: num(f.accrualAmount),
       carryForward: f.carryForward, carryForwardMax: f.carryForward ? num(f.carryForwardMax) : null,
-      carryForwardExpiryMonths: f.carryForward ? num(f.carryForwardExpiryMonths) : null, allowNegative: f.allowNegative, encashable: f.encashable, encashMaxDays: f.encashable ? num(f.encashMaxDays) : null,
+      carryForwardExpiryMonths: f.carryForward ? num(f.carryForwardExpiryMonths) : null, allowNegative: f.allowNegative, allowOverBalance: f.allowOverBalance, encashable: f.encashable, encashMaxDays: f.encashable ? num(f.encashMaxDays) : null,
       halfDayAllowed: f.halfDayAllowed, approvalLevels: Number(f.approvalLevels), attachmentRequiredAfterDays: num(f.attachmentRequiredAfterDays),
       sandwichRule: f.sandwichRule, isStatutory: f.isStatutory, statutoryCountry: f.isStatutory && f.statutoryCountry ? f.statutoryCountry.toUpperCase() : null,
     }
@@ -123,6 +123,7 @@ export default function LeaveTypesPage() {
               {check('isPaid', 'Paid leave')}
               {check('halfDayAllowed', 'Half days allowed')}
               {check('allowNegative', 'Allow negative balance')}
+              {check('allowOverBalance', 'Allow requests beyond the balance (the approver decides paid or unpaid)')}
               {check('encashable', 'Encashable (exit and year end)')}
               {check('sandwichRule', 'Sandwich rule (count weekends between)')}
               {check('carryForward', 'Carry forward unused days')}

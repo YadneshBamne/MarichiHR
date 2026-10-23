@@ -540,6 +540,7 @@ model LeaveType {
   carryForwardMax             Float?
   carryForwardExpiryMonths    Int?
   allowNegative               Boolean   @default(false)
+  allowOverBalance            Boolean   @default(true) // requests beyond the balance go to the approver, who decides paid or unpaid
   encashable                  Boolean   @default(false)
   encashMaxDays               Float? // year end: most days paid out; the rest beyond carry-forward lapses
   halfDayAllowed              Boolean   @default(true)
@@ -631,6 +632,7 @@ model LeaveRequest {
   startHalf     String?
   endHalf       String?
   totalDays     Float
+  shortfallDays Float     @default(0) // days asked beyond the available balance
   reason        String?
   attachmentUrl String?
   status        String    @default("pending")

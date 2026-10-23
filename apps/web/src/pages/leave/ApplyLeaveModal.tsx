@@ -68,7 +68,10 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
   const available = selectedBalance
     ? Math.max(0, selectedBalance.balanceDays - selectedBalance.usedDays - selectedBalance.pendingDays)
     : null
-  const insufficient = available !== null && selectedType?.isPaid && workingDays > available
+  const over = available !== null && selectedType?.isPaid && !selectedType?.allowNegative && workingDays > available
+  // Over the balance is allowed (the approver decides paid or unpaid) unless the leave type turns that off
+  const insufficient = over && selectedType?.allowOverBalance === false
+  const overBy = over ? Math.round((workingDays - (available ?? 0)) * 10) / 10 : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -137,14 +140,16 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
         {form.leaveTypeId && available !== null && (
           <div style={{
             padding: '10px 12px', borderRadius: '12px',
-            backgroundColor: insufficient ? 'var(--danger-bg)' : 'var(--ok-bg)',
-            border: `1px solid ${insufficient ? 'var(--danger-line)' : 'var(--ok-line)'}`,
+            backgroundColor: insufficient ? 'var(--danger-bg)' : over ? 'var(--honey-soft)' : 'var(--ok-bg)',
+            border: `1px solid ${insufficient ? 'var(--danger-line)' : over ? 'var(--honey)' : 'var(--ok-line)'}`,
             fontSize: '13px',
-            color: insufficient ? 'var(--danger)' : 'var(--ok)',
+            color: insufficient ? 'var(--danger)' : over ? 'var(--ink)' : 'var(--ok)',
           }}>
             Balance available: <strong>{available.toFixed(1)} days</strong>
             {workingDays > 0 && ` · Requesting: ${workingDays} working day${workingDays !== 1 ? 's' : ''}`}
             {ranged && offDays.length > 0 && ` · ${offDays.map((h) => h.name).join(', ')} ${offDays.length === 1 ? 'is a holiday' : 'are holidays'} (not counted)`}
+            {over && !insufficient && <div style={{ marginTop: 4 }}>This request is {overBy} day{overBy === 1 ? '' : 's'} over your balance. You can still send it: your approver decides whether the extra days are paid or unpaid.</div>}
+            {insufficient && <div style={{ marginTop: 4 }}>This leave type can't go beyond the balance. Ask HR for more days under Leave › Request more days.</div>}
           </div>
         )}
 

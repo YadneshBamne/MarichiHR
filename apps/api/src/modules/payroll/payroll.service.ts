@@ -107,8 +107,10 @@ export async function computeEmployeePayslip(
         if (day === s && lr.startHalf) v -= 0.5
         if (day === e && lr.endHalf) v -= 0.5
       }
-      if (!lr.leaveType.isPaid) lwpByDay.set(day, Math.max(lwpByDay.get(day) ?? 0, v))
-      else paidLeaveDays += v
+      // Days approved beyond the balance as unpaid: that share of each day is LWP
+      const lwpShare = !lr.leaveType.isPaid ? 1 : lr.totalDays > 0 ? Math.min(1, (lr.lwpDays ?? 0) / lr.totalDays) : 0
+      if (lwpShare > 0) lwpByDay.set(day, Math.max(lwpByDay.get(day) ?? 0, v * lwpShare))
+      paidLeaveDays += v * (1 - lwpShare)
     }
   }
 

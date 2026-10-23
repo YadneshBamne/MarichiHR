@@ -123,7 +123,7 @@ export const describe = (s: { kind: string; userId?: string | null }) => ({ mana
 async function summaries(tenantId: string, items: { requestType: string; requestId: string }[]) {
   const ids = (t: string) => items.filter((i) => i.requestType === t).map((i) => i.requestId)
   const [leave, reg, ot, pre, pex] = await Promise.all([
-    prisma.leaveRequest.findMany({ where: { id: { in: ids('leave') }, employee: { tenantId } }, select: { id: true, employeeId: true, startDate: true, endDate: true, totalDays: true, status: true, leaveType: { select: { name: true } }, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
+    prisma.leaveRequest.findMany({ where: { id: { in: ids('leave') }, employee: { tenantId } }, select: { id: true, employeeId: true, startDate: true, endDate: true, totalDays: true, shortfallDays: true, status: true, leaveType: { select: { name: true } }, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.attendanceRegularisation.findMany({ where: { id: { in: ids('regularisation') }, employee: { tenantId } }, select: { id: true, employeeId: true, date: true, actualIn: true, actualOut: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.overtimeRequest.findMany({ where: { id: { in: ids('overtime') }, employee: { tenantId } }, select: { id: true, employeeId: true, date: true, overtimeHours: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
     prisma.expenseRequest.findMany({ where: { id: { in: ids('pre_approval') }, tenantId }, select: { id: true, employeeId: true, kind: true, purpose: true, amount: true, currency: true, status: true, employee: { select: { firstName: true, lastName: true, employeeCode: true } } } }),
@@ -131,7 +131,7 @@ async function summaries(tenantId: string, items: { requestType: string; request
   ])
   const d = (x: Date) => x.toISOString().slice(0, 10)
   const m = new Map<string, { employeeId: string; employee: string; summary: string; status: string }>()
-  leave.forEach((r) => m.set(`leave:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.leaveType.name}, ${r.totalDays} day${r.totalDays === 1 ? '' : 's'} (${d(r.startDate)} – ${d(r.endDate)})`, status: r.status }))
+  leave.forEach((r) => m.set(`leave:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.leaveType.name}, ${r.totalDays} day${r.totalDays === 1 ? '' : 's'} (${d(r.startDate)} – ${d(r.endDate)})${r.shortfallDays > 0 ? `, ${r.shortfallDays} beyond the balance (approved as paid unless you choose unpaid)` : ''}`, status: r.status }))
   reg.forEach((r) => m.set(`regularisation:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `Attendance on ${d(r.date)}: ${r.actualIn ?? '?'}–${r.actualOut ?? '?'}`, status: r.status }))
   ot.forEach((r) => m.set(`overtime:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.overtimeHours} h overtime on ${d(r.date)}`, status: r.status }))
   pre.forEach((r) => m.set(`pre_approval:${r.id}`, { employeeId: r.employeeId, employee: `${r.employee.firstName} ${r.employee.lastName}`, summary: `${r.kind === 'money' ? 'Money' : r.kind === 'travel' ? 'Travel' : 'Accommodation'}: ${r.currency} ${Number(r.amount).toLocaleString('en')} for ${r.purpose}`, status: r.status }))

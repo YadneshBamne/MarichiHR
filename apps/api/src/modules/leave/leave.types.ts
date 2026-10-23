@@ -10,6 +10,8 @@ export interface ApplyLeaveDto {
 
 export interface ApproveLeaveDto {
   comments?: string
+  // Days asked beyond the balance: 'paid' (balance goes negative, HR is told) or 'unpaid' (those days become LWP)
+  shortfall?: 'paid' | 'unpaid'
 }
 
 export interface RejectLeaveDto {

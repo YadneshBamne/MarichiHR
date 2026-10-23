@@ -56,7 +56,7 @@ export const leaveRepository = {
     })
   },
 
-  async createRequest(employeeId: string, data: ApplyLeaveDto, totalDays: number, lwpDays: number) {
+  async createRequest(employeeId: string, data: ApplyLeaveDto, totalDays: number, lwpDays: number, shortfallDays = 0) {
     return prisma.leaveRequest.create({
       data: {
         employeeId,
@@ -67,6 +67,7 @@ export const leaveRepository = {
         endHalf: data.endHalf,
         totalDays,
         lwpDays,
+        shortfallDays,
         reason: data.reason,
         attachmentUrl: data.attachmentDocumentId ? `doc:${data.attachmentDocumentId}` : null,
         status: 'pending',

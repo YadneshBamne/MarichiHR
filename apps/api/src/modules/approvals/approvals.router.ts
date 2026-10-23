@@ -18,9 +18,9 @@ const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const level = z.object({ kind: z.enum(['manager', 'skip_manager', 'hr', 'user']), userId: z.string().uuid().optional() }).strict()
 
 // Decide a request of any type through its own module, so balances, records and events stay right
-async function decide(u: AccessUser, t: RequestType, rid: string, approve: boolean, comments: string | undefined, override = false) {
+async function decide(u: AccessUser, t: RequestType, rid: string, approve: boolean, comments: string | undefined, override = false, shortfall?: 'paid' | 'unpaid') {
   const opts = { override, comments }
-  if (t === 'leave') return approve ? leaveService.approveLeave(rid, u, { comments } as any, opts) : leaveService.rejectLeave(rid, u, { comments } as any, opts)
+  if (t === 'leave') return approve ? leaveService.approveLeave(rid, u, { comments, shortfall }, opts) : leaveService.rejectLeave(rid, u, { comments } as any, opts)
   if (t === 'regularisation') return approve ? attendanceService.approveRegularisation(rid, u, opts) : attendanceService.rejectRegularisation(rid, u, opts)
   if (t === 'overtime') return approve ? attendanceService.approveOvertime(rid, u, undefined, opts) : attendanceService.rejectOvertime(rid, u, opts)
   if (t === 'pre_approval') return expenseRequestService.decide(u, rid, approve, comments, override)
@@ -56,8 +56,8 @@ approvalsRouter.post('/delegations/:id/end', validate(z.object({ params: z.objec
 approvalsRouter.get('/:type/:id/trail', validate(z.object({ params: z.object({ type, id }) })), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await approvalTrail(req.user!.tenantId, req.params.type as RequestType, String(req.params.id)) })
 }))
-approvalsRouter.post('/:type/:id/approve', validate(z.object({ params: z.object({ type, id }), body: z.object({ comments: z.string().trim().max(500).optional() }).strict() })), asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await decide(req.user!, req.params.type as RequestType, String(req.params.id), true, req.body.comments) })
+approvalsRouter.post('/:type/:id/approve', validate(z.object({ params: z.object({ type, id }), body: z.object({ comments: z.string().trim().max(500).optional(), shortfall: z.enum(['paid', 'unpaid']).optional() }).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await decide(req.user!, req.params.type as RequestType, String(req.params.id), true, req.body.comments, false, req.body.shortfall) })
 }))
 approvalsRouter.post('/:type/:id/reject', validate(z.object({ params: z.object({ type, id }), body: z.object({ comments: z.string().trim().min(1).max(500) }).strict() })), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await decide(req.user!, req.params.type as RequestType, String(req.params.id), false, req.body.comments) })

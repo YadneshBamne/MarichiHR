@@ -92,8 +92,8 @@ export function useApplyLeave() {
 export function useApproveLeave() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, comments }: { id: string; comments?: string }) => {
-      const res = await api.post(`/leave/requests/${id}/approve`, { comments })
+    mutationFn: async ({ id, comments, shortfall }: { id: string; comments?: string; shortfall?: 'paid' | 'unpaid' }) => {
+      const res = await api.post(`/leave/requests/${id}/approve`, { comments, ...(shortfall && { shortfall }) })
       return res.data.data
     },
     onSuccess: () => {

@@ -13,9 +13,10 @@ export default function LeaveApprovalsPanel() {
   const rejectLeave = useRejectLeave()
   const [rejectModal, setRejectModal] = useState<{ id: string; name: string } | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [treatment, setTreatment] = useState<Record<string, 'paid' | 'unpaid'>>({})
 
-  const handleApprove = async (id: string) => {
-    await approveLeave.mutateAsync({ id, comments: 'Approved' })
+  const handleApprove = async (id: string, shortfall = 0) => {
+    await approveLeave.mutateAsync({ id, comments: 'Approved', ...(shortfall > 0 && { shortfall: treatment[id] ?? 'paid' }) })
   }
 
   const handleReject = async () => {
@@ -58,6 +59,15 @@ export default function LeaveApprovalsPanel() {
             <span style={s.days}>{req.totalDays} day{req.totalDays !== 1 ? 's' : ''}</span>
           </div>
 
+          {req.shortfallDays > 0 && (
+            <div style={{ fontSize: 12.5, background: 'var(--honey-soft)', borderRadius: 10, padding: '8px 10px', margin: '6px 0', display: 'grid', gap: 6 }}>
+              <span><strong>{req.shortfallDays} day{req.shortfallDays === 1 ? '' : 's'}</strong> beyond the balance. If you approve, treat them as:</span>
+              <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="radio" name={`short-${req.id}`} checked={(treatment[req.id] ?? 'paid') === 'paid'} onChange={() => setTreatment({ ...treatment, [req.id]: 'paid' })} /> Paid (balance goes negative; HR is told)</label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="radio" name={`short-${req.id}`} checked={treatment[req.id] === 'unpaid'} onChange={() => setTreatment({ ...treatment, [req.id]: 'unpaid' })} /> Unpaid (deducted in payroll)</label>
+              </span>
+            </div>
+          )}
           {req.reason && <div style={s.reason}>"{req.reason}"</div>}
           {req.attachmentUrl && <button className="link" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12, marginBottom: 6 }} onClick={() => openAttachment(req.id)}>View certificate</button>}
 
@@ -66,7 +76,7 @@ export default function LeaveApprovalsPanel() {
           <div style={s.actions}>
             <button
               style={s.approveBtn}
-              onClick={() => handleApprove(req.id)}
+              onClick={() => handleApprove(req.id, req.shortfallDays)}
               disabled={approveLeave.isPending}
             >
               ✓ Approve

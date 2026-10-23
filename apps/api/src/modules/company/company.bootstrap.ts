@@ -18,7 +18,7 @@ ${TABLES.map((t, i) => `, w${i} AS (INSERT INTO "${t}" SELECT * FROM jsonb_popul
 SELECT ${TABLES.map((_, i) => `(SELECT count(*) FROM w${i})`).join(' + ')} AS n`.replace('WITH d AS (SELECT $1::jsonb AS j)\n, ', 'WITH d AS (SELECT $1::jsonb AS j), ')
 
 const LEAVE_TYPE_DEFAULTS = {
-  isPaid: true, isStatutory: false, carryForward: false, allowNegative: false, encashable: false, halfDayAllowed: true,
+  isPaid: true, isStatutory: false, carryForward: false, allowNegative: false, allowOverBalance: true, encashable: false, halfDayAllowed: true,
   hourlyAllowed: false, leaveUnit: 'day', approvalLevels: 1, requiresHrForStatutory: false, sandwichRule: false, active: true,
 }
 

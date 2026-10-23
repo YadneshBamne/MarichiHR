@@ -43,7 +43,7 @@ leaveRouter.post('/blackouts', requirePermission('leave:configure'), validate(z.
 leaveRouter.post('/blackouts/:id/remove', requirePermission('leave:configure'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => { res.json({ success: true, data: await leaveExtras.removeBlackout(req.user!, String(req.params.id)) }) }))
 leaveRouter.get('/requests/me', requirePermission('leave:read'), leaveController.listMyRequests)
 leaveRouter.get('/requests/pending', requirePermission('leave:approve'), leaveController.getPendingApprovals)
-leaveRouter.post('/requests/:id/approve', requirePermission('leave:approve'), leaveController.approve)
+leaveRouter.post('/requests/:id/approve', requirePermission('leave:approve'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ comments: z.string().trim().max(500).optional(), shortfall: z.enum(['paid', 'unpaid']).optional() }).strict() })), leaveController.approve)
 leaveRouter.post('/requests/:id/reject', requirePermission('leave:approve'), leaveController.reject)
 leaveRouter.post('/requests/:id/cancel', requirePermission('leave:write'), leaveController.cancel)
 

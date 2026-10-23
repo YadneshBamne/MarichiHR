@@ -1,5 +1,5 @@
 import { leaveRepository } from './leave.repository'
-import { notify, userIdOfEmployee } from '../../infrastructure/notifications/notify'
+import { notify, userIdOfEmployee, userIdsWithRole } from '../../infrastructure/notifications/notify'
 import { creditLeave } from './credits.service'
 import { startApproval, actOnApproval, closeApproval } from '../approvals/approvals.service'
 import { ApplyLeaveDto, ApproveLeaveDto, RejectLeaveDto, LeaveAllocationRequestDto, ManualAllocationDto } from './leave.types'
@@ -13,7 +13,7 @@ export const LEAVE_APPROVAL_SLA_HOURS = 24
 // Explicit whitelist of configurable leave-type columns (never spread a request body into Prisma)
 const LEAVE_TYPE_FIELDS = [
   'name', 'category', 'isPaid', 'isStatutory', 'statutoryCountry', 'accrualType', 'accrualAmount', 'accrualDayOfMonth',
-  'carryForward', 'carryForwardMax', 'carryForwardExpiryMonths', 'allowNegative', 'encashable', 'encashMaxDays', 'halfDayAllowed',
+  'carryForward', 'carryForwardMax', 'carryForwardExpiryMonths', 'allowNegative', 'allowOverBalance', 'encashable', 'encashMaxDays', 'halfDayAllowed',
   'hourlyAllowed', 'leaveUnit', 'approvalLevels', 'requiresHrForStatutory', 'attachmentRequiredAfterDays', 'sandwichRule',
 ] as const
 function pickLeaveTypeFields(body: Record<string, unknown>) {
@@ -110,10 +110,13 @@ export const leaveService = {
 
     const lwpDays = leaveType.isPaid ? 0 : totalDays
 
+    // Beyond the balance: blocked only when the type says so; otherwise the approver decides paid or unpaid
+    let shortfallDays = 0
     if (leaveType.isPaid && !leaveType.allowNegative) {
       const balance = await leaveRepository.getBalance(employeeId, data.leaveTypeId)
       const available = balance ? balance.balanceDays - balance.usedDays - balance.pendingDays : 0
-      if (available < totalDays) {
+      if (available < totalDays && leaveType.allowOverBalance) shortfallDays = Math.round((totalDays - Math.max(0, available)) * 100) / 100
+      else if (available < totalDays) {
         throw new AppError(
           `Insufficient leave balance. Available: ${available} days, Requested: ${totalDays} days`,
           400
@@ -130,7 +133,7 @@ export const leaveService = {
       }
     }
 
-    const request = await leaveRepository.createRequest(employeeId, data, totalDays, lwpDays)
+    const request = await leaveRepository.createRequest(employeeId, data, totalDays, lwpDays, shortfallDays)
 
     await leaveRepository.updateBalance(employeeId, data.leaveTypeId, { pendingDays: totalDays })
 
@@ -174,12 +177,20 @@ export const leaveService = {
     if (!step.final) return leaveRepository.findRequestById(requestId)
 
     await leaveRepository.updateRequestStatus(requestId, 'approved')
+    // Days beyond the balance: unpaid → they become LWP for payroll; paid (default) → the balance goes negative and HR is told
+    const short = request.shortfallDays ?? 0
+    const unpaidShort = short > 0 && dto.shortfall === 'unpaid' ? short : 0
+    if (unpaidShort) await prisma.leaveRequest.update({ where: { id: requestId }, data: { lwpDays: unpaidShort } })
+    if (short > 0 && !unpaidShort) {
+      const hrs = (await userIdsWithRole(tenantId, 'hr_admin')).filter((x) => x !== user.userId)
+      await notify({ tenantId, userIds: hrs, type: 'leave.over_balance', title: `Leave approved beyond the balance: ${request.employee.firstName} ${request.employee.lastName}`, body: `${request.leaveType.name}: ${short} day${short === 1 ? '' : 's'} over, approved as paid. Top up the balance under Leave balances if this is right.`, link: `/employees/${request.employeeId}?tab=leave`, entityType: 'leave_request', entityId: requestId })
+    }
     await leaveRepository.createApproval(requestId, approverId, 1, 'approved', dto.comments)
     await prisma.auditLog.create({ data: { tenantId, userId: user.userId, action: 'LEAVE_APPROVED', entityType: 'leave_request', entityId: requestId, newValue: { employeeId: request.employeeId, leaveType: request.leaveType.name, days: request.totalDays, comments: dto.comments ?? null } } })
 
     await leaveRepository.updateBalance(request.employeeId, request.leaveTypeId, {
       pendingDays: -request.totalDays,
-      usedDays: request.totalDays,
+      usedDays: request.totalDays - unpaidShort,
     })
 
     await eventBus.publish(tenantId, 'leave.request.approved', {
