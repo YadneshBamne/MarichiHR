@@ -3,6 +3,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, getReportingSubtreeIds } from '../../shared/utils/access'
 import { getTenantTimezone, localTimeString, monthRange, businessToday } from '../../shared/utils/businessDate'
 import { holidayMap, holidaysBetween } from '../../shared/utils/holidays'
+import { leaveExtras } from '../leave/leave-extras.service'
 
 // Ready-made reports. Each returns summary tiles, one chart (bars), and a table; the router also turns the table
 // into CSV. Scope: HR/system admins and compliance see the company; managers see their reporting line for
@@ -173,6 +174,23 @@ export const REPORTS: Record<string, { title: string; description: string; roles
         rows,
         summary: [{ label: 'Employees paid', value: rows.length, type: 'number' }, { label: 'Gross', value: total('gross'), type: 'money' }, { label: 'Deductions', value: total('deductions'), type: 'money' }, { label: 'Net pay', value: total('net'), type: 'money' }],
         chart: { label: 'Net pay by department', type: 'money', bars: tally(rows, (r) => r.department || 'Unassigned', (r) => r.net) },
+      }
+    },
+  },
+
+  leave_liability: {
+    title: 'Leave liability', description: 'What unused encashable leave would cost to pay out today (days × monthly wage ÷ 30)', roles: ['payroll_admin', 'compliance_officer'],
+    async run(user, f) {
+      assertRoles(user, ['payroll_admin', 'compliance_officer'])
+      const dept = f.departmentId ? (await prisma.orgUnit.findFirst({ where: { id: f.departmentId, tenantId: user.tenantId }, select: { name: true } }))?.name : null
+      const rows = (await leaveExtras.liability(user.tenantId)).filter((r) => !f.departmentId || r.department === dept)
+      const total = round(rows.reduce((s, r) => s + (r.liability ?? 0), 0))
+      return {
+        title: 'Leave liability', subtitle: 'Encashable leave available today', currency: rows.find((r) => r.currency)?.currency ?? undefined,
+        columns: [{ key: 'employee', label: 'Employee' }, { key: 'employeeCode', label: 'Code' }, { key: 'department', label: 'Department' }, { key: 'leaveType', label: 'Leave type' }, { key: 'days', label: 'Days', type: 'number' }, { key: 'dailyRate', label: 'Daily rate', type: 'money' }, { key: 'liability', label: 'Liability', type: 'money' }],
+        rows,
+        summary: [{ label: 'People', value: new Set(rows.map((r) => r.employeeCode)).size, type: 'number' }, { label: 'Days', value: round(rows.reduce((s, r) => s + r.days, 0)), type: 'number' }, { label: 'Liability', value: total, type: 'money' }],
+        chart: { label: 'Liability by department', type: 'money', bars: tally(rows, (r) => r.department || 'Unassigned', (r) => r.liability ?? 0) },
       }
     },
   },

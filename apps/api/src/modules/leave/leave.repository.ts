@@ -68,7 +68,7 @@ export const leaveRepository = {
         totalDays,
         lwpDays,
         reason: data.reason,
-        attachmentUrl: data.attachmentUrl,
+        attachmentUrl: data.attachmentDocumentId ? `doc:${data.attachmentDocumentId}` : null,
         status: 'pending',
         appliedAt: new Date(),
       },

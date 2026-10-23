@@ -12,6 +12,7 @@ import { sendExpiryReminders } from '../../modules/employees/documents.service'
 import { autoYearEnd } from '../../modules/leave/yearend.service'
 import { publishPeopleDates } from '../../modules/automation/automation.service'
 import { retryWebhooks } from '../../modules/automation/integrations.service'
+import { leaveExtras } from '../../modules/leave/leave-extras.service'
 
 // Optionally only companies that installed a given app
 const activeTenants = (app?: string) => prisma.tenant.findMany({ where: { active: true, ...(app && { modules: { has: app } }) }, select: { id: true } })
@@ -90,6 +91,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '30 1 * * *',
     description: 'On the first day of the leave year, carry forward, encash and lapse the leave left from the year that ended (once)',
     run: (t) => perTenant(t, (id) => autoYearEnd(id), 'leave'),
+  },
+  'carry-forward-expiry': {
+    pattern: '45 1 * * *',
+    description: 'Carried-forward leave not used within the leave type\'s expiry window lapses (once per person and type)',
+    run: (t) => perTenant(t, (id) => leaveExtras.expireCarryForward(id), 'leave'),
   },
   'leave-accrual': {
     pattern: '0 2 * * *',

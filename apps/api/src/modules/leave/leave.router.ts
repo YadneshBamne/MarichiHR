@@ -10,6 +10,7 @@ import { contractController } from '../employees/contracts.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { CreateContractSchema, ContractTransitionSchema } from '../employees/employees.schema'
 import { CreateLeaveTypeSchema, UpdateLeaveTypeSchema } from './leave.schema'
+import { leaveExtras, ApplyLeaveSchema, BlackoutBody } from './leave-extras.service'
 
 export const leaveRouter = Router()
 
@@ -27,7 +28,19 @@ leaveRouter.get('/balances/:employeeId', requirePermission('leave:read'), leaveC
 leaveRouter.get('/allocations/:employeeId', requirePermission('leave:read'), leaveController.listAllocations)
 
 // ─── REQUESTS ─────────────────────────────────────────────────
-leaveRouter.post('/requests', requirePermission('leave:write'), leaveController.applyLeave)
+leaveRouter.post('/requests', requirePermission('leave:write'), validate(ApplyLeaveSchema), leaveController.applyLeave)
+// Teammates already off on these dates (shown while applying)
+leaveRouter.get('/overlap', requirePermission('leave:read'), validate(z.object({ query: z.object({ startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }) })), asyncHandler(async (req, res) => {
+  if (!req.user!.employeeId) return res.json({ success: true, data: [] })
+  res.json({ success: true, data: await leaveExtras.overlaps(req.user!.tenantId, req.user!.employeeId, new Date(`${req.query.startDate}T00:00:00Z`), new Date(`${req.query.endDate}T00:00:00Z`)) })
+}))
+leaveRouter.get('/requests/:id/attachment', requirePermission('leave:read'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await leaveExtras.attachment(req.user!, String(req.params.id)) })
+}))
+// Blackout periods: everyone sees them; HR sets them
+leaveRouter.get('/blackouts', requirePermission('leave:read'), asyncHandler(async (req, res) => { res.json({ success: true, data: await leaveExtras.blackouts(req.user!.tenantId) }) }))
+leaveRouter.post('/blackouts', requirePermission('leave:configure'), validate(z.object({ body: BlackoutBody })), asyncHandler(async (req, res) => { res.status(201).json({ success: true, data: await leaveExtras.createBlackout(req.user!, req.body) }) }))
+leaveRouter.post('/blackouts/:id/remove', requirePermission('leave:configure'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => { res.json({ success: true, data: await leaveExtras.removeBlackout(req.user!, String(req.params.id)) }) }))
 leaveRouter.get('/requests/me', requirePermission('leave:read'), leaveController.listMyRequests)
 leaveRouter.get('/requests/pending', requirePermission('leave:approve'), leaveController.getPendingApprovals)
 leaveRouter.post('/requests/:id/approve', requirePermission('leave:approve'), leaveController.approve)

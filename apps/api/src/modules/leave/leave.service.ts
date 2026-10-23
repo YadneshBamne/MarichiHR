@@ -24,6 +24,7 @@ function pickLeaveTypeFields(body: Record<string, unknown>) {
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
 import { consistent } from './leave.schema'
 import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
+import { leaveExtras } from './leave-extras.service'
 
 // Weekdays in the range minus the employee's (mandatory) public holidays
 function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string, holidays: Map<string, string> = new Map()): number {
@@ -101,6 +102,8 @@ export const leaveService = {
 
     if (startDate > endDate) throw new AppError('Start date cannot be after end date', 400)
 
+    await leaveExtras.assertNoBlackout(tenantId, employeeId, data.leaveTypeId, startDate, endDate)
+    if (data.attachmentDocumentId) await leaveExtras.assertOwnDocument(tenantId, employeeId, data.attachmentDocumentId)
     const [holidayRows, target] = await Promise.all([holidaysBetween(tenantId, startDate, endDate), holidayTargetOf(employeeId)])
     const totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf, holidayMap(holidayRows, target))
     if (totalDays <= 0) throw new AppError('No working days in that range (weekends and public holidays do not count)', 400)
@@ -119,9 +122,9 @@ export const leaveService = {
     }
 
     if (leaveType.attachmentRequiredAfterDays && totalDays > leaveType.attachmentRequiredAfterDays) {
-      if (!data.attachmentUrl) {
+      if (!data.attachmentDocumentId) {
         throw new AppError(
-          `Attachment required for ${leaveType.name} leave exceeding ${leaveType.attachmentRequiredAfterDays} days`,
+          `Attach a certificate: ${leaveType.name} leave of more than ${leaveType.attachmentRequiredAfterDays} days needs one`,
           400
         )
       }
@@ -155,7 +158,8 @@ export const leaveService = {
       managerId: request.employee.manager?.id,
     })
 
-    return request
+    // Teammates already off on these dates: a heads-up for the person and their manager, never a block
+    return { ...request, overlaps: await leaveExtras.overlaps(tenantId, employeeId, startDate, endDate) }
   },
 
   async approveLeave(requestId: string, user: AccessUser, dto: ApproveLeaveDto, opts: { override?: boolean } = {}) {

@@ -6,6 +6,7 @@ import { errMsg } from '../../lib/hooks/useSalary'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
 import { card, th, td, empty, primaryBtn, ghostBtn, linkBtn, errorBox, grid2, footer } from '../salary/styles'
+import BlackoutsCard from './BlackoutsCard'
 
 const CATEGORIES = ['annual', 'sick', 'casual', 'maternity', 'paternity', 'bereavement', 'compensatory', 'unpaid', 'other']
 const ACCRUALS: [string, string][] = [['manual', 'Manual allocation'], ['monthly_prorate', 'Monthly accrual'], ['annual_lumpsum', 'Annual lump sum']]
@@ -147,6 +148,7 @@ export default function LeaveTypesPage() {
           <button style={primaryBtn} disabled={!form?.name?.trim() || (!form?.id && !form?.code?.trim()) || write.isPending} onClick={save}>Save</button>
         </div>
       </Modal>
+      <BlackoutsCard types={types} />
     </div>
   )
 }

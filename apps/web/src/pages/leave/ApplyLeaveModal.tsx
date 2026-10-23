@@ -4,6 +4,7 @@ import api from '../../lib/api'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
 import { useLeaveTypes, useMyLeaveBalances, useApplyLeave } from '../../lib/hooks/useLeave'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface Props {
   open: boolean
@@ -36,6 +37,9 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const { user } = useAuth()
+  const [cert, setCert] = useState<{ id: string; name: string } | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   const selectedBalance = balances.find((b: any) => b.leaveTypeId === form.leaveTypeId)
   const selectedType = leaveTypes.find((t: any) => t.id === form.leaveTypeId)
@@ -46,6 +50,20 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
     enabled: ranged,
   })
   const offDays = holidaysInRange.filter((h) => !h.isOptional)
+  // Teammates already off, and blackout dates, for the chosen range (a heads-up before submitting)
+  const { data: overlaps = [] } = useQuery({ queryKey: ['leave-overlap', form.startDate, form.endDate], enabled: ranged, queryFn: async () => (await api.get('/leave/overlap', { params: { startDate: form.startDate, endDate: form.endDate } })).data.data as { name: string; startDate: string; endDate: string; status: string }[] })
+  const { data: blackouts = [] } = useQuery({ queryKey: ['leave-blackouts'], queryFn: async () => (await api.get('/leave/blackouts')).data.data as { name: string; startDate: string; endDate: string; leaveTypeIds: string[] }[] })
+  const blackout = ranged ? blackouts.find((b) => b.startDate <= form.endDate && b.endDate >= form.startDate && (!b.leaveTypeIds.length || b.leaveTypeIds.includes(form.leaveTypeId))) : undefined
+  const uploadCert = async (file: File) => {
+    if (!user?.employee?.id) return
+    setUploading(true); setError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file); fd.append('category', 'medical'); fd.append('title', `Medical certificate ${form.startDate || ''}`.trim())
+      const doc = (await api.post(`/employees/${user.employee.id}/documents`, fd)).data.data
+      setCert({ id: doc.id, name: file.name })
+    } catch (err: any) { setError(err?.response?.data?.message || 'Could not upload the certificate') } finally { setUploading(false) }
+  }
   const workingDays = getWorkingDays(form.startDate, form.endDate, new Set(offDays.map((h) => h.date)))
   const available = selectedBalance
     ? Math.max(0, selectedBalance.balanceDays - selectedBalance.usedDays - selectedBalance.pendingDays)
@@ -71,6 +89,7 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
         startHalf: form.startHalf || undefined,
         endHalf: form.endHalf || undefined,
         reason: form.reason || undefined,
+        ...(cert && { attachmentDocumentId: cert.id }),
       })
       setSuccess(true)
     } catch (err: any) {
@@ -82,6 +101,7 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
     setForm({ leaveTypeId: '', startDate: '', endDate: '', startHalf: '', endHalf: '', reason: '' })
     setError('')
     setSuccess(false)
+    setCert(null)
     onClose()
   }
 
@@ -156,6 +176,26 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
           </div>
         )}
 
+        {blackout && (
+          <div style={{ padding: '10px 12px', borderRadius: '12px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', fontSize: '13px' }}>
+            {blackout.startDate} to {blackout.endDate} is a blackout period ({blackout.name}): this leave can't be taken then.
+          </div>
+        )}
+        {overlaps.length > 0 && (
+          <div style={{ padding: '10px 12px', borderRadius: '12px', backgroundColor: 'var(--honey-soft)', fontSize: '13px' }}>
+            Also off then: {overlaps.map((o) => `${o.name} (${o.startDate === o.endDate ? o.startDate : `${o.startDate} – ${o.endDate}`}${o.status === 'pending' ? ', pending' : ''})`).join(', ')}. You can still apply.
+          </div>
+        )}
+
+        {(selectedType?.attachmentRequiredAfterDays != null || cert) && (
+          <FormField label={selectedType?.attachmentRequiredAfterDays != null && workingDays > selectedType.attachmentRequiredAfterDays ? 'Certificate (required for this many days)' : 'Certificate (optional)'}>
+            <label style={{ ...inputStyle, display: 'flex', alignItems: 'center', cursor: 'pointer' } as any}>
+              <span style={{ flex: 1 }}>{uploading ? 'Uploading…' : cert ? `Attached: ${cert.name}` : 'Choose a PDF or photo'}</span>
+              <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadCert(f); e.target.value = '' }} />
+            </label>
+          </FormField>
+        )}
+
         <FormField label="Reason">
           <textarea
             style={{ ...inputStyle, resize: 'vertical' }}
@@ -176,7 +216,7 @@ export default function ApplyLeaveModal({ open, onClose }: Props) {
           <button type="button" onClick={handleClose} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>
             Cancel
           </button>
-          <button type="submit" disabled={applyLeave.isPending || !!insufficient} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: applyLeave.isPending || insufficient ? 0.6 : 1 }}>
+          <button type="submit" disabled={applyLeave.isPending || !!insufficient || !!blackout || uploading} style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: applyLeave.isPending || insufficient ? 0.6 : 1 }}>
             {applyLeave.isPending ? 'Submitting...' : 'Submit Request'}
           </button>
         </div>

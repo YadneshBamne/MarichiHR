@@ -24,6 +24,9 @@ const sign = (u, roles) => ({ token: jwt.sign({ userId: u.userId, tenantId: u.te
   r = await api(owner, 'PATCH', `/leave/types/${annual.id}`, { carryForward: true, carryForwardMax: 10, encashable: true, encashMaxDays: 3 })
   check('HR sets annual leave: carry up to 10, encash up to 3', r.status === 200, r.data)
   const set = (lt, balanceDays, usedDays, pendingDays) => prisma.leaveBalance.update({ where: { employeeId_leaveTypeId: { employeeId: B.id, leaveTypeId: lt.id } }, data: { balanceDays, usedDays, pendingDays, encashedDays: 0, lapsedDays: 0 } })
+  // Bea's automatic credit (employee.created, in the background) must land before the balances are set by hand
+  for (let i = 0; i < 40 && !(await prisma.leaveAllocation.count({ where: { employeeId: B.id, approvedBy: 'system' } })); i++) await new Promise((res) => setTimeout(res, 500))
+  await prisma.leaveAllocation.deleteMany({ where: { employeeId: B.id, approvedBy: 'system' } }) // this scenario's balances are set by hand below
   await set(annual, 20, 4, 1) // 15 left: carry 10, encash 3, lapse 2
   await set(sick, 10, 2, 0) // 8 left, no carry: lapse 8
   await set(comp, 2, 0, 0) // 2 left, carries up to 5

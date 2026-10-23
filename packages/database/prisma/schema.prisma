@@ -2507,3 +2507,20 @@ model CompRecommendation {
   @@unique([cycleId, employeeId])
   @@map("comp_recommendations")
 }
+
+// Blackout periods: dates when leave cannot be taken (all types or some, everyone or some departments)
+model LeaveBlackout {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  leaveTypeIds  String[] @default([]) // empty = every leave type
+  departmentIds String[] @default([]) // empty = everyone
+  active        Boolean  @default(true)
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, startDate])
+  @@map("leave_blackouts")
+}

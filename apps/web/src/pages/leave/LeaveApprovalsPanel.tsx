@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { usePendingLeaveApprovals, useApproveLeave, useRejectLeave } from '../../lib/hooks/useLeave'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
+import api from '../../lib/api'
+
+// Opens the attached certificate (a short-lived link; managers in the reporting line and HR only)
+const openAttachment = async (id: string) => { try { window.open((await api.get(`/leave/requests/${id}/attachment`)).data.data.url, '_blank', 'noopener') } catch { window.alert('Could not open the attachment') } }
 
 export default function LeaveApprovalsPanel() {
   const { data: requests = [], isLoading } = usePendingLeaveApprovals()
@@ -55,6 +59,7 @@ export default function LeaveApprovalsPanel() {
           </div>
 
           {req.reason && <div style={s.reason}>"{req.reason}"</div>}
+          {req.attachmentUrl && <button className="link" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12, marginBottom: 6 }} onClick={() => openAttachment(req.id)}>View certificate</button>}
 
           <div style={s.appliedAt}>Applied {formatDate(req.appliedAt)}</div>
 

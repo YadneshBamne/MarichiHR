@@ -5,7 +5,7 @@ export interface ApplyLeaveDto {
   startHalf?: 'first_half' | 'second_half'
   endHalf?: 'first_half' | 'second_half'
   reason?: string
-  attachmentUrl?: string
+  attachmentDocumentId?: string
 }
 
 export interface ApproveLeaveDto {
