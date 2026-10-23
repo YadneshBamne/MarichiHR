@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { Router } from 'express'
 import { starterFor, createStarterStructure } from './starter.service'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
@@ -6,6 +7,7 @@ import { authenticate } from '../../middleware/auth.middleware'
 import { requirePermission, requireRoles } from '../../middleware/rbac.middleware'
 import { validate } from '../../middleware/validate.middleware'
 import { salaryController } from './salary.controller'
+import { flexiService, FlexiConfigBody, FlexiChoiceBody } from '../payroll/payroll-extras.service'
 import {
   UpdateSalaryRuleSchema, UpdateGradeBandSchema, LinkStructureSchema, CreateStructureTypeSchema, UpdateStructureTypeSchema,
   CreateStructureSchema, UpdateStructureSchema, CreateSalaryRuleSchema, CheckRuleSchema, CreateGradeBandSchema,
@@ -51,3 +53,11 @@ salaryRouter.post('/input-types', requirePermission('salary:write'), salaryContr
 
 salaryRouter.get('/contracts', requirePermission('salary:read'), salaryStaff, salaryController.listContracts)
 salaryRouter.post('/contracts/:contractId/link-structure', requirePermission('salary:write'), validate(LinkStructureSchema), salaryController.linkContractToStructure)
+
+// ─── Flexi-basket ───────────────────────────────────────────────
+const fid = z.object({ id: z.string().uuid() })
+salaryRouter.put('/structures/:id/flexi', requirePermission('salary:write'), validate(z.object({ params: fid, body: FlexiConfigBody })), asyncHandler(async (req, res) => { res.json({ success: true, data: await flexiService.configure(req.user!, String(req.params.id), req.body) }) }))
+salaryRouter.get('/flexi/mine', asyncHandler(async (req, res) => { res.json({ success: true, data: await flexiService.mine(req.user!) }) }))
+salaryRouter.put('/flexi/mine', validate(z.object({ body: FlexiChoiceBody })), asyncHandler(async (req, res) => { res.json({ success: true, data: await flexiService.choose(req.user!, req.body) }) }))
+salaryRouter.get('/flexi', asyncHandler(async (req, res) => { res.json({ success: true, data: await flexiService.pending(req.user!) }) }))
+salaryRouter.post('/flexi/:id/decide', validate(z.object({ params: fid, body: z.object({ approve: z.boolean(), note: z.string().trim().max(300).optional() }).strict() })), asyncHandler(async (req, res) => { res.json({ success: true, data: await flexiService.decide(req.user!, String(req.params.id), req.body.approve, req.body.note) }) }))

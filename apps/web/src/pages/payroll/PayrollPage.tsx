@@ -12,6 +12,7 @@ import CreateCycleModal from './CreateCycleModal'
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import { money, fmtPeriod } from '../../lib/format'
 
+import { MyFlexi } from './FlexiPanel'
 type Tab = 'cycles' | 'mine'
 // The maker-checker path every cycle walks
 const STAGES = ['draft', 'processing', 'review', 'approved', 'finance_approved', 'disbursed'] as const
@@ -106,6 +107,7 @@ export default function PayrollPage() {
 
       {tab === 'mine' && (
         <>
+          <MyFlexi />
           {latestMine && (
             <section data-card className="card" style={{ padding: 22, marginBottom: 'var(--gap)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', background: 'linear-gradient(120deg, var(--honey-2), var(--app-3))' }}>
               <div>

@@ -940,6 +940,8 @@ model SalaryStructure {
   code            String
   countryCode     String?
   description     String?
+  flexiPotCode    String? // rule whose amount people may split across the flexi components
+  flexiComponents Json? // [{ code, name, max }]
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -1018,6 +1020,9 @@ model PayrollCycle {
   payPeriodStart     DateTime  @db.Date
   payPeriodEnd       DateTime  @db.Date
   cycleType          String    @default("monthly")
+  offCycle           Boolean   @default(false) // a one-off run: only the inputs added to it (bonuses, arrears, corrections)
+  reason             String?
+  correctsCycleId    String? // a correction to a run that was already paid
   status             String    @default("draft")
   attendanceLockedAt DateTime?
   approvedBy         String?
@@ -2565,4 +2570,23 @@ model AttendanceAdjustment {
 
   @@index([tenantId, appliedCycleId])
   @@map("attendance_adjustments")
+}
+
+// Flexi-basket: how a person splits their structure's flexi pot across the allowed components (Payroll approves)
+model FlexiChoice {
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  structureId String
+  choices     Json // { CODE: monthly amount }
+  status      String    @default("submitted") // submitted | approved | returned
+  note        String?
+  decidedBy   String?
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([employeeId, structureId])
+  @@index([tenantId, status])
+  @@map("flexi_choices")
 }

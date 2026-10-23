@@ -9,6 +9,7 @@ export interface OutboundMessage {
   to: { name: string; email?: string | null; phone?: string | null }
   subject: string
   text: string
+  attachments?: { filename: string; content: Buffer }[] // email only
 }
 
 export interface Transport {
@@ -19,7 +20,7 @@ export interface Transport {
 export const logTransport: Transport = {
   name: 'log',
   async send(msg) {
-    console.log(`[notify:email:log] to=${msg.to.email} subject="${msg.subject}"`)
+    console.log(`[notify:email:log] to=${msg.to.email} subject="${msg.subject}"${msg.attachments?.length ? ` attachments=${msg.attachments.map((a) => a.filename).join(',')}` : ''}`)
   },
 }
 
@@ -31,7 +32,7 @@ export const resendTransport: Transport = {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [msg.to.email], subject: msg.subject, text: msg.text }),
+      body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [msg.to.email], subject: msg.subject, text: msg.text, ...(msg.attachments?.length && { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content.toString('base64') })) }) }),
     })
     if (!res.ok) throw new Error(`Resend responded ${res.status}`)
   },
@@ -74,6 +75,8 @@ export interface NotifyInput {
   entityType?: string
   entityId?: string
   eventId?: string
+  // Built only when an email is actually sent (e.g. a payslip PDF); one recipient per call
+  attachments?: () => Promise<{ filename: string; content: Buffer }[]>
 }
 
 export async function notify(input: NotifyInput) {
@@ -102,6 +105,7 @@ export async function notify(input: NotifyInput) {
     })
 
     const deliveries = []
+    let attachments: { filename: string; content: Buffer }[] | undefined
     for (const [channel, transport] of Object.entries(transports)) {
       if (!wants(user.notifyPrefs, input.type, channel as 'email' | 'whatsapp')) {
         deliveries.push({ channel, transport: transport.name, status: 'skipped', reason: 'preference' })
@@ -111,6 +115,9 @@ export async function notify(input: NotifyInput) {
         to: { name: user.fullName, email: user.email, phone: user.employee?.mobileWork || user.employee?.mobilePersonal },
         subject: input.title,
         text: input.body,
+      }
+      if (channel === 'email' && input.attachments) {
+        try { attachments ??= await input.attachments(); msg.attachments = attachments } catch (err: any) { deliveries.push({ channel, transport: transport.name, status: 'attachment_failed', error: String(err?.message || err) }) }
       }
       try {
         await transport.send(msg)

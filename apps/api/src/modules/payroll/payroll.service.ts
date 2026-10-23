@@ -14,6 +14,7 @@ import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import crypto from 'crypto'
 
+import { applyFlexi, basicShareWarning, offCyclePayslip } from './payroll-extras.service'
 const PAYROLL_STAFF_ROLES = ['payroll_admin', 'compliance_officer']
 
 // ─── DATE HELPERS (all UTC, YYYY-MM-DD strings) ───────────────
@@ -256,6 +257,10 @@ export async function computeEmployeePayslip(
     statutory,
   })
 
+  const payLines = await applyFlexi(emp.id, contract.salaryStructure, result.lines)
+  const basicNow = result.lines.filter((l: any) => l.categoryCode === 'BASIC').reduce((a: number, l: any) => a + l.amount, 0)
+  const shareWarn = await basicShareWarning(emp.tenantId, emp.id, basicNow, result.gross)
+  if (shareWarn) warnings.push(shareWarn)
   const workDays = Math.max(0, round2(windowWorking.length - lwpDays - paidLeaveDays))
   const hoursPerDay = PAYROLL_CONFIG.STANDARD_HOURS_PER_DAY
 
@@ -273,7 +278,7 @@ export async function computeEmployeePayslip(
     lwpDays,
     status: 'draft',
     lines: {
-      create: result.lines.map((l) => ({
+      create: payLines.map((l: any) => ({
         salaryRuleId: l.ruleId ?? null,
         category: l.categoryCode,
         name: l.name,
@@ -310,7 +315,9 @@ export const payrollService = {
     const start = toDate(dto.payPeriodStart)
     const end = toDate(dto.payPeriodEnd)
 
-    const overlap = await repo.findOverlappingCycle(tenantId, start, end)
+    if (dto.offCycle && !dto.reason?.trim()) throw new AppError('Say what the off-cycle run is for', 400)
+    if (dto.correctsCycleId && !(await prisma.payrollCycle.findFirst({ where: { id: dto.correctsCycleId, tenantId, status: { in: ['disbursed', 'locked'] } } }))) throw new AppError('Corrections are for a run that was already paid', 400)
+    const overlap = dto.offCycle ? null : await repo.findOverlappingCycle(tenantId, start, end)
     if (overlap) {
       throw new AppError(
         `This period overlaps an existing cycle (${dstr(overlap.payPeriodStart)} to ${dstr(overlap.payPeriodEnd)}, ${overlap.status})`,
@@ -321,8 +328,11 @@ export const payrollService = {
     const cycle = await repo.createCycle(tenantId, {
       payPeriodStart: start,
       payPeriodEnd: end,
-      cycleType: dto.cycleType || 'monthly',
-    })
+      cycleType: dto.offCycle ? 'off_cycle' : dto.cycleType || 'monthly',
+      offCycle: !!dto.offCycle,
+      reason: dto.reason?.trim() || null,
+      correctsCycleId: dto.correctsCycleId ?? null,
+    } as any)
     await repo.createAudit({ tenantId, userId, action: 'PAYROLL_CYCLE_CREATED', entityType: 'payroll_cycle', entityId: cycle.id, newValue: dto })
     return cycle
   },
@@ -395,7 +405,7 @@ export const payrollService = {
     if (!['draft', 'review'].includes(cycle.status)) {
       throw new AppError(`Cycle is ${cycle.status} and cannot be re-run. Use reopen if it is approved but not disbursed.`, 400)
     }
-    if (!cycle.attendanceLockedAt) {
+    if (!cycle.attendanceLockedAt && !cycle.offCycle) {
       throw new AppError('Lock attendance for this pay period before running payroll', 400)
     }
 
@@ -429,7 +439,9 @@ export const payrollService = {
           continue
         }
         try {
-          const out = await computeEmployeePayslip(emp, cycle, cycleInputs, inputCodes)
+          // Off-cycle runs pay only the inputs added to them; people without any are left out quietly
+          if (cycle.offCycle && !cycleInputs.some((i: any) => i.employeeId === emp.id)) continue
+          const out: any = cycle.offCycle ? await offCyclePayslip(emp, cycle, cycleInputs) : await computeEmployeePayslip(emp, cycle, cycleInputs, inputCodes)
           if (out.skip) {
             skipped.push({ employeeId: emp.id, employeeCode: emp.employeeCode, name, reason: out.skip })
             continue
@@ -657,7 +669,8 @@ export const payrollService = {
     const slips = await prisma.payslip.findMany({ where: { payrollCycleId: cycleId, withheld: false }, select: { id: true, employeeId: true, netPay: true, currency: true, employee: { select: { userId: true } } } })
     await repo.createAudit({ tenantId, userId, action: 'PAYSLIPS_RELEASED', entityType: 'payroll_cycle', entityId: cycleId, newValue: { count: slips.length } })
     const month = new Date(cycle.payPeriodStart).toISOString().slice(0, 7)
-    await notify({ tenantId, userIds: slips.map((s) => s.employee.userId), type: 'payslip.released', title: `Your payslip for ${month} is ready`, body: 'Open My payslips to view or download it', link: '/payroll', entityType: 'payroll_cycle', entityId: cycleId, eventId: `payslips:${cycleId}` })
+    // One email per person with their payslip PDF attached (built only when email is on for them)
+    for (const sl of slips) await notify({ tenantId, userIds: [sl.employee.userId], type: 'payslip.released', title: `Your payslip for ${month} is ready`, body: 'Your payslip is attached, and in My payslips.', link: '/payroll', entityType: 'payslip', entityId: sl.id, attachments: async () => { const f = await payrollService.getPayslipPdf(sl.id, { tenantId, employeeId: sl.employeeId, roleIds: ['payroll_admin'], userId }); return [{ filename: f.filename, content: Buffer.from(f.pdf) }] } })
     // One event per released payslip, for automation rules and webhooks (the notification above is the employee's)
     for (const ps of slips) await eventBus.publish(tenantId, 'payslip.released', { payslipId: ps.id, payrollCycleId: cycleId, employeeId: ps.employeeId, netPay: ps.netPay, currency: ps.currency })
     return { released: slips.length }

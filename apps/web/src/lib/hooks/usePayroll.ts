@@ -31,7 +31,7 @@ export function usePayslip(id: string) {
 export function useCreateCycle() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { payPeriodStart: string; payPeriodEnd: string }) => (await api.post('/payroll/cycles', data)).data.data,
+    mutationFn: async (data: { payPeriodStart: string; payPeriodEnd: string; offCycle?: boolean; reason?: string; correctsCycleId?: string }) => (await api.post('/payroll/cycles', data)).data.data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-cycles'] }),
   })
 }

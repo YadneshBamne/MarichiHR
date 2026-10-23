@@ -5,10 +5,12 @@ import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
 import { AccessUser, assertCompensationAccess } from '../../shared/utils/access'
 
+import { assertMinimumWage } from '../payroll/payroll-extras.service'
 export const contractService = {
   async create(data: CreateContractDto, tenantId: string, createdBy: string) {
-    const employee = await prisma.employee.findFirst({ where: { id: data.employeeId, tenantId }, select: { id: true } })
+    const employee = await prisma.employee.findFirst({ where: { id: data.employeeId, tenantId }, select: { id: true, employmentType: true } })
     if (!employee) throw new AppError('Employee not found', 404)
+    await assertMinimumWage(tenantId, employee.id, Number(data.wageMonthly), employee.employmentType)
     if (data.salaryStructureId) {
       const structure = await prisma.salaryStructure.findFirst({ where: { id: data.salaryStructureId, tenantId }, select: { id: true } })
       if (!structure) throw new AppError('Salary structure not found', 404)

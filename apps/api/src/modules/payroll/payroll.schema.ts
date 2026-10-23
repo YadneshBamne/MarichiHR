@@ -7,7 +7,10 @@ export const CreateCycleSchema = z.object({
     payPeriodStart: dateString,
     payPeriodEnd: dateString,
     cycleType: z.enum(['monthly', 'bi_weekly', 'weekly']).optional(),
-  }),
+    offCycle: z.boolean().optional(), // a one-off run paying only its inputs
+    reason: z.string().trim().max(300).optional(),
+    correctsCycleId: z.string().uuid().optional(), // a correction to a run that was already paid
+  }).strict(),
 })
 
 export const AddInputSchema = z.object({
@@ -15,6 +18,6 @@ export const AddInputSchema = z.object({
     employeeId: z.string().uuid(),
     inputTypeId: z.string().uuid(),
     amount: z.number().positive(),
-    description: z.string().optional(),
-  }),
+    description: z.string().max(300).optional(),
+  }).strict(),
 })

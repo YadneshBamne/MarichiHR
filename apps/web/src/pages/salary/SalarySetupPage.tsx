@@ -9,13 +9,14 @@ import ContractsTab from './ContractsTab'
 import RevisionsTab from './RevisionsTab'
 import { card, th, td, empty, primaryBtn, ghostBtn, linkBtn, errorBox, footer } from './styles'
 
-type Tab = 'structures' | 'types' | 'bands' | 'contracts' | 'revisions'
+import { FlexiAdmin } from '../payroll/FlexiPanel'
+type Tab = 'structures' | 'types' | 'bands' | 'contracts' | 'revisions' | 'flexi'
 
 export default function SalarySetupPage() {
   const { hasRole } = useAuth()
   const canEdit = hasRole('payroll_admin')
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'structures')
-  const tabs: [Tab, string][] = [['structures', 'Structures & rules'], ['types', 'Structure types'], ['bands', 'Grade bands'], ['contracts', 'Contracts'], ['revisions', 'Salary revisions']]
+  const tabs: [Tab, string][] = [['structures', 'Structures & rules'], ['types', 'Structure types'], ['bands', 'Grade bands'], ['contracts', 'Contracts'], ['revisions', 'Salary revisions'], ['flexi', 'Flexi-basket']]
 
   return (
     <div>
@@ -33,6 +34,7 @@ export default function SalarySetupPage() {
       {tab === 'bands' && <GradeBandsTab canEdit={canEdit} />}
       {tab === 'contracts' && <ContractsTab canEdit={canEdit} />}
       {tab === 'revisions' && <RevisionsTab />}
+      {tab === 'flexi' && <FlexiAdmin />}
     </div>
   )
 }

@@ -8,7 +8,7 @@ export const payrollRepository = {
 
   findOverlappingCycle(tenantId: string, start: Date, end: Date) {
     return prisma.payrollCycle.findFirst({
-      where: { tenantId, payPeriodStart: { lte: end }, payPeriodEnd: { gte: start } },
+      where: { tenantId, offCycle: false, payPeriodStart: { lte: end }, payPeriodEnd: { gte: start } },
     })
   },
 

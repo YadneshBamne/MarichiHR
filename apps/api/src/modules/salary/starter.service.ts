@@ -21,9 +21,9 @@ const TEMPLATES: Record<string, { name: string; description: string; rules: Rule
     ],
   },
   IN: {
-    name: 'India Standard Monthly', description: 'Basic 40%, HRA 50% of basic, special allowance the rest; EPF 12% (capped at 1,800), professional tax 200 (Maharashtra rate: change it for your state) and TDS from the statutory tables.',
+    name: 'India Standard Monthly', description: 'Basic 50% (Code on Wages), HRA 50% of basic, special allowance the rest; EPF 12% (capped at 1,800), professional tax 200 (Maharashtra rate: change it for your state) and TDS from the statutory tables.',
     rules: [
-      { code: 'BASIC', name: 'Basic Salary', cat: 'BASIC', formula: 'result = contract.wageMonthly * 0.40' },
+      { code: 'BASIC', name: 'Basic Salary', cat: 'BASIC', formula: 'result = contract.wageMonthly * 0.50' },
       { code: 'HRA', name: 'HRA', cat: 'ALW', formula: 'result = categories.BASIC * 0.50' },
       { code: 'SA', name: 'Special Allowance', cat: 'ALW', formula: 'result = max(0, contract.wageMonthly - rules.BASIC - rules.HRA - min(rules.BASIC * 0.12, 1800))' },
       { code: 'GROSS', name: 'Gross Salary', cat: 'GROSS', formula: 'result = categories.BASIC + categories.ALW' },

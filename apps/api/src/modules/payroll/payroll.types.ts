@@ -2,6 +2,9 @@ export interface CreateCycleDto {
   payPeriodStart: string
   payPeriodEnd: string
   cycleType?: 'monthly' | 'bi_weekly' | 'weekly'
+  offCycle?: boolean
+  reason?: string
+  correctsCycleId?: string
 }
 
 export interface AddPayrollInputDto {
