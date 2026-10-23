@@ -71,6 +71,8 @@ model Tenant {
   employeeExits        EmployeeExit[]
   notifications        Notification[]
   chatterMessages      ChatterMessage[]
+  statutoryTables      StatutoryTable[]
+  taxOverrides         TaxOverride[]
 
   @@map("tenants")
 }
@@ -1089,6 +1091,7 @@ model PayslipLine {
   formulaUsed       String?
   sourceRefType     String?
   sourceRefId       String?
+  statutoryRef      String? // statutory table versions the line used, e.g. "ZM_PAYE 2026-01-01"; or the approved tax override
 
   payslip    Payslip     @relation(fields: [payslipId], references: [id])
   salaryRule SalaryRule? @relation(fields: [salaryRuleId], references: [id])
@@ -1621,9 +1624,13 @@ model StatutoryTable {
   sourceUrl     String
   sourceNote    String
   verified      Boolean  @default(false) // false = figure from a secondary source; confirm with the authority
+  tenantId      String? // null = the shared version (added by migration); set = a company's own version, entered by its Compliance officer
+  createdBy     String?
   createdAt     DateTime @default(now())
 
-  @@unique([code, effectiveFrom])
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([code, effectiveFrom, tenantId])
   @@map("statutory_tables")
 }
 
@@ -2589,4 +2596,29 @@ model FlexiChoice {
   @@unique([employeeId, structureId])
   @@index([tenantId, status])
   @@map("flexi_choices")
+}
+
+// Manual tax override: a Payroll admin asks to replace a tax line's amount (with a reason); a Compliance officer who did
+// not ask signs it off. Kept per cycle + person + line so it survives a re-run; approved ones are re-applied.
+model TaxOverride {
+  id             String    @id @default(uuid())
+  tenantId       String
+  cycleId        String
+  employeeId     String
+  lineCode       String
+  originalAmount Decimal   @db.Decimal(18, 2)
+  amount         Decimal   @db.Decimal(18, 2)
+  reason         String
+  status         String    @default("pending") // pending | approved | rejected
+  requestedBy    String
+  decidedBy      String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  createdAt      DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([cycleId, employeeId])
+  @@map("tax_overrides")
 }

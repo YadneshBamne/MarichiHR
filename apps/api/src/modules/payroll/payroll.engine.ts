@@ -65,6 +65,7 @@ export interface EngineLine {
   formulaUsed?: string
   sourceRefType?: string
   sourceRefId?: string
+  statutoryRef?: string
   appearsOnPayslip: boolean
 }
 
@@ -107,7 +108,9 @@ export function runPayrollEngine(input: EngineInput): EngineResult {
     })
   }
 
-  const taxFns = statutoryFunctions(input.statutory ?? { at: 'today', tables: {} }, (w) => { if (!warnings.includes(w)) warnings.push(w) })
+  const stat: StatutoryContext = input.statutory ?? { at: 'today', tables: {} }
+  stat.used = new Set()
+  const taxFns = statutoryFunctions(stat, (w) => { if (!warnings.includes(w)) warnings.push(w) })
   const buildScope = () => ({
     contract: { ...input.contract },
     categories: { ...categories },
@@ -126,6 +129,7 @@ export function runPayrollEngine(input: EngineInput): EngineResult {
 
   for (const rule of sorted) {
     const scope = buildScope()
+    stat.used!.clear()
 
     if (rule.conditionSelect === 'python_expression' && rule.conditionExpr) {
       let ok = true
@@ -177,6 +181,8 @@ export function runPayrollEngine(input: EngineInput): EngineResult {
       formulaUsed: formula,
       sourceRefType: 'salary_rule',
       sourceRefId: rule.id,
+      // Which statutory table versions this amount came from (audit trail to the rule version used)
+      ...(stat.used!.size && { statutoryRef: [...stat.used!].map((c) => stat.versions?.[c] ?? c).join(', ') }),
       appearsOnPayslip: rule.appearsOnPayslip,
     })
   }

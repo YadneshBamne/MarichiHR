@@ -54,7 +54,7 @@ async function company(country, currency, people) {
   check('Nigeria 500,000: PAYE 65,300 a month under the 2025 Act bands', a.line('PAYE_NG') === 65300, a.line('PAYE_NG'))
   check('Nigeria: someone on the minimum wage (70,000) pays no PAYE', m.line('PAYE_NG') === 0, m.line('PAYE_NG'))
 
-  const rows = await prisma.statutoryTable.findMany({ where: { country: { in: ['KE', 'NG'] } } })
+  const rows = await prisma.statutoryTable.findMany({ where: { tenantId: null, country: { in: ['KE', 'NG'] } } })
   check('every Kenya and Nigeria rate is marked to confirm, with a source', rows.length >= 6 && rows.every((x) => x.verified === false && x.sourceUrl), rows.map((x) => x.code))
 
   for (const c of [ke, ng]) await prisma.tenant.update({ where: { id: c.tenant.id }, data: { active: false } })

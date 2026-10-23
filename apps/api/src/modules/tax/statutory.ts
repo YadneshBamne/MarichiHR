@@ -6,7 +6,8 @@ import { prisma } from '../../infrastructure/database/prisma'
 export type Band = { upTo: number | null; rate: number }
 export type StatutoryParams = Record<string, any>
 export interface IndiaYtd { gross: number; tax: number; monthsLeft: number; exemption?: number } // monthsLeft includes the current month; exemption = verified declarations allowed under the regime
-export interface StatutoryContext { at: string; tables: Record<string, StatutoryParams>; indiaYtd?: IndiaYtd }
+// versions: code -> "<code> <effectiveFrom>[ (company)]"; used: codes read while one rule runs (the engine fills it per line)
+export interface StatutoryContext { at: string; tables: Record<string, StatutoryParams>; versions?: Record<string, string>; used?: Set<string>; indiaYtd?: IndiaYtd }
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
@@ -23,23 +24,39 @@ export function bandTax(amount: number, bands: Band[]): number {
   return tax
 }
 
-// ponytail: rows cached for 10 minutes per process; tables only change through migrations
-let cache: { at: number; rows: { code: string; effectiveFrom: Date; params: any }[] } | null = null
+// ponytail: rows cached for 10 minutes per process (cleared when a company saves a version); per-instance cache, so with
+// several API instances a new company version can take up to 10 minutes to reach the others
+type Row = { code: string; effectiveFrom: Date; params: any; tenantId: string | null }
+let cache: { at: number; rows: Row[] } | null = null
 async function rows() {
   if (!cache || Date.now() - cache.at > 600_000) {
-    cache = { at: Date.now(), rows: await prisma.statutoryTable.findMany({ select: { code: true, effectiveFrom: true, params: true }, orderBy: { effectiveFrom: 'asc' } }) }
+    const all = await prisma.statutoryTable.findMany({ select: { code: true, effectiveFrom: true, params: true, tenantId: true } })
+    // Oldest first; on the same date a company's own version comes after (and so wins over) the shared one
+    all.sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime() || (a.tenantId ? 1 : 0) - (b.tenantId ? 1 : 0))
+    cache = { at: Date.now(), rows: all }
   }
   return cache.rows
 }
+export const clearStatutoryCache = () => { cache = null }
 
-// The version of every table in force on `date` (YYYY-MM-DD)
-export async function statutoryFor(date: string): Promise<Record<string, StatutoryParams>> {
-  const out: Record<string, StatutoryParams> = {}
-  for (const r of await rows()) if (r.effectiveFrom.toISOString().slice(0, 10) <= date) out[r.code] = r.params
-  return out
+// The version of every table in force on `date` (YYYY-MM-DD) for a company: its own versions, else the shared ones
+export async function statutoryContext(date: string, tenantId?: string): Promise<{ tables: Record<string, StatutoryParams>; versions: Record<string, string> }> {
+  const tables: Record<string, StatutoryParams> = {}
+  const versions: Record<string, string> = {}
+  for (const r of await rows()) {
+    const from = r.effectiveFrom.toISOString().slice(0, 10)
+    if (from > date || (r.tenantId && r.tenantId !== tenantId)) continue
+    tables[r.code] = r.params
+    versions[r.code] = `${r.code} ${from}${r.tenantId ? ' (company)' : ''}`
+  }
+  return { tables, versions }
+}
+export async function statutoryFor(date: string, tenantId?: string): Promise<Record<string, StatutoryParams>> {
+  return (await statutoryContext(date, tenantId)).tables
 }
 
 function table(ctx: StatutoryContext, code: string) {
+  ctx.used?.add(code)
   const t = ctx.tables[code]
   if (!t) throw new Error(`No ${code} table is in force on ${ctx.at}`)
   return t

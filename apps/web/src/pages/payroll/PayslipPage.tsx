@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { usePayslip, downloadPayslipPdf } from '../../lib/hooks/usePayroll'
 import Badge from '../../components/ui/Badge'
+import api from '../../lib/api'
+import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../components/ui/Toast'
+import { useQueryClient } from '@tanstack/react-query'
 import { money, fmtPeriod, fmtHours } from '../../lib/format'
 
 const GROUPS: { title: string; cats: string[]; sign: string; muted?: boolean }[] = [
@@ -12,12 +16,37 @@ const GROUPS: { title: string; cats: string[]; sign: string; muted?: boolean }[]
   { title: 'Employer contributions (not deducted from your pay)', cats: ['EMP_CONTRIB'], sign: '', muted: true },
 ]
 
+// Salary-rule formulas in words for the payslip ("why this amount")
+const WORDS: [RegExp, string][] = [
+  [/^\s*result\s*=\s*/, ''], [/contract\.wageMonthly/g, 'monthly wage'], [/contract\.fullWageMonthly/g, 'full monthly wage'], [/contract\.ctcAnnual/g, 'annual CTC'],
+  [/categories\.GROSS/g, 'gross pay'], [/categories\.BASIC/g, 'basic pay'], [/categories\.ALW/g, 'allowances'], [/categories\.(\w+)/g, '$1 total'],
+  [/rules\.(\w+)/g, '$1'], [/inputs\.(\w+)/g, '$1 (input)'], [/payslip\.paidDays/g, 'paid days'], [/payslip\.workingDays/g, 'working days'], [/payslip\.factor/g, 'share of the month worked'],
+  [/compute_zra_paye/g, 'ZRA PAYE bands on'], [/compute_india_tds/g, 'India TDS on'], [/napsa_(employee|employer)/g, 'NAPSA $1 share of'], [/nhima_(employee|employer)/g, 'NHIMA $1 share of'],
+  [/\s\*\s/g, ' × '], [/ (of|on)\(([^()]*)\)/g, ' $1 $2'],
+]
+const inWords = (f: string) => WORDS.reduce((t, [re, w]) => t.replace(re, w), f)
+
 export default function PayslipPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { data: p, isLoading, isError } = usePayslip(id!)
   const [downloading, setDownloading] = useState(false)
   const [dlError, setDlError] = useState('')
+  const { hasRole } = useAuth()
+  const toast = useToast()
+  const qc = useQueryClient()
+  // Payroll asks for a tax override while the run is in review; a Compliance officer signs it off
+  const askOverride = async (l: any) => {
+    const v = window.prompt(`New amount for ${l.name} (now ${l.amount})`)
+    if (v == null || v.trim() === '' || !(Number(v) >= 0)) return
+    const reason = window.prompt('Why? (at least 10 characters; the Compliance officer sees this)')
+    if (!reason || reason.trim().length < 10) { if (reason != null) toast('Give a reason of at least 10 characters', 'error'); return }
+    try {
+      const r = await api.post('/tax/overrides', { cycleId: p.payrollCycleId, employeeId: p.employeeId, lineCode: l.code, amount: Number(v), reason: reason.trim() })
+      toast(r.data.data.complianceOfficers ? 'Sent to Compliance for sign-off' : 'Saved, but nobody has the Compliance officer role yet: give it to someone (Login & access) so they can sign off', r.data.data.complianceOfficers ? undefined : 'error')
+      qc.invalidateQueries()
+    } catch (e: any) { toast(e?.response?.data?.message || 'Could not send', 'error') }
+  }
 
   const onDownload = async () => {
     setDlError('')
@@ -77,8 +106,9 @@ export default function PayslipPage() {
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--brand)', marginBottom: 6 }}>{g.title}</div>
               {rows.map((l: any) => (
                 <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '1px solid var(--well)' }}>
-                  <span>{l.name} {l.sourceRefType === 'payroll_input' && <span style={{ fontSize: 10, color: 'var(--warn)' }}>(manual)</span>}{l.sourceRefType === 'overtime_request' && <span style={{ fontSize: 10, color: 'var(--info)' }}>(overtime)</span>}</span>
-                  <span>{g.sign}{money(l.amount, cur)}</span>
+                  <span>{l.name} {l.sourceRefType === 'payroll_input' && <span style={{ fontSize: 10, color: 'var(--warn)' }}>(manual)</span>}{l.sourceRefType === 'overtime_request' && <span style={{ fontSize: 10, color: 'var(--info)' }}>(overtime)</span>}
+                    {(l.formulaUsed || l.statutoryRef) && <span style={{ display: 'block', fontSize: 11, color: 'var(--faint)', overflowWrap: 'anywhere' }}>How: {[l.formulaUsed && inWords(l.formulaUsed), l.statutoryRef && `rates: ${l.statutoryRef}`].filter(Boolean).join(' · ')}</span>}</span>
+                  <span style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>{l.category === 'TAX' && p.status === 'draft' && hasRole('payroll_admin') && <button className="btn btn-ghost btn-sm" style={{ height: 24, fontSize: 11 }} onClick={() => askOverride(l)}>Override</button>}{g.sign}{money(l.amount, cur)}</span>
                 </div>
               ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 13, fontWeight: 500 }}>

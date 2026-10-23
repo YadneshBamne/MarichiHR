@@ -2,7 +2,7 @@ import { payrollRepository as repo } from './payroll.repository'
 import { runPayrollEngine, EngineExtraLine } from './payroll.engine'
 import { PAYROLL_CONFIG } from './payroll.config'
 import { masterLabels } from '../masters/masters.service'
-import { statutoryFor, indiaFyStart, indiaMonthsLeft, StatutoryContext } from '../tax/statutory'
+import { statutoryContext, indiaFyStart, indiaMonthsLeft, StatutoryContext } from '../tax/statutory'
 import { CreateCycleDto, AddPayrollInputDto } from './payroll.types'
 import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
@@ -14,6 +14,7 @@ import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import crypto from 'crypto'
 
+import { reapplyOverrides } from '../tax/tax-admin.service'
 import { applyFlexi, basicShareWarning, offCyclePayslip } from './payroll-extras.service'
 const PAYROLL_STAFF_ROLES = ['payroll_admin', 'compliance_officer']
 
@@ -195,7 +196,7 @@ export async function computeEmployeePayslip(
   }
 
   // ─── Statutory tables for the period; India TDS also needs this financial year's pay and tax so far ──
-  const statutory: StatutoryContext = { at: periodEnd, tables: await statutoryFor(periodEnd) }
+  const statutory: StatutoryContext = { at: periodEnd, ...(await statutoryContext(periodEnd, emp.tenantId)) }
   if (contract.salaryStructure.rules.some((r: any) => /compute_india_tds/.test(`${r.pythonCode ?? ''}`))) {
     const prior = await prisma.payslip.findMany({
       where: { employeeId: emp.id, payrollCycleId: { not: cycle.id }, payrollCycle: { payPeriodStart: { gte: toDate(indiaFyStart(periodStart)), lt: cycle.payPeriodStart } } },
@@ -294,6 +295,7 @@ export async function computeEmployeePayslip(
         formulaUsed: l.formulaUsed ?? null,
         sourceRefType: l.sourceRefType ?? null,
         sourceRefId: l.sourceRefId ?? null,
+        statutoryRef: l.statutoryRef ?? null,
       })),
     },
     workedDays: {
@@ -457,6 +459,7 @@ export const payrollService = {
         }
       }
 
+      await reapplyOverrides(cycleId) // tax overrides already signed off survive a re-run
       await repo.updateCycle(cycleId, { status: 'review' })
     } catch (err) {
       await repo.updateCycle(cycleId, { status: 'draft' })
@@ -550,6 +553,8 @@ export const payrollService = {
     if ((await repo.countPayslips(cycleId)) === 0) throw new AppError('No payslips to approve', 400)
     const negative = await prisma.payslip.count({ where: { payrollCycleId: cycleId, netPay: { lt: 0 } } })
     if (negative) throw new AppError(`${negative} payslip${negative === 1 ? ' has' : 's have'} negative net pay; fix them and re-run before approving`, 400)
+    const waiting = await prisma.taxOverride.count({ where: { cycleId, status: 'pending' } })
+    if (waiting) throw new AppError(`${waiting} tax override${waiting === 1 ? ' is' : 's are'} waiting for a Compliance officer's sign-off`, 400)
 
     await repo.updateCycle(cycleId, { status: 'approved', approvedBy: userId, approvedAt: new Date() })
     await repo.setPayslipStatus(cycleId, 'approved')

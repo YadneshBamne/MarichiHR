@@ -8,8 +8,9 @@ import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 import { fmtDate } from '../../lib/format'
 import { MyDeclaration, DeclarationReview } from './DeclarationsPanel'
+import { NewVersionModal, OverridesPanel } from './TaxAdminPanels'
 
-interface Table { id: string; country: string; code: string; name: string; effectiveFrom: string; params: any; sourceUrl: string; sourceNote: string; verified: boolean; inForce: boolean; upcoming: boolean }
+interface Table { id: string; country: string; code: string; name: string; effectiveFrom: string; params: any; sourceUrl: string; sourceNote: string; verified: boolean; inForce: boolean; upcoming: boolean; company?: boolean }
 interface Col { code: string; name: string }
 interface Filing { cycle: { id: string; payPeriodStart: string; status: string; final: boolean }; columns: Col[]; rows: Record<string, any>[]; totals: Record<string, number> }
 interface Statement { employer: string; employee: { firstName: string; lastName: string; employeeCode: string; taxJurisdiction: string | null }; period: { from: string; to: string; basis: string }; columns: Col[]; months: Record<string, any>[]; totals: Record<string, number>; generatedAt: string }
@@ -23,8 +24,8 @@ export default function TaxPage() {
   const { hasRole } = useAuth()
   const staff = STAFF.some((r) => hasRole(r))
   const isPayroll = hasRole('payroll_admin')
-  const [tab, setTab] = useState<'return' | 'tables' | 'statement' | 'declarations' | 'declaration'>(new URLSearchParams(window.location.search).get('tab') === 'declarations' && isPayroll ? 'declarations' : new URLSearchParams(window.location.search).get('tab') === 'declaration' ? 'declaration' : staff ? 'return' : 'statement')
-  const tabs = [...(staff ? [['return', 'Statutory return'], ['tables', 'Rates & sources']] : []), ['statement', staff ? 'Annual statements' : 'Annual statement'], ...(isPayroll ? [['declarations', 'Declarations']] : []), ['declaration', 'My declaration']] as [typeof tab, string][]
+  const [tab, setTab] = useState<'return' | 'tables' | 'overrides' | 'statement' | 'declarations' | 'declaration'>(new URLSearchParams(window.location.search).get('tab') === 'overrides' && staff ? 'overrides' : new URLSearchParams(window.location.search).get('tab') === 'declarations' && isPayroll ? 'declarations' : new URLSearchParams(window.location.search).get('tab') === 'declaration' ? 'declaration' : staff ? 'return' : 'statement')
+  const tabs = [...(staff ? [['return', 'Statutory return'], ['tables', 'Rates & sources'], ['overrides', 'Tax overrides']] : []), ['statement', staff ? 'Annual statements' : 'Annual statement'], ...(isPayroll ? [['declarations', 'Declarations']] : []), ['declaration', 'My declaration']] as [typeof tab, string][]
   const root = useReveal<HTMLDivElement>(tab)
   return (
     <div ref={root}>
@@ -35,7 +36,7 @@ export default function TaxPage() {
           </div>
         )}
       </PageHeader>
-      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'declarations' ? <DeclarationReview /> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
+      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'overrides' ? <OverridesPanel canDecide={hasRole('compliance_officer')} /> : tab === 'declarations' ? <DeclarationReview /> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
     </div>
   )
 }
@@ -87,11 +88,15 @@ function Return() {
 }
 
 function Tables() {
+  const { hasRole } = useAuth()
+  const officer = hasRole('compliance_officer')
+  const [editing, setEditing] = useState<Table | null>(null)
   const { data = [], isLoading } = useQuery({ queryKey: ['tax-tables'], queryFn: async () => (await api.get('/tax/tables')).data.data as Table[] })
   if (isLoading) return <div className="skeleton" style={{ height: 200, borderRadius: 22 }} />
   return (
     <>
-      <p className="dim" data-rise style={{ fontSize: 13, marginBottom: 14, maxWidth: 720 }}>Payroll picks the version in force on the last day of each pay period. Every figure links to where it comes from. Rates marked “confirm” come from a secondary source until the authority publishes them.</p>
+      <p className="dim" data-rise style={{ fontSize: 13, marginBottom: 14, maxWidth: 720 }}>Payroll picks the version in force on the last day of each pay period, and each payslip line records the version it used. Every figure links to where it comes from. Rates marked “confirm” come from a secondary source until the authority publishes them. {officer ? 'When a rate changes, use New figures to enter your company’s version.' : 'A Compliance officer can enter new figures when a rate changes.'}</p>
+      {editing && <NewVersionModal table={editing} onClose={() => setEditing(null)} />}
       <div className="dgrid">
         {data.map((t) => (
           <section key={t.id} data-card className="card span-6" style={{ padding: 20, display: 'grid', gap: 10, alignContent: 'start', opacity: t.inForce || t.upcoming ? 1 : 0.65 }}>
@@ -99,7 +104,8 @@ function Tables() {
               <div><strong style={{ fontSize: 15 }}>{t.name}</strong><div className="dim" style={{ fontSize: 12 }}>{COUNTRY[t.country] ?? t.country} · from {fmtDate(t.effectiveFrom)}</div></div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'start' }}>
                 {t.inForce ? <span className="pill ok">In force</span> : t.upcoming ? <span className="pill info">Upcoming</span> : <span className="pill mute">Earlier</span>}
-                {t.verified ? <span className="pill night">Official</span> : <span className="pill warn">Confirm</span>}
+                {t.company ? <span className="pill honey">Your company</span> : t.verified ? <span className="pill night">Official</span> : <span className="pill warn">Confirm</span>}
+                {officer && t.inForce && <button className="btn btn-ghost btn-sm" style={{ height: 22, fontSize: 11 }} onClick={() => setEditing(t)}>New figures</button>}
               </div>
             </div>
             <Params t={t} />

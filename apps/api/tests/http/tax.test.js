@@ -10,7 +10,7 @@ const MONTH = process.env.TAX_MONTH || '2032-04'
 
 ;(async () => {
   // ─── Calculators ───────────────────────────────────────────
-  const tables = Object.fromEntries((await prisma.statutoryTable.findMany({ where: { effectiveFrom: { lte: new Date('2026-12-31') } }, orderBy: { effectiveFrom: 'asc' } })).map((t) => [t.code, t.params]))
+  const tables = Object.fromEntries((await prisma.statutoryTable.findMany({ where: { tenantId: null, effectiveFrom: { lte: new Date('2026-12-31') } }, orderBy: { effectiveFrom: 'asc' } })).map((t) => [t.code, t.params]))
   check("ZRA's own 2026 example: K15,000 → K3,176 PAYE", bandTax(15000, tables.ZM_PAYE.bands) === 3176, bandTax(15000, tables.ZM_PAYE.bands))
   check('ZRA: nothing up to K5,100, K400 at K7,100', bandTax(5100, tables.ZM_PAYE.bands) === 0 && Math.round(bandTax(7100, tables.ZM_PAYE.bands)) === 400)
   const fns = statutoryFunctions({ at: '2026-12-31', tables }, () => {})

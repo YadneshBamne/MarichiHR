@@ -56,7 +56,7 @@ async function dryRun(tenantId: string, structureId: string, candidate: RuleInpu
       contract: { wageMonthly: sampleWage, fullWageMonthly: sampleWage, ctcAnnual: sampleWage * 12, variablePayPercent: 0 },
       factor: 1, workingDays: 22, paidDays: 22, lwpDays: 0, extraLines: [],
       inputsByCode: Object.fromEntries(inputCodes.map((c) => [c, 0])),
-      statutory: { at: today, tables: await statutoryFor(today) },
+      statutory: { at: today, tables: await statutoryFor(today, tenantId) },
     })
     const own = result.lines.find((l) => l.code === candidate.code)
     return {

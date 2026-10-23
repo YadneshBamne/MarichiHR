@@ -238,7 +238,7 @@ export const exitsService = {
     const grat = computeGratuity({
       country: emp.taxJurisdiction, hireDate: ymd(emp.hireDate), lastWorkingDate: ymd(lwd), exitType: exit.exitType, basicMonthly,
       basicEarnedInContract: round2(Number(paidBasic._sum.amount ?? 0) + finalBasic), contractFrom: ymd(contractFrom), contractUntil: contract?.effectiveUntil ? ymd(contract.effectiveUntil) : null,
-    }, await statutoryFor(ymd(lwd)))
+    }, await statutoryFor(ymd(lwd), tenantId))
     if (grat.amount > 0) lines.push({ section: 'gratuity', kind: 'earning', code: 'GRATUITY', name: 'Gratuity', amount: grat.amount, formula: grat.formula })
     if (grat.warning) warnings.push(grat.warning)
     warnings.push('Leave encashment and notice pay are not taxed in this settlement: tax on terminal benefits arrives with the Phase 3 tax tables')

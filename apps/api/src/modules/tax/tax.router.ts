@@ -10,6 +10,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { declarationsService, ItemsBody, VerifyBody } from './declarations.service'
 import { generatePayslipPdf } from '../payroll/payslip.pdf'
 import { certificateHtml } from './certificate.html'
+import { taxAdmin, TableVersionBody } from './tax-admin.service'
 
 // Tax & compliance: the statutory tables payroll uses (with sources), the statutory return for a payroll run
 // (tax and contributions per employee, CSV for filing) and each employee's annual tax statement.
@@ -50,12 +51,25 @@ const Statement = z.object({ query: z.object({ employeeId: z.string().uuid().opt
 export const taxRouter = Router()
 taxRouter.use(authenticate)
 
-taxRouter.get('/tables', requireRoles(...PAYROLL_STAFF), asyncHandler(async (_req, res) => {
-  const rows = await prisma.statutoryTable.findMany({ orderBy: [{ country: 'asc' }, { code: 'asc' }, { effectiveFrom: 'desc' }] })
-  const today = new Date().toISOString().slice(0, 10)
-  const inForce = new Map<string, string>()
-  for (const r of rows) { const d = r.effectiveFrom.toISOString().slice(0, 10); if (d <= today && !inForce.has(r.code)) inForce.set(r.code, r.id) }
-  res.json({ success: true, data: rows.map((r) => ({ ...r, effectiveFrom: r.effectiveFrom.toISOString().slice(0, 10), inForce: inForce.get(r.code) === r.id, upcoming: r.effectiveFrom.toISOString().slice(0, 10) > today })) })
+taxRouter.get('/tables', requireRoles(...PAYROLL_STAFF), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxAdmin.tables(req.user!) })
+}))
+// The company's own version of a table (Compliance officer); payroll prefers it over the shared one from its date
+taxRouter.post('/tables', requireRoles('compliance_officer'), validate(z.object({ body: TableVersionBody })), asyncHandler(async (req, res) => {
+  res.status(201).json({ success: true, data: await taxAdmin.saveVersion(req.user!, req.body) })
+}))
+taxRouter.delete('/tables/:id', requireRoles('compliance_officer'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxAdmin.removeVersion(req.user!, String(req.params.id)) })
+}))
+// Manual tax overrides: Payroll asks, a different Compliance officer signs off
+taxRouter.get('/overrides', requireRoles(...PAYROLL_STAFF), validate(z.object({ query: z.object({ status: z.enum(['pending', 'approved', 'rejected']).optional(), cycleId: z.string().uuid().optional() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxAdmin.listOverrides(req.user!, req.query as any) })
+}))
+taxRouter.post('/overrides', requireRoles('payroll_admin'), validate(z.object({ body: z.object({ cycleId: z.string().uuid(), employeeId: z.string().uuid(), lineCode: z.string().min(1).max(40), amount: z.number().min(0).max(1e10), reason: z.string().trim().min(10).max(300) }).strict() })), asyncHandler(async (req, res) => {
+  res.status(201).json({ success: true, data: await taxAdmin.requestOverride(req.user!, req.body) })
+}))
+taxRouter.post('/overrides/:id/decide', requireRoles('compliance_officer'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ approve: z.boolean(), note: z.string().trim().max(300).optional() }).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await taxAdmin.decideOverride(req.user!, String(req.params.id), req.body.approve, req.body.note) })
 }))
 
 taxRouter.get('/filing', requireRoles(...PAYROLL_STAFF), validate(Filing), asyncHandler(async (req, res) => {

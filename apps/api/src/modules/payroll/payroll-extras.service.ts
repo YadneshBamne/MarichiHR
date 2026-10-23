@@ -46,7 +46,7 @@ async function wageRules(tenantId: string, employeeId: string) {
   ])
   const country = emp?.taxJurisdiction ?? tenant?.primaryCountry
   if (!country) return null
-  const t = (await statutoryFor(new Date().toISOString().slice(0, 10)))[`${country}_MIN_WAGE`]
+  const t = (await statutoryFor(new Date().toISOString().slice(0, 10), tenantId))[`${country}_MIN_WAGE`]
   return t ? { country, monthly: t.monthly as number | undefined, minBasicShare: t.minBasicShare as number | undefined } : null
 }
 // A contract below the minimum wage is refused (the figure is in Tax & compliance › Rates, marked to confirm)
