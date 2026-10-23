@@ -58,6 +58,23 @@ export function statutoryFunctions(ctx: StatutoryContext, warn: (w: string) => v
     napsa_employer: (gross: number) => napsa(gross, 'employerRate'),
     nhima_employee: (basic: number) => nhima(basic, 'employeeRate'),
     nhima_employer: (basic: number) => nhima(basic, 'employerRate'),
+    // Kenya: NSSF (6% up to the upper earnings limit), SHIF (2.75%, a minimum), housing levy (1.5% each side);
+    // PAYE on pay after those three, less the monthly personal relief
+    ke_nssf_employee: (gross: number) => { const t = table(ctx, 'KE_NSSF'); return round2(Math.min(Math.max(0, Number(gross)), t.upperLimit) * t.rate) },
+    ke_nssf_employer: (gross: number) => { const t = table(ctx, 'KE_NSSF'); return round2(Math.min(Math.max(0, Number(gross)), t.upperLimit) * t.rate) },
+    ke_shif: (gross: number) => { const t = table(ctx, 'KE_SHIF'); return Number(gross) > 0 ? round2(Math.max(t.minimum, Number(gross) * t.rate)) : 0 },
+    ke_ahl_employee: (gross: number) => round2(Math.max(0, Number(gross)) * table(ctx, 'KE_AHL').employeeRate),
+    ke_ahl_employer: (gross: number) => round2(Math.max(0, Number(gross)) * table(ctx, 'KE_AHL').employerRate),
+    compute_ke_paye: (taxable: number) => { const t = table(ctx, 'KE_PAYE'); return round2(Math.max(0, bandTax(Math.max(0, Number(taxable)), t.bands) - t.personalRelief)) },
+    // Nigeria: pension 8% / 10% of basic + housing + transport; PAYE on annualised pay less pension, nothing at or
+    // below the minimum wage
+    ng_pension_employee: (base: number) => round2(Math.max(0, Number(base)) * table(ctx, 'NG_PENSION').employeeRate),
+    ng_pension_employer: (base: number) => round2(Math.max(0, Number(base)) * table(ctx, 'NG_PENSION').employerRate),
+    compute_ng_paye: (gross: number, pension: number) => {
+      const t = table(ctx, 'NG_PAYE')
+      if (Number(gross) <= t.minimumWageMonthly) return 0
+      return round2(bandTax(Math.max(0, (Number(gross) - Number(pension ?? 0)) * 12), t.bands) / 12)
+    },
     // Contractors: a flat withholding on the fee (rates marked to confirm in the statutory tables)
     zm_withholding: (fee: number) => round2(Math.max(0, Number(fee)) * table(ctx, 'ZM_WHT_CONTRACTOR').rate),
     // ponytail: monthly rate on each payment; the 194J annual threshold is not tracked across the year

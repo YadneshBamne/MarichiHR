@@ -17,7 +17,7 @@ interface Statement { employer: string; employee: { firstName: string; lastName:
 const STAFF = ['payroll_admin', 'compliance_officer']
 const n = (v: unknown) => (v == null || v === '' ? '—' : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const pct = (r: number) => `${+(r * 100).toFixed(2)}%`
-const COUNTRY: Record<string, string> = { ZM: 'Zambia', IN: 'India' }
+const COUNTRY: Record<string, string> = { ZM: 'Zambia', IN: 'India', KE: 'Kenya', NG: 'Nigeria' }
 
 export default function TaxPage() {
   const { hasRole } = useAuth()

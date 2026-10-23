@@ -19,7 +19,7 @@ const FINAL = ['approved', 'disbursed']
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const cell = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
 // Lines that go to the tax authority or a statutory fund: tax, employer contributions and employee NAPSA/NHIMA
-const isStatutory = (l: { category: string; code: string }) => l.category === 'TAX' || l.category === 'EMP_CONTRIB' || /^(NAPSA|NHIMA)/.test(l.code)
+const isStatutory = (l: { category: string; code: string }) => l.category === 'TAX' || l.category === 'EMP_CONTRIB' || /^(NAPSA|NHIMA|NSSF|SHIF|AHL|PENSION)/.test(l.code)
 
 async function filing(user: AccessUser, cycleId: string) {
   const cycle = await prisma.payrollCycle.findFirst({ where: { id: cycleId, tenantId: user.tenantId } })

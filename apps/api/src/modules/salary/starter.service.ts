@@ -34,6 +34,34 @@ const TEMPLATES: Record<string, { name: string; description: string; rules: Rule
       { code: 'NET', name: 'Net Pay', cat: 'NET', formula: 'result = categories.GROSS - categories.DED - categories.TAX' },
     ],
   },
+  KE: {
+    name: 'Kenya Standard Monthly', description: 'Basic 70% and house allowance 30% of the monthly wage; NSSF, SHIF, housing levy and PAYE (after personal relief) from the statutory tables, marked to confirm.',
+    rules: [
+      { code: 'BASIC', name: 'Basic Salary', cat: 'BASIC', formula: 'result = contract.wageMonthly * 0.70' },
+      { code: 'HOUSE', name: 'House Allowance', cat: 'ALW', formula: 'result = contract.wageMonthly * 0.30' },
+      { code: 'GROSS', name: 'Gross Salary', cat: 'GROSS', formula: 'result = categories.BASIC + categories.ALW' },
+      { code: 'NSSF_EMP', name: 'NSSF (employee)', cat: 'DED', formula: 'result = ke_nssf_employee(categories.GROSS)' },
+      { code: 'SHIF', name: 'SHIF', cat: 'DED', formula: 'result = ke_shif(categories.GROSS)' },
+      { code: 'AHL_EMP', name: 'Housing Levy (employee)', cat: 'DED', formula: 'result = ke_ahl_employee(categories.GROSS)' },
+      { code: 'PAYE_KE', name: 'PAYE', cat: 'TAX', formula: 'result = compute_ke_paye(categories.GROSS - categories.DED)' },
+      { code: 'NSSF_EMPLOYER', name: 'NSSF (employer)', cat: 'EMP_CONTRIB', formula: 'result = ke_nssf_employer(categories.GROSS)', payslip: false },
+      { code: 'AHL_EMPLOYER', name: 'Housing Levy (employer)', cat: 'EMP_CONTRIB', formula: 'result = ke_ahl_employer(categories.GROSS)', payslip: false },
+      { code: 'NET', name: 'Net Pay', cat: 'NET', formula: 'result = categories.GROSS - categories.DED - categories.TAX' },
+    ],
+  },
+  NG: {
+    name: 'Nigeria Standard Monthly', description: 'Basic 50%, housing 30%, transport 20% of the monthly wage; pension 8% (employer 10%) and PAYE under the Nigeria Tax Act 2025 from the statutory tables, marked to confirm. Rent relief is not applied.',
+    rules: [
+      { code: 'BASIC', name: 'Basic Salary', cat: 'BASIC', formula: 'result = contract.wageMonthly * 0.50' },
+      { code: 'HOUSING', name: 'Housing Allowance', cat: 'ALW', formula: 'result = contract.wageMonthly * 0.30' },
+      { code: 'TRANSPORT', name: 'Transport Allowance', cat: 'ALW', formula: 'result = contract.wageMonthly * 0.20' },
+      { code: 'GROSS', name: 'Gross Salary', cat: 'GROSS', formula: 'result = categories.BASIC + categories.ALW' },
+      { code: 'PENSION_EMP', name: 'Pension (employee 8%)', cat: 'DED', formula: 'result = ng_pension_employee(categories.BASIC + categories.ALW)' },
+      { code: 'PAYE_NG', name: 'PAYE', cat: 'TAX', formula: 'result = compute_ng_paye(categories.GROSS, categories.DED)' },
+      { code: 'PENSION_EMPLOYER', name: 'Pension (employer 10%)', cat: 'EMP_CONTRIB', formula: 'result = ng_pension_employer(categories.BASIC + categories.ALW)', payslip: false },
+      { code: 'NET', name: 'Net Pay', cat: 'NET', formula: 'result = categories.GROSS - categories.DED - categories.TAX' },
+    ],
+  },
   DEFAULT: {
     name: 'Standard Monthly', description: 'Basic 60% and allowance 40% of the monthly wage. No tax or social security yet: add your country\'s statutory rules.',
     rules: [
