@@ -6,9 +6,10 @@ export const payrollRepository = {
     return prisma.payrollCycle.create({ data: { tenantId, ...data, status: 'draft' } })
   },
 
-  findOverlappingCycle(tenantId: string, start: Date, end: Date) {
+  // A run for everyone overlaps any run; an entity's run overlaps that entity's runs and runs for everyone
+  findOverlappingCycle(tenantId: string, start: Date, end: Date, legalEntityId?: string | null) {
     return prisma.payrollCycle.findFirst({
-      where: { tenantId, offCycle: false, payPeriodStart: { lte: end }, payPeriodEnd: { gte: start } },
+      where: { tenantId, offCycle: false, payPeriodStart: { lte: end }, payPeriodEnd: { gte: start }, ...(legalEntityId && { OR: [{ legalEntityId: null }, { legalEntityId }] }) },
     })
   },
 
@@ -47,9 +48,9 @@ export const payrollRepository = {
   },
 
   // ─── DATA GATHERING ───────────────────────────────────────
-  listPayrollEmployees(tenantId: string) {
+  listPayrollEmployees(tenantId: string, legalEntityId?: string | null) {
     return prisma.employee.findMany({
-      where: { tenantId, active: true, employmentStatus: { not: 'terminated' } },
+      where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, ...(legalEntityId && { legalEntityId }) },
       include: {
         user: { select: { fullName: true } },
         resourceCalendar: { include: { days: true } },

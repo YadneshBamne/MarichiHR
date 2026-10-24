@@ -21,6 +21,7 @@ export async function assertRefsInTenant(tenantId: string, refs: {
   managerId?: string
   workLocationId?: string
   resourceCalendarId?: string
+  legalEntityId?: string | null
 }) {
   const checks: [string | undefined, string, () => Promise<unknown>][] = [
     [refs.parentOrgUnitId, 'Parent org unit', () => prisma.orgUnit.findFirst({ where: { id: refs.parentOrgUnitId, tenantId }, select: { id: true } })],
@@ -29,6 +30,7 @@ export async function assertRefsInTenant(tenantId: string, refs: {
     [refs.managerId, 'Manager', () => prisma.employee.findFirst({ where: { id: refs.managerId, tenantId }, select: { id: true } })],
     [refs.workLocationId, 'Work location', () => prisma.workLocation.findFirst({ where: { id: refs.workLocationId, tenantId }, select: { id: true } })],
     [refs.resourceCalendarId, 'Resource calendar', () => prisma.resourceCalendar.findFirst({ where: { id: refs.resourceCalendarId, tenantId }, select: { id: true } })],
+    [refs.legalEntityId ?? undefined, 'Legal entity', () => prisma.legalEntity.findFirst({ where: { id: refs.legalEntityId!, tenantId, active: true }, select: { id: true } })],
   ]
   const present = checks.filter(([value]) => value)
   const found = await Promise.all(present.map(([, , lookup]) => lookup()))
@@ -230,6 +232,7 @@ export const employeeService = {
         jobPositionId: data.jobPositionId,
         managerId: data.managerId,
         workLocationId: data.workLocationId,
+        legalEntityId: (data as any).legalEntityId,
         resourceCalendarId: data.resourceCalendarId,
       }),
       employeeRepository.generateEmployeeCode(tenantId),
@@ -252,7 +255,7 @@ export const employeeService = {
     const dateOnly = (v?: string) => (v ? new Date(v.slice(0, 10) + 'T00:00:00.000Z').toISOString() : null)
     const employeeRow: Record<string, unknown> = {
       id: employeeId, tenantId, userId, orgUnitId: data.orgUnitId, jobPositionId: data.jobPositionId ?? null, managerId: data.managerId ?? null,
-      resourceCalendarId: data.resourceCalendarId ?? null, workLocationId: data.workLocationId ?? null, taxJurisdiction: data.taxJurisdiction ?? null,
+      resourceCalendarId: data.resourceCalendarId ?? null, workLocationId: data.workLocationId ?? null, legalEntityId: (data as any).legalEntityId ?? null, taxJurisdiction: data.taxJurisdiction ?? null,
       firstName: data.firstName, lastName: data.lastName, workEmail: data.workEmail, personalEmail: data.personalEmail ?? null,
       dateOfBirth: dateOnly(data.dateOfBirth), gender: data.gender ?? null, nationality: data.nationality ?? null,
       mobilePersonal: data.mobilePersonal ?? null, mobileWork: data.mobileWork ?? null, emergencyContactName: data.emergencyContactName ?? null,
@@ -315,6 +318,7 @@ export const employeeService = {
       managerId: safeData.managerId,
       workLocationId: safeData.workLocationId,
       resourceCalendarId: safeData.resourceCalendarId,
+      legalEntityId: (safeData as any).legalEntityId,
     })
 
     const updated = await employeeRepository.update(id, safeData)

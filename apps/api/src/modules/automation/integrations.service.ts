@@ -143,7 +143,7 @@ export const webhookService = {
 }
 
 // ─── API keys ─────────────────────────────────────────────────
-export const API_SCOPES = ['employees:read', 'org:read', 'leave:read', 'attendance:read', 'attendance:write'] as const
+export const API_SCOPES = ['employees:read', 'employees:write', 'org:read', 'leave:read', 'leave:write', 'attendance:read', 'attendance:write'] as const
 export const ApiKeyBody = z.object({ name: z.string().trim().min(2).max(80), scopes: z.array(z.enum(API_SCOPES)).min(1), expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).strict()
 const hashKey = (key: string) => lookupHash('api_key', key)
 

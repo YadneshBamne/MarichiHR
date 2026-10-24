@@ -1,5 +1,6 @@
 import { prisma } from '../database/prisma'
 import { wants } from './preferences'
+import { pushEnabled, pushTo } from './push'
 
 // In-app notification rows plus outbound delivery over pluggable transports.
 // Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | resend.
@@ -125,6 +126,11 @@ export async function notify(input: NotifyInput) {
       } catch (err: any) {
         deliveries.push({ channel, transport: transport.name, status: 'failed', error: String(err?.message || err) })
       }
+    }
+    // Push to the person's phones and browsers that asked for it
+    if (pushEnabled() && wants(user.notifyPrefs, input.type, 'push')) {
+      const p = await pushTo(user.id, { title: input.title, body: input.body, link: input.link })
+      if (p.devices) deliveries.push({ channel: 'push', transport: 'webpush', status: p.sent ? 'sent' : 'failed', devices: p.devices, at: new Date().toISOString() })
     }
     created.push(await prisma.notification.update({ where: { id: row.id }, data: { deliveries } }))
   }

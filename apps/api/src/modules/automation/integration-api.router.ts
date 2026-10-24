@@ -8,11 +8,13 @@ import { AppError } from '../../shared/utils/AppError'
 import { apiKeyService } from './integrations.service'
 
 import { attendanceExtras, PunchesBody } from '../attendance/attendance-extras.service'
-// Read-only API for other systems (payroll bureaus, BI tools, access control), authenticated with an API key:
+import { employeeService } from '../employees/employees.service'
+import { leaveService } from '../leave/leave.service'
+// API for other systems (payroll bureaus, BI tools, access control, HR feeds), authenticated with an API key:
 // `Authorization: Bearer mhr_…`. Each key carries scopes; every query is scoped to the key's company.
 export const integrationApiRouter = Router()
 const RATE_PER_MIN = 120
-type KeyReq = Request & { apiKey?: { id: string; tenantId: string; scopes: string[] } }
+type KeyReq = Request & { apiKey?: { id: string; tenantId: string; scopes: string[]; createdBy: string } }
 
 integrationApiRouter.use(asyncHandler(async (req: KeyReq, _res: Response, next: NextFunction) => {
   const key = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim()
@@ -21,7 +23,7 @@ integrationApiRouter.use(asyncHandler(async (req: KeyReq, _res: Response, next: 
   const bucket = `apikey:${row.id}:${Math.floor(Date.now() / 60_000)}`
   const used = await soft(async () => { const n = await redis.incr(bucket); if (n === 1) await redis.expire(bucket, 90); return n }, 0)
   if (used > RATE_PER_MIN) throw new AppError(`Rate limit: ${RATE_PER_MIN} requests a minute per key`, 429)
-  req.apiKey = { id: row.id, tenantId: row.tenantId, scopes: row.scopes }
+  req.apiKey = { id: row.id, tenantId: row.tenantId, scopes: row.scopes, createdBy: row.createdBy }
   next()
 }))
 const scope = (s: string) => (req: KeyReq, _res: Response, next: NextFunction) => (req.apiKey!.scopes.includes(s) ? next() : next(new AppError(`This key does not have the ${s} scope`, 403)))
@@ -75,4 +77,69 @@ integrationApiRouter.get('/attendance', scope('attendance:read'), validate(z.obj
     prisma.attendanceRecord.findMany({ where, orderBy: [{ date: 'asc' }, { employeeId: 'asc' }], skip: q.offset, take: q.limit, select: { date: true, status: true, checkInTime: true, checkOutTime: true, workedHours: true, employee: { select: { employeeCode: true } } } }),
   ])
   res.json({ total, limit: q.limit, offset: q.offset, data: rows.map((a) => ({ employeeId: a.employee.employeeCode, date: ymd(a.date), status: a.status, checkIn: a.checkInTime, checkOut: a.checkOutTime, workedHours: a.workedHours })) })
+}))
+
+// ─── Writes ─────────────────────────────────────────────────────────────────────────────────────────────
+// Other systems refer to people by employee code (or work email) and to departments, job titles and offices by name.
+// Writes run through the same rules as the app (audit log, events, approvals); the key's creator is recorded as the actor.
+async function refs(tenantId: string, b: { department?: string; jobTitle?: string; office?: string; managerEmployeeId?: string }) {
+  const out: Record<string, string> = {}
+  if (b.department) {
+    const u = await prisma.orgUnit.findFirst({ where: { tenantId, name: { equals: b.department, mode: 'insensitive' }, active: true } })
+    if (!u) throw new AppError(`No department called "${b.department}"`, 400)
+    out.orgUnitId = u.id
+  }
+  if (b.jobTitle) {
+    const j = await prisma.jobPosition.findFirst({ where: { tenantId, title: { equals: b.jobTitle, mode: 'insensitive' } } })
+    if (!j) throw new AppError(`No job position called "${b.jobTitle}"`, 400)
+    out.jobPositionId = j.id
+  }
+  if (b.office) {
+    const w = await prisma.workLocation.findFirst({ where: { tenantId, name: { equals: b.office, mode: 'insensitive' } } })
+    if (!w) throw new AppError(`No office called "${b.office}"`, 400)
+    out.workLocationId = w.id
+  }
+  if (b.managerEmployeeId) out.managerId = (await byCode(tenantId, b.managerEmployeeId)).id
+  return out
+}
+async function byCode(tenantId: string, codeOrEmail: string) {
+  const e = await prisma.employee.findFirst({ where: { tenantId, OR: [{ employeeCode: codeOrEmail }, { workEmail: { equals: codeOrEmail, mode: 'insensitive' } }] } })
+  if (!e) throw new AppError(`No employee ${codeOrEmail}`, 404)
+  return e
+}
+const refFields = { department: z.string().trim().max(120).optional(), jobTitle: z.string().trim().max(120).optional(), office: z.string().trim().max(120).optional(), managerEmployeeId: z.string().trim().max(120).optional() }
+const NewEmployee = z.object({ firstName: z.string().trim().min(1).max(80), lastName: z.string().trim().min(1).max(80), workEmail: z.string().email(), hireDate: date, employmentType: z.string().trim().min(1).max(40).default('full_time'), mobileWork: z.string().trim().max(30).optional(), taxJurisdiction: z.string().length(2).optional(), ...refFields }).strict()
+const EditEmployee = z.object({ firstName: z.string().trim().min(1).max(80).optional(), lastName: z.string().trim().min(1).max(80).optional(), mobileWork: z.string().trim().max(30).optional(), employmentType: z.string().trim().min(1).max(40).optional(), ...refFields }).strict()
+
+// Create a person (no login: HR grants that in the app). Department is required unless the company has one unit.
+integrationApiRouter.post('/employees', scope('employees:write'), validate(z.object({ body: NewEmployee })), asyncHandler(async (req, res) => {
+  const t = tenantOf(req), b = req.body
+  const r = await refs(t, b)
+  if (!r.orgUnitId) {
+    const units = await prisma.orgUnit.findMany({ where: { tenantId: t, active: true }, select: { id: true }, take: 2 })
+    if (units.length !== 1) throw new AppError('Give the department', 400)
+    r.orgUnitId = units[0].id
+  }
+  const created: any = await employeeService.create(t, { firstName: b.firstName, lastName: b.lastName, workEmail: b.workEmail, hireDate: b.hireDate, employmentType: b.employmentType, ...(b.mobileWork && { mobileWork: b.mobileWork }), ...(b.taxJurisdiction && { taxJurisdiction: b.taxJurisdiction }), ...r } as any, (req as KeyReq).apiKey!.createdBy)
+  const e = created.employee ?? created
+  res.status(201).json({ data: { employeeId: e.employeeCode, firstName: e.firstName, lastName: e.lastName, workEmail: e.workEmail } })
+}))
+integrationApiRouter.patch('/employees/:code', scope('employees:write'), validate(z.object({ params: z.object({ code: z.string().min(1).max(120) }), body: EditEmployee })), asyncHandler(async (req, res) => {
+  const t = tenantOf(req), b = req.body
+  const e = await byCode(t, String(req.params.code))
+  const { department: _d, jobTitle: _j, office: _o, managerEmployeeId: _m, ...plain } = b
+  await employeeService.update(e.id, t, { ...plain, ...(await refs(t, b)) } as any, (req as KeyReq).apiKey!.createdBy)
+  res.json({ data: { employeeId: e.employeeCode, updated: Object.keys(b) } })
+}))
+
+// Apply leave for someone (e.g. from a time-off kiosk): it goes to their manager for approval like any request
+const NewLeave = z.object({ employeeId: z.string().min(1).max(120), leaveType: z.string().trim().min(1).max(40), startDate: date, endDate: date, reason: z.string().trim().max(500).optional() }).strict()
+integrationApiRouter.post('/leave', scope('leave:write'), validate(z.object({ body: NewLeave })), asyncHandler(async (req, res) => {
+  const t = tenantOf(req), b = req.body
+  const e = await byCode(t, b.employeeId)
+  const type = await prisma.leaveType.findFirst({ where: { tenantId: t, active: true, OR: [{ code: b.leaveType.toUpperCase() }, { name: { equals: b.leaveType, mode: 'insensitive' } }] } })
+  if (!type) throw new AppError(`No leave type "${b.leaveType}"`, 400)
+  const r: any = await leaveService.applyLeave(e.id, t, { leaveTypeId: type.id, startDate: b.startDate, endDate: b.endDate, ...(b.reason && { reason: b.reason }) })
+  const lr = r.request ?? r.leaveRequest ?? r
+  res.status(201).json({ data: { id: lr.id, status: lr.status, totalDays: lr.totalDays ?? null } })
 }))

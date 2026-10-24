@@ -5,6 +5,7 @@ export interface CreateCycleDto {
   offCycle?: boolean
   reason?: string
   correctsCycleId?: string
+  legalEntityId?: string
 }
 
 export interface AddPayrollInputDto {

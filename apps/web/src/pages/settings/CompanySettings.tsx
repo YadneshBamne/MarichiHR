@@ -6,6 +6,7 @@ import { useToast } from '../../components/ui/Toast'
 import { APPS, type AppKey } from '../../lib/apps'
 import PageHeader from '../../components/ui/PageHeader'
 import { AppPicker, CompanyFields, LogoPicker, draftFrom, draftToBody, type CompanyDraft } from '../../components/company/CompanyParts'
+import { EntitiesSection } from './EntitiesSection'
 
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
@@ -33,6 +34,7 @@ export function CompanySettingsPage() {
           <CompanyFields draft={d} set={(p) => setD({ ...d, ...p })} />
         </section>
       )}
+      {d && <EntitiesSection country={d.primaryCountry} currency={d.baseCurrency} />}
     </div>
   )
 }

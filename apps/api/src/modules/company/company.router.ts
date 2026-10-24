@@ -7,6 +7,7 @@ import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { companyService } from './company.service'
 import { APP_KEYS } from './company.catalog'
+import { entityService, EntityBody } from './entities.service'
 
 const isTimeZone = (tz: string) => { try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true } catch { return false } }
 // Logos are small images kept inline as data URLs (resized to 256px by the browser before upload)
@@ -32,6 +33,11 @@ export const SetModulesSchema = z.object({ body: z.object({ modules: z.array(z.e
 
 export const companyRouter = Router()
 companyRouter.use(authenticate)
+
+// Legal entities (group companies): everyone may list them; HR / System admins manage them
+companyRouter.get('/entities', asyncHandler(async (req, res) => { res.json({ success: true, data: await entityService.list(req.user!) }) }))
+companyRouter.post('/entities', requireRoles('system_admin', 'hr_admin'), validate(z.object({ body: EntityBody })), asyncHandler(async (req, res) => { res.status(201).json({ success: true, data: await entityService.save(req.user!, null, req.body) }) }))
+companyRouter.put('/entities/:id', requireRoles('system_admin', 'hr_admin'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: EntityBody })), asyncHandler(async (req, res) => { res.json({ success: true, data: await entityService.save(req.user!, String(req.params.id), req.body) }) }))
 
 // Everyone in the company can read its profile (name, logo, installed apps); admins change it
 companyRouter.get('/', asyncHandler(async (req, res) => {

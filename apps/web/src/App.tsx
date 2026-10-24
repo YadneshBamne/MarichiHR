@@ -16,6 +16,7 @@ const HolidaysPage = lazy(() => import('./pages/holidays/HolidaysPage'))
 const AnnouncementsPage = lazy(() => import('./pages/workplace/AnnouncementsPage'))
 const PoliciesPage = lazy(() => import('./pages/workplace/PoliciesPage'))
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'))
+const PrivacyPage = lazy(() => import('./pages/settings/PrivacyPage'))
 const CommunityPage = lazy(() => import('./pages/workplace/CommunityPage'))
 const ThreadPage = lazy(() => import('./pages/workplace/CommunityPage').then((m) => ({ default: m.ThreadPage })))
 const PayReviewPage = lazy(() => import('./pages/salary/PayReviewPage'))
@@ -140,6 +141,7 @@ export default function App() {
                     <Route path="compensation" element={page(guard(<SalarySetupPage />, { roles: STAFF, app: 'payroll' }))} />
                     <Route path="security" element={page(<SecurityPage />)} />
                     <Route path="notifications/settings" element={page(<NotificationSettingsPage />)} />
+                    <Route path="settings/privacy" element={page(<PrivacyPage />)} />
                     <Route path="settings" element={page(guard(<SettingsPage />, { roles: [...ADMINS, 'payroll_admin'] }))} />
                     <Route path="settings/masters" element={page(guard(<MastersPage />, { roles: ADMINS }))} />
                     <Route path="settings/company" element={page(guard(<CompanySettingsPage />, { roles: ADMINS }))} />

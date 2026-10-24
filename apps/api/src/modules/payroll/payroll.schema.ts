@@ -10,6 +10,7 @@ export const CreateCycleSchema = z.object({
     offCycle: z.boolean().optional(), // a one-off run paying only its inputs
     reason: z.string().trim().max(300).optional(),
     correctsCycleId: z.string().uuid().optional(), // a correction to a run that was already paid
+    legalEntityId: z.string().uuid().optional(), // a run for one legal entity's employees
   }).strict(),
 })
 

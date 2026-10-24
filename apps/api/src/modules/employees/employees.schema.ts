@@ -43,6 +43,7 @@ export const CreateEmployeeSchema = z.object({
     managerId: z.string().uuid().optional(),
     resourceCalendarId: z.string().uuid().optional(),
     workLocationId: z.string().uuid().optional(),
+    legalEntityId: z.string().uuid().optional(),
     hireDate: z.string().min(1),
     employmentType: z.string().trim().min(1).max(40), // a code from the employment_type master
     taxJurisdiction: z.string().length(2).optional(),
@@ -77,6 +78,7 @@ export const UpdateEmployeeSchema = z.object({
     managerId: z.string().uuid().optional(),
     resourceCalendarId: z.string().uuid().optional(),
     workLocationId: z.string().uuid().optional(),
+    legalEntityId: z.string().uuid().nullable().optional(),
     taxJurisdiction: z.string().length(2).optional(),
     dateOfBirth: z.string().optional(),
     employmentType: z.string().trim().min(1).max(40).optional(),

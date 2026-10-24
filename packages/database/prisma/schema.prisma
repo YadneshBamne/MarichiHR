@@ -308,6 +308,7 @@ model Employee {
   resourceCalendarId String?
   workLocationId     String?
   taxJurisdiction    String?
+  legalEntityId      String? // the company (entity) that employs the person, when the group has several
 
   firstName   String
   lastName    String
@@ -1018,6 +1019,7 @@ model GradeBand {
 model PayrollCycle {
   id                 String    @id @default(uuid())
   tenantId           String
+  legalEntityId      String? // a run for one entity only (its employees); null = everyone
   orgUnitId          String?
   payPeriodStart     DateTime  @db.Date
   payPeriodEnd       DateTime  @db.Date
@@ -2817,4 +2819,55 @@ model TaxFiling {
   @@unique([tenantId, cycleId, authority])
   @@index([tenantId])
   @@map("tax_filings")
+}
+
+// Data-protection requests (Zambia DPA 2021 and similar): a copy of one's personal data, or erasure after leaving.
+// Erasure is decided by HR (never the requester); pay, tax and leave records stay for the legal retention period.
+model PrivacyRequest {
+  id          String    @id @default(uuid())
+  tenantId    String
+  employeeId  String
+  kind        String // export | erasure
+  status      String    @default("pending") // pending | done | rejected
+  reason      String?
+  requestedBy String
+  decidedBy   String?
+  decidedAt   DateTime?
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@map("privacy_requests")
+}
+
+// Legal entities of a group (multi-entity): each employs people and runs its own payroll in its own currency
+model LegalEntity {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  legalName String?
+  country   String // ISO-3166 alpha-2
+  currency  String
+  taxId     String? // TPIN, PAN/TAN, KRA PIN...
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@map("legal_entities")
+}
+
+// A browser or phone that asked for push notifications (Web Push); removed when the push service says it is gone
+model PushSubscription {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

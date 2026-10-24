@@ -11,13 +11,13 @@ export const CATEGORIES = [
 ] as const
 
 export type CategoryKey = (typeof CATEGORIES)[number]['key']
-export type Prefs = Partial<Record<CategoryKey, { email?: boolean; whatsapp?: boolean }>>
+export type Prefs = Partial<Record<CategoryKey, { email?: boolean; whatsapp?: boolean; push?: boolean }>>
 
 export const categoryOf = (type: string): (typeof CATEGORIES)[number] =>
   CATEGORIES.find((c) => c.prefixes.some((p) => type.startsWith(p))) ?? CATEGORIES[CATEGORIES.length - 1]
 
 // Channels default to on: people opt out
-export function wants(prefs: unknown, type: string, channel: 'email' | 'whatsapp') {
+export function wants(prefs: unknown, type: string, channel: 'email' | 'whatsapp' | 'push') {
   const c = categoryOf(type)
   if (c.mandatory) return true
   return (prefs as Prefs | null)?.[c.key]?.[channel] !== false

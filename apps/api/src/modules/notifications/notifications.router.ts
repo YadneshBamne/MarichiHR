@@ -8,6 +8,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { prisma } from '../../infrastructure/database/prisma'
 import { JOBS, getCronQueue } from '../../infrastructure/jobs/jobs'
 import { CATEGORIES, Prefs } from '../../infrastructure/notifications/preferences'
+import { pushPublicKey, subscribe, unsubscribe } from '../../infrastructure/notifications/push'
 
 // ─── IN-APP NOTIFICATIONS (/notifications) ─────────────────────
 export const notificationsRouter = Router()
@@ -32,12 +33,13 @@ notificationsRouter.get('/preferences', asyncHandler(async (req, res) => {
   const prefs = (u?.notifyPrefs ?? {}) as Prefs
   const on = (process.env.NOTIFY_CHANNELS || 'email').split(',').map((c) => c.trim())
   res.json({ success: true, data: {
-    channels: { email: on.includes('email'), whatsapp: on.includes('whatsapp') },
-    categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label, hint: c.hint, mandatory: c.mandatory, email: c.mandatory || prefs[c.key]?.email !== false, whatsapp: c.mandatory || prefs[c.key]?.whatsapp !== false })),
+    channels: { email: on.includes('email'), whatsapp: on.includes('whatsapp'), push: !!pushPublicKey() },
+    devices: await prisma.pushSubscription.count({ where: { userId: req.user!.userId } }),
+    categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label, hint: c.hint, mandatory: c.mandatory, email: c.mandatory || prefs[c.key]?.email !== false, whatsapp: c.mandatory || prefs[c.key]?.whatsapp !== false, push: c.mandatory || prefs[c.key]?.push !== false })),
   } })
 }))
 
-const Channel = z.object({ email: z.boolean().optional(), whatsapp: z.boolean().optional() }).strict()
+const Channel = z.object({ email: z.boolean().optional(), whatsapp: z.boolean().optional(), push: z.boolean().optional() }).strict()
 const PrefsBody = z.object({ prefs: z.object(Object.fromEntries(CATEGORIES.map((c) => [c.key, Channel.optional()]))).strict() }).strict()
 notificationsRouter.put('/preferences', validate(z.object({ body: PrefsBody })), asyncHandler(async (req, res) => {
   const { userId, tenantId } = req.user!
@@ -50,6 +52,19 @@ notificationsRouter.put('/preferences', validate(z.object({ body: PrefsBody })),
   }
   await prisma.user.update({ where: { id: userId }, data: { notifyPrefs: merged as any } })
   res.json({ success: true, data: merged })
+}))
+
+// Push on this device: the public key to subscribe with, then save or remove the subscription
+notificationsRouter.get('/push/key', asyncHandler(async (_req, res) => { res.json({ success: true, data: { key: pushPublicKey() } }) }))
+const Sub = z.object({ endpoint: z.string().url().max(1000).refine((u) => u.startsWith('https://'), 'https only'), keys: z.object({ p256dh: z.string().min(10).max(200), auth: z.string().min(8).max(100) }).strict(), expirationTime: z.any().optional() }).strict()
+notificationsRouter.post('/push/subscribe', validate(z.object({ body: Sub })), asyncHandler(async (req, res) => {
+  if (!pushPublicKey()) throw new AppError('Push notifications are not set up on this server', 503)
+  await subscribe(req.user!.tenantId, req.user!.userId, req.body, req.headers['user-agent'])
+  res.status(201).json({ success: true, data: { subscribed: true } })
+}))
+notificationsRouter.post('/push/unsubscribe', validate(z.object({ body: z.object({ endpoint: z.string().url().max(1000) }).strict() })), asyncHandler(async (req, res) => {
+  await unsubscribe(req.user!.userId, req.body.endpoint)
+  res.json({ success: true, data: { subscribed: false } })
 }))
 
 notificationsRouter.post('/read-all', asyncHandler(async (req, res) => {

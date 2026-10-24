@@ -322,7 +322,8 @@ export const payrollService = {
 
     if (dto.offCycle && !dto.reason?.trim()) throw new AppError('Say what the off-cycle run is for', 400)
     if (dto.correctsCycleId && !(await prisma.payrollCycle.findFirst({ where: { id: dto.correctsCycleId, tenantId, status: { in: ['disbursed', 'locked'] } } }))) throw new AppError('Corrections are for a run that was already paid', 400)
-    const overlap = dto.offCycle ? null : await repo.findOverlappingCycle(tenantId, start, end)
+    if (dto.legalEntityId && !(await prisma.legalEntity.findFirst({ where: { id: dto.legalEntityId, tenantId, active: true } }))) throw new AppError('Legal entity not found', 404)
+    const overlap = dto.offCycle ? null : await repo.findOverlappingCycle(tenantId, start, end, dto.legalEntityId)
     if (overlap) {
       throw new AppError(
         `This period overlaps an existing cycle (${dstr(overlap.payPeriodStart)} to ${dstr(overlap.payPeriodEnd)}, ${overlap.status})`,
@@ -337,6 +338,7 @@ export const payrollService = {
       offCycle: !!dto.offCycle,
       reason: dto.reason?.trim() || null,
       correctsCycleId: dto.correctsCycleId ?? null,
+      legalEntityId: dto.legalEntityId ?? null,
     } as any)
     await repo.createAudit({ tenantId, userId, action: 'PAYROLL_CYCLE_CREATED', entityType: 'payroll_cycle', entityId: cycle.id, newValue: dto })
     return cycle
@@ -424,7 +426,7 @@ export const payrollService = {
     try {
       await repo.deletePayslipsForCycle(cycleId)
 
-      const employees = await repo.listPayrollEmployees(tenantId)
+      const employees = await repo.listPayrollEmployees(tenantId, cycle.legalEntityId)
       const cycleInputs = await repo.listCycleInputs(cycleId)
       const inputTypes = await repo.listInputTypes(tenantId)
       const inputCodes = inputTypes.map((t) => t.code)

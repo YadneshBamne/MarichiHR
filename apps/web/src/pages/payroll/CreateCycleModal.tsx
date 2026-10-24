@@ -2,6 +2,8 @@ import { useState } from 'react'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle } from '../../components/ui/FormField'
 import { useCreateCycle, useCycles } from '../../lib/hooks/usePayroll'
+import { useQuery } from '@tanstack/react-query'
+import api from '../../lib/api'
 
 function monthDefaults() {
   const now = new Date()
@@ -18,6 +20,8 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
   const [end, setEnd] = useState(d.end)
   const [error, setError] = useState('')
   const [offCycle, setOffCycle] = useState(false)
+  const [entityId, setEntityId] = useState('')
+  const { data: entities = [] } = useQuery({ queryKey: ['legal-entities'], queryFn: async () => (await api.get('/company/entities')).data.data as { id: string; name: string; currency: string; active: boolean }[] })
   const [reason, setReason] = useState('')
   const [corrects, setCorrects] = useState('')
   const { data: cycles = [] } = useCycles(offCycle)
@@ -27,7 +31,7 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
     e.preventDefault()
     setError('')
     try {
-      const cycle = await create.mutateAsync({ payPeriodStart: start, payPeriodEnd: end, ...(offCycle && { offCycle: true, reason: reason.trim(), ...(corrects && { correctsCycleId: corrects }) }) })
+      const cycle = await create.mutateAsync({ payPeriodStart: start, payPeriodEnd: end, ...(entityId && { legalEntityId: entityId }), ...(offCycle && { offCycle: true, reason: reason.trim(), ...(corrects && { correctsCycleId: corrects }) }) })
       onClose()
       onCreated(cycle.id)
     } catch (err: any) {
@@ -42,6 +46,7 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
           <FormField label="Period start" required><input style={inputStyle} type="date" value={start} onChange={(e) => setStart(e.target.value)} required /></FormField>
           <FormField label="Period end" required><input style={inputStyle} type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} required /></FormField>
         </div>
+        {entities.some((x) => x.active) && <FormField label="Who it pays"><select style={inputStyle} value={entityId} onChange={(e) => setEntityId(e.target.value)}><option value="">Everyone in the company</option>{entities.filter((x) => x.active).map((x) => <option key={x.id} value={x.id}>{x.name} ({x.currency})</option>)}</select></FormField>}
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}><input type="checkbox" checked={offCycle} onChange={(e) => setOffCycle(e.target.checked)} style={{ marginTop: 3 }} /> <span><strong>Off-cycle run</strong>: pays only the inputs you add to it (a bonus, arrears, a correction). No salary, no attendance lock, same two approvals.</span></label>
         {offCycle && <>
           <FormField label="What is it for?" required><input style={inputStyle} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder="e.g. Correction to October: missed overtime" /></FormField>
