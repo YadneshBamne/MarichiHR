@@ -9,7 +9,7 @@ import { useReveal } from '../../lib/motion'
 import { fmtDate } from '../../lib/format'
 import { MyDeclaration, DeclarationReview } from './DeclarationsPanel'
 import { NewVersionModal, OverridesPanel } from './TaxAdminPanels'
-import { WindowAndCertificates, FilingsPanel } from './TaxNoticesPanels'
+import { WindowAndCertificates, FilingDashboard } from './TaxNoticesPanels'
 
 interface Table { id: string; country: string; code: string; name: string; effectiveFrom: string; params: any; sourceUrl: string; sourceNote: string; verified: boolean; inForce: boolean; upcoming: boolean; company?: boolean }
 interface Col { code: string; name: string }
@@ -37,7 +37,7 @@ export default function TaxPage() {
           </div>
         )}
       </PageHeader>
-      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'overrides' ? <OverridesPanel canDecide={hasRole('compliance_officer')} /> : tab === 'filings' ? <FilingsPanel /> : tab === 'declarations' ? <><WindowAndCertificates /><DeclarationReview /></> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
+      {tab === 'return' ? <Return /> : tab === 'tables' ? <Tables /> : tab === 'overrides' ? <OverridesPanel canDecide={hasRole('compliance_officer')} /> : tab === 'filings' ? <FilingDashboard /> : tab === 'declarations' ? <><WindowAndCertificates /><DeclarationReview /></> : tab === 'declaration' ? <MyDeclaration /> : <StatementView staff={staff} />}
     </div>
   )
 }

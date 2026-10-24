@@ -11,7 +11,7 @@ import { historyRow, assertCreateMandatory } from './record.service'
 import crypto from 'crypto'
 import { UpdateEmployeeSchema } from './employees.schema'
 import { encryptField, decryptField, last4 } from '../../shared/utils/crypto'
-import { AccessUser, assertProfileAccess, getReportingSubtreeIds } from '../../shared/utils/access'
+import { AccessUser, assertProfileAccess, getReportingSubtreeIds, hrScope, clearHrScope } from '../../shared/utils/access'
 
 // Every id supplied by a client must point at a record in the caller's own tenant
 export async function assertRefsInTenant(tenantId: string, refs: {
@@ -22,6 +22,7 @@ export async function assertRefsInTenant(tenantId: string, refs: {
   workLocationId?: string
   resourceCalendarId?: string
   legalEntityId?: string | null
+  payGroupId?: string | null
 }) {
   const checks: [string | undefined, string, () => Promise<unknown>][] = [
     [refs.parentOrgUnitId, 'Parent org unit', () => prisma.orgUnit.findFirst({ where: { id: refs.parentOrgUnitId, tenantId }, select: { id: true } })],
@@ -31,6 +32,7 @@ export async function assertRefsInTenant(tenantId: string, refs: {
     [refs.workLocationId, 'Work location', () => prisma.workLocation.findFirst({ where: { id: refs.workLocationId, tenantId }, select: { id: true } })],
     [refs.resourceCalendarId, 'Resource calendar', () => prisma.resourceCalendar.findFirst({ where: { id: refs.resourceCalendarId, tenantId }, select: { id: true } })],
     [refs.legalEntityId ?? undefined, 'Legal entity', () => prisma.legalEntity.findFirst({ where: { id: refs.legalEntityId!, tenantId, active: true }, select: { id: true } })],
+    [refs.payGroupId ?? undefined, 'Pay group', () => prisma.payGroup.findFirst({ where: { id: refs.payGroupId!, tenantId, active: true }, select: { id: true } })],
   ]
   const present = checks.filter(([value]) => value)
   const found = await Promise.all(present.map(([, , lookup]) => lookup()))
@@ -198,6 +200,9 @@ export const employeeService = {
       if (!user.roleIds.includes('manager') || !user.employeeId) throw new AppError('You do not have access to the employee directory', 403)
       ids = [user.employeeId, ...(await getReportingSubtreeIds(user.employeeId, tenantId))]
     }
+    // HR Business Partner: only their departments (themself included)
+    const units = !hasAnyRole(user, 'payroll_admin', 'compliance_officer') ? await hrScope(user) : null
+    if (units) ids = [...new Set([...(await prisma.employee.findMany({ where: { tenantId, orgUnitId: { in: [...units] } }, select: { id: true } })).map((e) => e.id), ...(user.employeeId ? [user.employeeId] : [])])]
 
     const result = await employeeRepository.list(tenantId, {
       page: parseInt(query.page) || 1,
@@ -233,6 +238,7 @@ export const employeeService = {
         managerId: data.managerId,
         workLocationId: data.workLocationId,
         legalEntityId: (data as any).legalEntityId,
+        payGroupId: (data as any).payGroupId,
         resourceCalendarId: data.resourceCalendarId,
       }),
       employeeRepository.generateEmployeeCode(tenantId),
@@ -255,7 +261,7 @@ export const employeeService = {
     const dateOnly = (v?: string) => (v ? new Date(v.slice(0, 10) + 'T00:00:00.000Z').toISOString() : null)
     const employeeRow: Record<string, unknown> = {
       id: employeeId, tenantId, userId, orgUnitId: data.orgUnitId, jobPositionId: data.jobPositionId ?? null, managerId: data.managerId ?? null,
-      resourceCalendarId: data.resourceCalendarId ?? null, workLocationId: data.workLocationId ?? null, legalEntityId: (data as any).legalEntityId ?? null, taxJurisdiction: data.taxJurisdiction ?? null,
+      resourceCalendarId: data.resourceCalendarId ?? null, workLocationId: data.workLocationId ?? null, legalEntityId: (data as any).legalEntityId ?? null, payGroupId: (data as any).payGroupId ?? null, taxJurisdiction: data.taxJurisdiction ?? null,
       firstName: data.firstName, lastName: data.lastName, workEmail: data.workEmail, personalEmail: data.personalEmail ?? null,
       dateOfBirth: dateOnly(data.dateOfBirth), gender: data.gender ?? null, nationality: data.nationality ?? null,
       mobilePersonal: data.mobilePersonal ?? null, mobileWork: data.mobileWork ?? null, emergencyContactName: data.emergencyContactName ?? null,
@@ -269,7 +275,7 @@ export const employeeService = {
       const event = prepareEvent(tenantId, 'employee.created', { employeeId, employeeCode: code, name: `${data.firstName} ${data.lastName}`, email: data.workEmail, createdBy })
       try {
         await insertRows({
-          users: [{ id: userId, tenantId, email: data.workEmail, fullName: `${data.firstName} ${data.lastName}`, passwordHash: null, active: true, mfaEnabled: false, mustChangePassword: false, notifyPrefs: {}, createdAt: now, updatedAt: now }],
+          users: [{ id: userId, tenantId, email: data.workEmail, fullName: `${data.firstName} ${data.lastName}`, passwordHash: null, active: true, mfaEnabled: false, mustChangePassword: false, notifyPrefs: {}, hrScopeUnitIds: [], createdAt: now, updatedAt: now }],
           user_roles: employeeRole ? [{ id: crypto.randomUUID(), userId, roleId: employeeRole.id, scopeType: 'org', validFrom: now, createdAt: now }] : [],
           employees: [{ ...employeeRow, employeeCode: code }],
           employee_position_history: [historyRow(employeeId, createdBy, data as any, employeeRow.hireDate as string, 'Joined')],
@@ -319,6 +325,7 @@ export const employeeService = {
       workLocationId: safeData.workLocationId,
       resourceCalendarId: safeData.resourceCalendarId,
       legalEntityId: (safeData as any).legalEntityId,
+      payGroupId: (safeData as any).payGroupId,
     })
 
     const updated = await employeeRepository.update(id, safeData)
@@ -478,7 +485,7 @@ export const accessService = {
   async get(employeeId: string, tenantId: string) {
     const emp = await prisma.employee.findFirst({
       where: { id: employeeId, tenantId },
-      select: { user: { select: { id: true, email: true, active: true, passwordHash: true, mustChangePassword: true, lastLoginAt: true, googleSub: true, mfaEnabled: true, userRoles: { select: { role: { select: { name: true } } } } } } },
+      select: { user: { select: { id: true, email: true, active: true, passwordHash: true, mustChangePassword: true, lastLoginAt: true, googleSub: true, mfaEnabled: true, hrScopeUnitIds: true, userRoles: { select: { role: { select: { name: true } } } } } } },
     })
     if (!emp) throw new AppError('Employee not found', 404)
     const u = emp.user
@@ -486,11 +493,12 @@ export const accessService = {
       email: u.email, loginEnabled: u.active && (!!u.passwordHash || !!u.googleSub), active: u.active, hasPassword: !!u.passwordHash,
       googleLinked: !!u.googleSub, mfaEnabled: u.mfaEnabled, mustChangePassword: u.mustChangePassword, lastLoginAt: u.lastLoginAt,
       roles: u.userRoles.map((r) => r.role.name),
+      hrScopeUnitIds: u.hrScopeUnitIds ?? [],
     }
   },
 
   // HR (and system admins) decide who can sign in and with which roles; a temporary password must be changed at first sign-in
-  async set(employeeId: string, actor: { tenantId: string; userId: string; roleIds: string[] }, body: { roles?: string[]; loginEnabled?: boolean; password?: 'generate' | string }) {
+  async set(employeeId: string, actor: { tenantId: string; userId: string; roleIds: string[] }, body: { roles?: string[]; loginEnabled?: boolean; password?: 'generate' | string; hrScopeUnitIds?: string[] }) {
     const [emp, current, catalogue] = await Promise.all([
       prisma.employee.findFirst({ where: { id: employeeId, tenantId: actor.tenantId }, select: { userId: true, employmentStatus: true } }),
       prisma.userRole.findMany({ where: { user: { employee: { id: employeeId } }, role: { tenantId: actor.tenantId } }, select: { id: true, role: { select: { name: true } } } }),
@@ -511,6 +519,16 @@ export const accessService = {
       if (self && currentNames.some((r) => ['hr_admin', 'system_admin'].includes(r) && !roles!.includes(r))) throw new AppError('You cannot remove your own admin access', 400)
     }
     if (body.loginEnabled === false && self) throw new AppError('You cannot disable your own login', 400)
+    // HR Business Partner: only a System admin limits an HR admin to departments (empty = the whole company)
+    if (body.hrScopeUnitIds) {
+      if (!isSys) throw new AppError('Only a system administrator sets which departments an HR admin looks after', 403)
+      if (self) throw new AppError('You cannot limit your own access', 400)
+      const ids = [...new Set(body.hrScopeUnitIds)]
+      if (ids.length && (await prisma.orgUnit.count({ where: { tenantId: actor.tenantId, id: { in: ids } } })) !== ids.length) throw new AppError('Department not found', 404)
+      await prisma.user.update({ where: { id: emp.userId }, data: { hrScopeUnitIds: ids } })
+      await prisma.auditLog.create({ data: { tenantId: actor.tenantId, userId: actor.userId, action: 'HR_SCOPE_CHANGED', entityType: 'employee', entityId: employeeId, newValue: { departments: ids } } })
+      clearHrScope(emp.userId)
+    }
     if (emp.employmentStatus === 'terminated' && body.loginEnabled) throw new AppError('This person has left; their login cannot be enabled', 400)
 
     let issuedPassword: string | undefined

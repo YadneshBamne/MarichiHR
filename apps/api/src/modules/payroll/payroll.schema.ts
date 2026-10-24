@@ -11,6 +11,7 @@ export const CreateCycleSchema = z.object({
     reason: z.string().trim().max(300).optional(),
     correctsCycleId: z.string().uuid().optional(), // a correction to a run that was already paid
     legalEntityId: z.string().uuid().optional(), // a run for one legal entity's employees
+    payGroupId: z.string().uuid().optional(), // a run for one pay group
   }).strict(),
 })
 

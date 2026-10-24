@@ -290,6 +290,7 @@ function PositionModal({ rec, onClose }: { rec: Record360; onClose: (ok?: boolea
   const { data: positions = [] } = useJobPositions()
   const { data: locations = [] } = useWorkLocations()
   const { data: people } = useEmployees({ limit: 500 })
+  const { data: payGroups = [] } = useQuery({ queryKey: ['pay-groups'], queryFn: async () => (await api.get('/payroll/pay-groups')).data.data as { id: string; name: string; active: boolean }[] })
   const { data: entities = [] } = useQuery({ queryKey: ['legal-entities'], queryFn: async () => (await api.get('/company/entities')).data.data as { id: string; name: string; active: boolean }[] })
   const units: { id: string; name: string; depth: number }[] = []
   const walk = (ns: any[], d: number) => (ns ?? []).forEach((n) => { units.push({ id: n.id, name: n.name, depth: d }); walk(n.children ?? [], d + 1) })
@@ -300,8 +301,8 @@ function PositionModal({ rec, onClose }: { rec: Record360; onClose: (ok?: boolea
       const body: Record<string, any> = { effectiveFrom: f.effectiveFrom, reason: f.reason }
       for (const k of ['orgUnitId', 'jobPositionId', 'managerId', 'workLocationId', 'employmentType', 'employeeCategory']) if (f[k] !== undefined) body[k] = f[k] === '__none' ? null : f[k]
       // The employing entity applies now (it is not part of the dated position history)
-      if (f.legalEntityId !== undefined) await api.patch(`/employees/${rec.employeeId}`, { legalEntityId: f.legalEntityId === '__none' ? null : f.legalEntityId })
-      if (Object.keys(body).length > 2 || f.legalEntityId === undefined) await api.post(`/employees/${rec.employeeId}/position`, body)
+      if (f.legalEntityId !== undefined || f.payGroupId !== undefined) await api.patch(`/employees/${rec.employeeId}`, { ...(f.legalEntityId !== undefined && { legalEntityId: f.legalEntityId === '__none' ? null : f.legalEntityId }), ...(f.payGroupId !== undefined && { payGroupId: f.payGroupId === '__none' ? null : f.payGroupId }) })
+      if (Object.keys(body).length > 2 || (f.legalEntityId === undefined && f.payGroupId === undefined)) await api.post(`/employees/${rec.employeeId}/position`, body)
     },
     onSuccess: () => onClose(true), onError: (e) => toast(errMsg(e), 'error'),
   })
@@ -319,6 +320,7 @@ function PositionModal({ rec, onClose }: { rec: Record360; onClose: (ok?: boolea
           <label className="field"><span>Position</span>{sel('jobPositionId', (positions as any[]).map((p) => [p.id, p.title]))}</label>
           <label className="field"><span>Reports to</span>{sel('managerId', ((people?.data ?? []) as any[]).filter((p) => p.id !== rec.employeeId).map((p) => [p.id, `${p.firstName} ${p.lastName}`]))}</label>
           <label className="field"><span>Work location</span>{sel('workLocationId', (locations as any[]).map((l) => [l.id, l.name]))}</label>
+          {payGroups.some((x) => x.active) && <label className="field"><span>Pay group (applies now)</span>{sel('payGroupId', payGroups.filter((x) => x.active).map((x) => [x.id, x.name]))}</label>}
           {entities.length > 0 && <label className="field"><span>Employing entity (applies now)</span>{sel('legalEntityId', entities.filter((x) => x.active).map((x) => [x.id, x.name]))}</label>}
           <label className="field"><span>Employment type</span><MasterSelect list="employment_type" value={f.employmentType ?? ''} onChange={(v) => setF({ ...f, employmentType: v || (undefined as any) })} placeholder="Keep as is" /></label>
           <label className="field"><span>Employee category</span><MasterSelect list="employee_category" value={f.employeeCategory ?? ''} onChange={(v) => setF({ ...f, employeeCategory: v || (undefined as any) })} placeholder="Keep as is" /></label>

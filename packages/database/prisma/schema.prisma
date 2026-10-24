@@ -99,6 +99,7 @@ model User {
   tourDoneAt    DateTime?
   mustChangePassword Boolean @default(false)
   locale        String? // UI language: en | hi | bem (null = the browser's choice)
+  hrScopeUnitIds String[] @default([]) // HR Business Partner: an HR admin limited to these departments (and below); empty = whole company
   notifyPrefs   Json      @default("{}") // { category: { email, whatsapp } }; the bell always gets everything
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -310,6 +311,7 @@ model Employee {
   workLocationId     String?
   taxJurisdiction    String?
   legalEntityId      String? // the company (entity) that employs the person, when the group has several
+  payGroupId         String? // pay group (e.g. monthly staff, weekly casuals): runs can be made per group
 
   firstName   String
   lastName    String
@@ -1021,6 +1023,7 @@ model PayrollCycle {
   id                 String    @id @default(uuid())
   tenantId           String
   legalEntityId      String? // a run for one entity only (its employees); null = everyone
+  payGroupId         String? // a run for one pay group only
   orgUnitId          String?
   payPeriodStart     DateTime  @db.Date
   payPeriodEnd       DateTime  @db.Date
@@ -2815,6 +2818,9 @@ model TaxFiling {
   filedOn   DateTime @db.Date
   filedBy   String
   note      String?
+  mode      String   @default("manual") // manual (recorded by hand) | sandbox | live (sent through a filing adapter)
+  status    String   @default("filed") // filed | submitted | accepted | rejected
+  response  Json? // what the adapter returned (acknowledgement, errors)
   createdAt DateTime @default(now())
 
   @@unique([tenantId, cycleId, authority])
@@ -2871,4 +2877,33 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+// Pay group: people paid together on the same schedule (e.g. monthly staff, weekly casual workers)
+model PayGroup {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  frequency String   @default("monthly") // monthly | bi_weekly | weekly
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@map("pay_groups")
+}
+
+// A bank's salary-file layout: delimited (CSV and similar) or fixed-width, with the columns in order
+model BankFileFormat {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  kind      String   @default("delimited") // delimited | fixed
+  delimiter String   @default(",")
+  header    Boolean  @default(true)
+  columns   Json // [{ field, label, width?, align?, pad?, format? }]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@map("bank_file_formats")
 }

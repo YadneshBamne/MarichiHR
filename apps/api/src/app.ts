@@ -37,6 +37,8 @@ import { integrationApiRouter } from './modules/automation/integration-api.route
 import { performanceRouter } from './modules/performance/performance.router'
 import { forumsRouter } from './modules/forums/forums.router'
 import { privacyRouter } from './modules/privacy/privacy.router'
+import { prisma as readyDb } from './infrastructure/database/prisma'
+import { redis } from './infrastructure/cache/redis'
 
 export function createApp() {
   const app = express()
@@ -62,6 +64,14 @@ export function createApp() {
       version: '1.0.0',
       modules: ['auth', 'employees', 'leave', 'attendance', 'activities', 'salary', 'payroll', 'expenses', 'exits', 'notifications'],
     })
+  })
+
+  // Readiness for load balancers and uptime monitors: the database and Redis both answer (503 if either does not)
+  app.get('/health/ready', async (_, res) => {
+    const timed = async (f: () => Promise<unknown>) => { const t = Date.now(); try { await Promise.race([f(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))]); return { ok: true, ms: Date.now() - t } } catch (e: any) { return { ok: false, ms: Date.now() - t, error: String(e?.message || e).slice(0, 120) } } }
+    const [database, cache] = await Promise.all([timed(() => readyDb.$queryRaw`SELECT 1`), timed(() => redis.ping())])
+    const ok = database.ok && cache.ok
+    res.status(ok ? 200 : 503).json({ status: ok ? 'ready' : 'degraded', database, redis: cache, timestamp: new Date().toISOString() })
   })
 
   app.use('/api/v1/auth', authRouter)

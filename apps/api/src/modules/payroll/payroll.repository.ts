@@ -7,9 +7,12 @@ export const payrollRepository = {
   },
 
   // A run for everyone overlaps any run; an entity's run overlaps that entity's runs and runs for everyone
-  findOverlappingCycle(tenantId: string, start: Date, end: Date, legalEntityId?: string | null) {
+  findOverlappingCycle(tenantId: string, start: Date, end: Date, legalEntityId?: string | null, payGroupId?: string | null) {
     return prisma.payrollCycle.findFirst({
-      where: { tenantId, offCycle: false, payPeriodStart: { lte: end }, payPeriodEnd: { gte: start }, ...(legalEntityId && { OR: [{ legalEntityId: null }, { legalEntityId }] }) },
+      where: { tenantId, offCycle: false, payPeriodStart: { lte: end }, payPeriodEnd: { gte: start }, AND: [
+        ...(legalEntityId ? [{ OR: [{ legalEntityId: null }, { legalEntityId }] }] : []),
+        ...(payGroupId ? [{ OR: [{ payGroupId: null }, { payGroupId }] }] : []),
+      ] },
     })
   },
 
@@ -48,9 +51,9 @@ export const payrollRepository = {
   },
 
   // ─── DATA GATHERING ───────────────────────────────────────
-  listPayrollEmployees(tenantId: string, legalEntityId?: string | null) {
+  listPayrollEmployees(tenantId: string, legalEntityId?: string | null, payGroupId?: string | null) {
     return prisma.employee.findMany({
-      where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, ...(legalEntityId && { legalEntityId }) },
+      where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, ...(legalEntityId && { legalEntityId }), ...(payGroupId && { payGroupId }) },
       include: {
         user: { select: { fullName: true } },
         resourceCalendar: { include: { days: true } },

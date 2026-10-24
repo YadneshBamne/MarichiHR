@@ -8,6 +8,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { REPORTS, Report, reportCatalog } from './reports.service'
 import { reportBuilder, BuilderDefinition } from './builder.service'
 import { kpis } from './kpis.service'
+import { hrScope } from '../../shared/utils/access'
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const Run = z.object({
@@ -25,6 +26,13 @@ const toCsv = (r: Report) => [r.columns.map((c) => cell(c.label)).join(','), ...
 
 export const reportsRouter = Router()
 reportsRouter.use(authenticate)
+// Reports and KPIs cover the whole company, so an HR admin limited to some departments (HR Business Partner) does not
+// get them; Payroll and Compliance keep theirs
+reportsRouter.use(asyncHandler(async (req, _res, next) => {
+  const u = req.user!
+  if (!u.roleIds.some((r) => ['payroll_admin', 'compliance_officer', 'system_admin'].includes(r)) && (await hrScope(u))) throw new AppError('Reports cover the whole company. You look after some departments only, so ask an HR admin without a department limit.', 403)
+  next()
+}))
 
 reportsRouter.get('/', asyncHandler(async (req, res) => {
   res.json({ success: true, data: reportCatalog(req.user!) })

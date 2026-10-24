@@ -92,3 +92,40 @@ export function FilingsPanel() {
     </section>
   )
 }
+
+// Filing dashboard: each run's returns with their status; Submit sends one through its filing adapter (test mode
+// until the provider keys are set; portals without an API are recorded by hand)
+export function FilingDashboard() {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery({ queryKey: ['filing-dashboard'], queryFn: async () => (await api.get('/tax/filing-dashboard')).data.data as any })
+  const submit = useMutation({
+    mutationFn: async (v: { cycleId: string; authority: string }) => (await api.post('/tax/filings/submit', v)).data.data,
+    onSuccess: (d) => { toast(`${d.authority}: ${d.status}, reference ${d.reference}`); qc.invalidateQueries({ queryKey: ['filing-dashboard'] }); qc.invalidateQueries({ queryKey: ['tax-filings'] }) },
+    onError: (e) => toast(errMsg(e), 'error'),
+  })
+  if (isLoading || !data) return <div className="skeleton" style={{ height: 140, borderRadius: 22 }} />
+  const month = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return (
+    <div style={{ display: 'grid', gap: 'var(--gap)' }}>
+      <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><h3 style={{ fontSize: 16, flex: 1 }}>Statutory filing</h3><span className={`pill ${data.mode === 'live' ? 'ok' : 'warn'}`} style={{ textTransform: 'none' }}>{data.mode === 'live' ? 'Live filing' : 'Test mode: nothing is sent to the authorities'}</span></div>
+        <p className="dim" style={{ fontSize: 13 }}>Each paid run owes these returns. Submit sends one through its filing service (DigiTax for ZRA, KRA and NRS; WhiteBooks for India). Returns without a service are filed on the authority’s portal; record their reference below.</p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{data.adapters.map((a: any) => <span key={a.authority} className={`pill ${a.provider ? (a.liveReady ? 'ok' : 'mute') : 'info'}`} style={{ textTransform: 'none' }}>{a.authority}: {a.provider ? `${a.provider}${a.liveReady ? ' ready' : ', keys needed'}` : 'portal'}</span>)}</div>
+      </section>
+      {!data.cycles.length ? <section className="card" style={{ padding: 20 }}><p className="dim">No approved or paid payroll runs yet.</p></section> : data.cycles.map((c: any) => (
+        <section key={c.id} data-card className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
+          <strong>{month(c.payPeriodStart)}{c.offCycle && <span className="pill mute" style={{ marginLeft: 6 }}>off-cycle</span>}</strong>
+          {!c.returns.length ? <span className="dim" style={{ fontSize: 13 }}>No statutory amounts in this run.</span> : c.returns.map((x: any) => (
+            <div key={x.authority} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+              <span style={{ flex: 1, minWidth: 200 }}>{x.label}<div className="dim" style={{ fontSize: 12 }}>{x.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div></span>
+              {x.filing ? <span className={`pill ${x.filing.status === 'rejected' ? 'danger' : 'ok'}`} style={{ textTransform: 'none' }}>{x.filing.status}{x.filing.mode === 'sandbox' ? ' (test)' : ''} · {x.filing.reference}</span> : <span className="pill warn">to file</span>}
+              {(!x.filing || x.filing.mode === 'sandbox' || x.filing.status === 'rejected') && <button className="btn btn-primary btn-sm" disabled={submit.isPending} onClick={() => submit.mutate({ cycleId: c.id, authority: x.authority })}>{x.provider ? 'Submit' : 'Test submit'}</button>}
+            </div>
+          ))}
+        </section>
+      ))}
+      <FilingsPanel />
+    </div>
+  )
+}

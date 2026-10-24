@@ -44,6 +44,7 @@ export const CreateEmployeeSchema = z.object({
     resourceCalendarId: z.string().uuid().optional(),
     workLocationId: z.string().uuid().optional(),
     legalEntityId: z.string().uuid().optional(),
+    payGroupId: z.string().uuid().optional(),
     hireDate: z.string().min(1),
     employmentType: z.string().trim().min(1).max(40), // a code from the employment_type master
     taxJurisdiction: z.string().length(2).optional(),
@@ -65,6 +66,7 @@ export const AccessSchema = z.object({
     roles: z.array(z.enum(['employee', 'manager', 'hr_admin', 'payroll_admin', 'compliance_officer', 'system_admin'])).max(6).optional(),
     loginEnabled: z.boolean().optional(),
     password: z.union([z.literal('generate'), z.string().min(10).max(200)]).optional(),
+    hrScopeUnitIds: z.array(z.string().uuid()).max(50).optional(),
   }).strict(),
 })
 
@@ -79,6 +81,7 @@ export const UpdateEmployeeSchema = z.object({
     resourceCalendarId: z.string().uuid().optional(),
     workLocationId: z.string().uuid().optional(),
     legalEntityId: z.string().uuid().nullable().optional(),
+    payGroupId: z.string().uuid().nullable().optional(),
     taxJurisdiction: z.string().length(2).optional(),
     dateOfBirth: z.string().optional(),
     employmentType: z.string().trim().min(1).max(40).optional(),

@@ -13,6 +13,7 @@ import { renderPayslipHtml, generatePayslipPdf } from './payslip.pdf'
 import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import crypto from 'crypto'
+import { formatFor, renderBankFile } from './bank-formats'
 
 import { reapplyOverrides } from '../tax/tax-admin.service'
 import { applyFlexi, basicShareWarning, offCyclePayslip } from './payroll-extras.service'
@@ -323,7 +324,8 @@ export const payrollService = {
     if (dto.offCycle && !dto.reason?.trim()) throw new AppError('Say what the off-cycle run is for', 400)
     if (dto.correctsCycleId && !(await prisma.payrollCycle.findFirst({ where: { id: dto.correctsCycleId, tenantId, status: { in: ['disbursed', 'locked'] } } }))) throw new AppError('Corrections are for a run that was already paid', 400)
     if (dto.legalEntityId && !(await prisma.legalEntity.findFirst({ where: { id: dto.legalEntityId, tenantId, active: true } }))) throw new AppError('Legal entity not found', 404)
-    const overlap = dto.offCycle ? null : await repo.findOverlappingCycle(tenantId, start, end, dto.legalEntityId)
+    if (dto.payGroupId && !(await prisma.payGroup.findFirst({ where: { id: dto.payGroupId, tenantId, active: true } }))) throw new AppError('Pay group not found', 404)
+    const overlap = dto.offCycle ? null : await repo.findOverlappingCycle(tenantId, start, end, dto.legalEntityId, dto.payGroupId)
     if (overlap) {
       throw new AppError(
         `This period overlaps an existing cycle (${dstr(overlap.payPeriodStart)} to ${dstr(overlap.payPeriodEnd)}, ${overlap.status})`,
@@ -339,6 +341,7 @@ export const payrollService = {
       reason: dto.reason?.trim() || null,
       correctsCycleId: dto.correctsCycleId ?? null,
       legalEntityId: dto.legalEntityId ?? null,
+      payGroupId: dto.payGroupId ?? null,
     } as any)
     await repo.createAudit({ tenantId, userId, action: 'PAYROLL_CYCLE_CREATED', entityType: 'payroll_cycle', entityId: cycle.id, newValue: dto })
     return cycle
@@ -426,7 +429,7 @@ export const payrollService = {
     try {
       await repo.deletePayslipsForCycle(cycleId)
 
-      const employees = await repo.listPayrollEmployees(tenantId, cycle.legalEntityId)
+      const employees = await repo.listPayrollEmployees(tenantId, cycle.legalEntityId, (cycle as any).payGroupId)
       const cycleInputs = await repo.listCycleInputs(cycleId)
       const inputTypes = await repo.listInputTypes(tenantId)
       const inputCodes = inputTypes.map((t) => t.code)
@@ -745,7 +748,7 @@ export const payrollService = {
     }
   },
 
-  async generateBankFile(cycleId: string, tenantId: string, userId: string, opts: { allowPartial: boolean }) {
+  async generateBankFile(cycleId: string, tenantId: string, userId: string, opts: { allowPartial: boolean; formatId?: string; paymentDate?: string }) {
     const { cycle, included, excluded, totalAmount } = await evaluateBankEligibility(cycleId, tenantId)
 
     if (excluded.length > 0 && !opts.allowPartial) {
@@ -755,19 +758,19 @@ export const payrollService = {
     if (included.length === 0) throw new AppError('No payable employees to include in the bank file', 400)
 
     const period = dstr(cycle.payPeriodStart).slice(0, 7)
-    const csv = formatBankFile(
-      included.map((r) => ({
-        employeeCode: r.employeeCode,
-        name: r.name,
-        bankName: r.bankName,
-        accountNumber: r.accountNumber,
-        branchSwift: r.branchSwift,
-        amount: r.amount,
-        currency: r.currency,
-        reference: `SAL-${period}-${r.employeeCode}`,
-      })),
-      'generic_csv'
-    )
+    const bankRows = included.map((r) => ({
+      employeeCode: r.employeeCode,
+      name: r.name,
+      bankName: r.bankName,
+      accountNumber: r.accountNumber,
+      branchSwift: r.branchSwift,
+      amount: r.amount,
+      currency: r.currency,
+      reference: `SAL-${period}-${r.employeeCode}`,
+    }))
+    // The company's own bank layout when one is chosen, else the generic CSV
+    const layout = await formatFor(tenantId, opts.formatId)
+    const csv = layout ? renderBankFile(bankRows, layout, opts.paymentDate ?? dstr(new Date())) : formatBankFile(bankRows, 'generic_csv')
 
     const sha256 = crypto.createHash('sha256').update(csv).digest('hex')
     await repo.createAudit({
@@ -775,7 +778,7 @@ export const payrollService = {
       newValue: { employees: included.length, totalAmount, sha256, allowPartial: opts.allowPartial },
     })
 
-    return { csv, filename: `bank-file-${period}.csv` }
+    return { csv, filename: `bank-file-${period}${layout ? `-${layout.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : ''}.${layout?.kind === 'fixed' ? 'txt' : 'csv'}` }
   },
 
   // ─── GL EXPORT ────────────────────────────────────────────

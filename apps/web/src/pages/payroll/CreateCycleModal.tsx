@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle } from '../../components/ui/FormField'
 import { useCreateCycle, useCycles } from '../../lib/hooks/usePayroll'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
 
 function monthDefaults() {
@@ -21,6 +21,9 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
   const [error, setError] = useState('')
   const [offCycle, setOffCycle] = useState(false)
   const [entityId, setEntityId] = useState('')
+  const [groupId, setGroupId] = useState('')
+  const qcCycle = useQueryClient()
+  const { data: groups = [] } = useQuery({ queryKey: ['pay-groups'], queryFn: async () => (await api.get('/payroll/pay-groups')).data.data as { id: string; name: string; frequency: string; active: boolean; people: number }[] })
   const { data: entities = [] } = useQuery({ queryKey: ['legal-entities'], queryFn: async () => (await api.get('/company/entities')).data.data as { id: string; name: string; currency: string; active: boolean }[] })
   const [reason, setReason] = useState('')
   const [corrects, setCorrects] = useState('')
@@ -31,7 +34,7 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
     e.preventDefault()
     setError('')
     try {
-      const cycle = await create.mutateAsync({ payPeriodStart: start, payPeriodEnd: end, ...(entityId && { legalEntityId: entityId }), ...(offCycle && { offCycle: true, reason: reason.trim(), ...(corrects && { correctsCycleId: corrects }) }) })
+      const cycle = await create.mutateAsync({ payPeriodStart: start, payPeriodEnd: end, ...(entityId && { legalEntityId: entityId }), ...(groupId && { payGroupId: groupId }), ...(offCycle && { offCycle: true, reason: reason.trim(), ...(corrects && { correctsCycleId: corrects }) }) })
       onClose()
       onCreated(cycle.id)
     } catch (err: any) {
@@ -46,6 +49,8 @@ export default function CreateCycleModal({ open, onClose, onCreated }: { open: b
           <FormField label="Period start" required><input style={inputStyle} type="date" value={start} onChange={(e) => setStart(e.target.value)} required /></FormField>
           <FormField label="Period end" required><input style={inputStyle} type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} required /></FormField>
         </div>
+        {groups.some((x) => x.active) && <FormField label="Pay group"><select style={inputStyle} value={groupId} onChange={(e) => setGroupId(e.target.value)}><option value="">All pay groups</option>{groups.filter((x) => x.active).map((x) => <option key={x.id} value={x.id}>{x.name} ({x.frequency.replace('_', '-')}, {x.people})</option>)}</select></FormField>}
+        <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: 'start' }} onClick={async () => { const name = window.prompt('New pay group (e.g. Weekly casual workers)'); if (!name?.trim()) return; const freq = window.prompt('How often are they paid? monthly, bi_weekly or weekly', 'monthly')?.trim(); try { const g = (await api.post('/payroll/pay-groups', { name: name.trim(), frequency: ['monthly', 'bi_weekly', 'weekly'].includes(freq ?? '') ? freq : 'monthly' })).data.data; setGroupId(g.id); qcCycle.invalidateQueries({ queryKey: ['pay-groups'] }) } catch (err: any) { setError(err?.response?.data?.message || 'Could not add the group') } }}>+ Pay group</button>
         {entities.some((x) => x.active) && <FormField label="Who it pays"><select style={inputStyle} value={entityId} onChange={(e) => setEntityId(e.target.value)}><option value="">Everyone in the company</option>{entities.filter((x) => x.active).map((x) => <option key={x.id} value={x.id}>{x.name} ({x.currency})</option>)}</select></FormField>}
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}><input type="checkbox" checked={offCycle} onChange={(e) => setOffCycle(e.target.checked)} style={{ marginTop: 3 }} /> <span><strong>Off-cycle run</strong>: pays only the inputs you add to it (a bonus, arrears, a correction). No salary, no attendance lock, same two approvals.</span></label>
         {offCycle && <>

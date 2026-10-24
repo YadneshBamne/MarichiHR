@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import api from '../../lib/api'
 import Modal from '../../components/ui/Modal'
 import { useBankFilePreview, downloadCsv } from '../../lib/hooks/usePayroll'
 import { money } from '../../lib/format'
@@ -8,6 +10,16 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
   const [partial, setPartial] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const qc = useQueryClient()
+  const { data: fm } = useQuery({ queryKey: ['bank-formats'], enabled: open, queryFn: async () => (await api.get('/payroll/bank-formats')).data.data as { formats: any[]; presets: any[] } })
+  const [formatId, setFormatId] = useState('')
+  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10))
+  const [adding, setAdding] = useState('')
+  const addFormat = useMutation({
+    mutationFn: async () => { const preset = fm!.presets[Number(adding)]; const name = window.prompt('Name of this layout (e.g. your bank)', preset.name); if (!name) return null; return (await api.post('/payroll/bank-formats', { ...preset, name })).data.data },
+    onSuccess: (f) => { if (f) { setFormatId(f.id); qc.invalidateQueries({ queryKey: ['bank-formats'] }) } setAdding('') },
+    onError: (e: any) => setError(e?.response?.data?.message || 'Could not save the layout'),
+  })
 
   const excluded: any[] = data?.excluded || []
   const included: any[] = data?.included || []
@@ -18,7 +30,7 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
     setError('')
     setBusy(true)
     try {
-      await downloadCsv(`/payroll/cycles/${cycleId}/bank-file`, excluded.length > 0 ? { allowPartial: true } : undefined)
+      await downloadCsv(`/payroll/cycles/${cycleId}/bank-file`, { ...(excluded.length > 0 && { allowPartial: true }), ...(formatId && { formatId, paymentDate: payDate }) })
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not generate the bank file')
     } finally {
@@ -68,6 +80,16 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
             </div>
           )}
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 8, alignItems: 'end' }}>
+            <label className="field"><span>Layout</span><select className="input" value={formatId} onChange={(e) => setFormatId(e.target.value)}><option value="">Generic CSV</option>{(fm?.formats ?? []).filter((f) => f.active).map((f) => <option key={f.id} value={f.id}>{f.name} ({f.kind === 'fixed' ? 'fixed width' : 'delimited'})</option>)}</select></label>
+            <label className="field"><span>Payment date</span><input className="input" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} disabled={!formatId} /></label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }} className="dim">
+            <span>Your bank needs another layout? Start from</span>
+            <select className="input" value={adding} onChange={(e) => setAdding(e.target.value)} style={{ height: 30, width: 'auto' }}><option value="">choose…</option>{(fm?.presets ?? []).map((p, i) => <option key={p.name} value={i}>{p.name}</option>)}</select>
+            <button className="btn btn-ghost btn-sm" disabled={adding === '' || addFormat.isPending} onClick={() => addFormat.mutate()}>Add layout</button>
+          </div>
+
           {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -76,7 +98,7 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
               onClick={download}
               disabled={blocked || busy || included.length === 0}
               style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked || busy || included.length === 0 ? 0.5 : 1 }}
-            >{busy ? 'Preparing...' : 'Download CSV'}</button>
+            >{busy ? 'Preparing...' : 'Download file'}</button>
           </div>
         </div>
       ) : null}

@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useEmployeeAccess, useSetEmployeeAccess, ROLE_INFO } from '../../lib/hooks/useCompany'
 import { useToast } from '../ui/Toast'
 import Icon from '../ui/Icon'
+import { useOrgTree } from '../../lib/hooks/useEmployees'
+import { flattenUnits } from '../../pages/workplace/AnnouncementsPage'
 
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 
@@ -73,7 +75,25 @@ export default function AccessCard({ employeeId, isSelf }: { employeeId: string;
         {!isSelf && access.active && access.hasPassword && <button className="btn btn-danger" disabled={save.isPending} onClick={() => run({ loginEnabled: false }, 'Login disabled and sessions ended')}>Disable login</button>}
         {!isSelf && !access.active && <button className="btn btn-ghost" disabled={save.isPending} onClick={() => run({ loginEnabled: true }, 'Login enabled')}>Enable login</button>}
       </div>
+      {isSys && !isSelf && access.roles.includes('hr_admin') && <HrScope current={access.hrScopeUnitIds ?? []} onSave={(ids) => run({ hrScopeUnitIds: ids }, ids.length ? 'Limited to the chosen departments' : 'Looks after the whole company')} busy={save.isPending} />}
       {issued && <div style={{ marginTop: 14 }}><TemporaryPassword email={access.email} password={issued} workspace={user?.tenant?.slug} /></div>}
     </section>
+  )
+}
+
+// HR Business Partner: an HR admin limited to some departments (and the units below them); none = whole company
+function HrScope({ current, onSave, busy }: { current: string[]; onSave: (ids: string[]) => void; busy: boolean }) {
+  const { data: tree } = useOrgTree()
+  const units = flattenUnits(tree)
+  const [ids, setIds] = useState<string[]>(current)
+  useEffect(() => setIds(current), [current.join(',')])
+  const dirty = [...ids].sort().join() !== [...current].sort().join()
+  return (
+    <div className="well" style={{ marginTop: 16, padding: 14, borderRadius: 14, display: 'grid', gap: 8 }}>
+      <strong style={{ fontSize: 14, fontWeight: 500 }}>HR for which departments?</strong>
+      <span className="dim" style={{ fontSize: 12 }}>Leave all off for the whole company. Choosing departments makes this person an HR Business Partner: their directory, profiles and approvals cover only those departments and the units below them.</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{units.map((u) => <button type="button" key={u.id} className="chip" aria-pressed={ids.includes(u.id)} onClick={() => setIds(ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id])} style={ids.includes(u.id) ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined}>{u.name}</button>)}</div>
+      <div><button className="btn btn-primary btn-sm" disabled={!dirty || busy} onClick={() => onSave(ids)}>Save departments</button></div>
+    </div>
   )
 }

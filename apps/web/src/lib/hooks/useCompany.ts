@@ -25,7 +25,7 @@ export function useEmployeeAccess(employeeId: string, enabled = true) {
 export function useSetEmployeeAccess(employeeId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (body: { roles?: string[]; loginEnabled?: boolean; password?: string }) => (await api.put(`/employees/${employeeId}/access`, body)).data.data,
+    mutationFn: async (body: { roles?: string[]; loginEnabled?: boolean; password?: string; hrScopeUnitIds?: string[] }) => (await api.put(`/employees/${employeeId}/access`, body)).data.data,
     onSuccess: (data) => qc.setQueryData(['employee-access', employeeId], data),
   })
 }

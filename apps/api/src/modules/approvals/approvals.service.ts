@@ -2,6 +2,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { notify, userIdsWithRole, userIdOfEmployee } from '../../infrastructure/notifications/notify'
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, assertCanApprove } from '../../shared/utils/access'
+import { hrAdminsFor } from '../../shared/utils/access'
 
 // Approval chains for leave, regularisation and overtime. A chain lists 1-5 levels; each level is the direct manager,
 // the manager's manager, HR, or a named person. When a request is raised, its steps are created; the first is
@@ -46,7 +47,7 @@ async function approversOf(tenantId: string, level: { kind: string; userId?: str
   if (level.kind === 'manager' && manager) return [manager.userId]
   if (level.kind === 'skip_manager' && skip) return [skip.userId]
   if (level.kind === 'user' && level.userId) return [level.userId]
-  return userIdsWithRole(tenantId, 'hr_admin')
+  return hrAdminsFor(tenantId, ownerEmployeeId)
 }
 
 // Who someone is standing in for today

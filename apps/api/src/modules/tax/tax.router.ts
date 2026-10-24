@@ -12,6 +12,7 @@ import { generatePayslipPdf } from '../payroll/payslip.pdf'
 import { certificateHtml } from './certificate.html'
 import { taxAdmin, TableVersionBody } from './tax-admin.service'
 import { taxNotices, WindowBody, FilingBody } from './tax-notices.service'
+import { filingService } from './filing.service'
 
 // Tax & compliance: the statutory tables payroll uses (with sources), the statutory return for a payroll run
 // (tax and contributions per employee, CSV for filing) and each employee's annual tax statement.
@@ -172,4 +173,12 @@ taxRouter.get('/filings', requireRoles(...PAYROLL_STAFF), asyncHandler(async (re
 }))
 taxRouter.post('/filings', requireRoles(...PAYROLL_STAFF), validate(z.object({ body: FilingBody })), asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: await taxNotices.recordFiling(req.user!, req.body) })
+}))
+
+// Filing dashboard and submission through the filing adapters (sandbox until the provider keys are set)
+taxRouter.get('/filing-dashboard', requireRoles(...PAYROLL_STAFF), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await filingService.dashboard(req.user!) })
+}))
+taxRouter.post('/filings/submit', requireRoles(...PAYROLL_STAFF), validate(z.object({ body: z.object({ cycleId: z.string().uuid(), authority: z.string().min(2).max(40) }).strict() })), asyncHandler(async (req, res) => {
+  res.status(201).json({ success: true, data: await filingService.submit(req.user!, req.body.cycleId, req.body.authority) })
 }))

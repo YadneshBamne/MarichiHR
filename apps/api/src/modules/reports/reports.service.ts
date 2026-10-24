@@ -153,6 +153,42 @@ export const REPORTS: Record<string, { title: string; description: string; roles
     },
   },
 
+  payroll_consolidated: {
+    title: 'Payroll cost (all currencies)', description: 'Gross and net pay of the paid runs in a period, per currency and entity, converted to the company currency with your FX rates', roles: ['payroll_admin', 'compliance_officer'],
+    async run(user, f) {
+      assertRoles(user, ['payroll_admin', 'compliance_officer'])
+      const to = f.to ? new Date(`${f.to}T00:00:00Z`) : new Date()
+      const from = f.from ? new Date(`${f.from}T00:00:00Z`) : new Date(Date.UTC(to.getUTCFullYear(), 0, 1))
+      const tenant = await prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { baseCurrency: true } })
+      const base = tenant?.baseCurrency ?? 'USD'
+      const [slips, entities, rates] = await Promise.all([
+        prisma.payslip.findMany({ where: { payrollCycle: { tenantId: user.tenantId, status: { in: ['disbursed', 'locked'] }, payPeriodEnd: { gte: from, lte: to } } }, select: { grossEarnings: true, netPay: true, currency: true, payrollCycle: { select: { payPeriodEnd: true, legalEntityId: true } } } }),
+        prisma.legalEntity.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
+        prisma.fxRate.findMany({ where: { tenantId: user.tenantId, toCurrency: base }, orderBy: { effectiveFrom: 'desc' } }),
+      ])
+      // The rate in force on the period's last day (latest one on or before it)
+      const rateOn = (cur: string, d: Date) => (cur === base ? 1 : Number(rates.find((r) => r.fromCurrency === cur && r.effectiveFrom <= d)?.rate ?? NaN))
+      const groups = new Map<string, { entity: string; currency: string; people: number; gross: number; net: number; grossBase: number; netBase: number; missingRate: boolean }>()
+      for (const s of slips) {
+        const entity = entities.find((e) => e.id === s.payrollCycle.legalEntityId)?.name ?? 'Whole company'
+        const k = `${entity}|${s.currency}`
+        const g = groups.get(k) ?? { entity, currency: s.currency, people: 0, gross: 0, net: 0, grossBase: 0, netBase: 0, missingRate: false }
+        const fx = rateOn(s.currency, s.payrollCycle.payPeriodEnd)
+        g.people++; g.gross += Number(s.grossEarnings); g.net += Number(s.netPay)
+        if (Number.isFinite(fx)) { g.grossBase += Number(s.grossEarnings) * fx; g.netBase += Number(s.netPay) * fx } else g.missingRate = true
+        groups.set(k, g)
+      }
+      const rows = [...groups.values()].map((g) => ({ entity: g.entity, currency: g.currency, payslips: g.people, gross: round(g.gross), net: round(g.net), grossBase: g.missingRate ? null : round(g.grossBase), netBase: g.missingRate ? null : round(g.netBase), note: g.missingRate ? `Add a ${g.currency} → ${base} FX rate (Expenses › FX rates)` : '' }))
+      const totalBase = (k: 'grossBase' | 'netBase') => round(rows.reduce((t, r) => t + (r[k] ?? 0), 0))
+      return {
+        title: 'Payroll cost (all currencies)', subtitle: `${ymd(from)} – ${ymd(to)} · paid runs · in ${base}`, currency: base,
+        columns: [{ key: 'entity', label: 'Entity' }, { key: 'currency', label: 'Currency' }, { key: 'payslips', label: 'Payslips', type: 'number' }, { key: 'gross', label: 'Gross (own currency)', type: 'number' }, { key: 'net', label: 'Net (own currency)', type: 'number' }, { key: 'grossBase', label: `Gross (${base})`, type: 'money' }, { key: 'netBase', label: `Net (${base})`, type: 'money' }, { key: 'note', label: 'Note' }],
+        rows,
+        summary: [{ label: 'Payslips', value: rows.reduce((t, r) => t + r.payslips, 0), type: 'number' }, { label: `Gross (${base})`, value: totalBase('grossBase'), type: 'money' }, { label: `Net (${base})`, value: totalBase('netBase'), type: 'money' }, { label: 'Currencies', value: new Set(rows.map((r) => r.currency)).size, type: 'number' }],
+        chart: { label: `Net pay in ${base} by entity`, type: 'money', bars: tally(rows, (r) => r.entity, (r) => r.netBase ?? 0) },
+      }
+    },
+  },
   payroll: {
     title: 'Payroll', description: 'Gross, deductions and net pay per person for a payroll cycle', roles: ['payroll_admin', 'compliance_officer'],
     async run(user, f) {

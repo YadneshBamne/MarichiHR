@@ -7,6 +7,7 @@ import { businessToday, monthRange } from '../../shared/utils/businessDate'
 import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
 import { announcementService } from '../announcements/announcements.service'
 import { policyService } from '../policies/policies.service'
+import { hrScope } from '../../shared/utils/access'
 
 // Role-based home: each section is returned only when the caller's roles (and the company's installed apps) allow it.
 //   self    – anyone with an employee record: own attendance, leave, tasks, latest payslip
@@ -20,9 +21,10 @@ const dayMs = 86_400_000
 
 type U = { tenantId: string; userId: string; employeeId?: string; roleIds: string[] }
 
-function scopes(u: U) {
+// limited = an HR Business Partner (HR admin limited to departments): no company-wide sections
+function scopes(u: U, limited = false) {
   const r = u.roleIds
-  const hr = r.includes('hr_admin') || r.includes('system_admin')
+  const hr = !limited && (r.includes('hr_admin') || r.includes('system_admin'))
   return {
     self: !!u.employeeId,
     team: hr || (r.includes('manager') && !!u.employeeId),
@@ -65,7 +67,7 @@ dashboardRouter.use(authenticate)
 // Lightweight numbers for the sidebar badges
 dashboardRouter.get('/counts', asyncHandler(async (req, res) => {
   const u = req.user as U
-  const sc = scopes(u)
+  const sc = scopes(u, !!(await hrScope(u)))
   const apps = await tenantModules(u.tenantId)
   const [a, tasks, announcements, policies] = await Promise.all([
     approvalsWaiting(u, apps, sc),
@@ -78,7 +80,7 @@ dashboardRouter.get('/counts', asyncHandler(async (req, res) => {
 
 dashboardRouter.get('/', asyncHandler(async (req, res) => {
   const u = req.user as U
-  const sc = scopes(u)
+  const sc = scopes(u, !!(await hrScope(u)))
   const apps = await tenantModules(u.tenantId)
   const today = await businessToday(u.tenantId)
   const todayStr = ymd(today)

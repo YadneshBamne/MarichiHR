@@ -14,7 +14,7 @@ import { flattenUnits } from '../workplace/AnnouncementsPage'
 type ColType = 'text' | 'number' | 'money' | 'hours' | 'date' | 'percent'
 export interface Report { title: string; subtitle: string; columns: { key: string; label: string; type?: ColType }[]; rows: Record<string, any>[]; summary: { label: string; value: number | string; type?: ColType }[]; chart: { label: string; bars: { label: string; value: number }[]; type?: ColType }; currency?: string }
 
-const ICONS: Record<string, IconName> = { headcount: 'users', attendance: 'clock', leave: 'leaf', payroll: 'wallet', expenses: 'receipt', attrition: 'door' }
+const ICONS: Record<string, IconName> = { headcount: 'users', attendance: 'clock', leave: 'leaf', payroll: 'wallet', payroll_consolidated: 'globe', expenses: 'receipt', attrition: 'door' }
 const today = () => new Date().toISOString().slice(0, 10)
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 

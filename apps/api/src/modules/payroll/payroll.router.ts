@@ -10,6 +10,7 @@ import { payrollController } from './payroll.controller'
 import { CreateCycleSchema, AddInputSchema } from './payroll.schema'
 import { prisma } from '../../infrastructure/database/prisma'
 import { signoffThreshold } from './payroll.service'
+import { bankFormats, FormatBody } from './bank-formats'
 
 export const payrollRouter = Router()
 
@@ -90,6 +91,30 @@ payrollRouter.post('/cycles/:id/signoff', sysOnly, validate(z.object({ params: z
 }))
 
 // ─── EXPORTS ──────────────────────────────────────────────────
+// Pay groups: people paid together on one schedule (e.g. monthly staff, weekly casuals); runs can be made per group
+const PayGroupBody = z.object({ name: z.string().trim().min(2).max(80), frequency: z.enum(['monthly', 'bi_weekly', 'weekly']), active: z.boolean().optional() }).strict()
+payrollRouter.get('/pay-groups', asyncHandler(async (req, res) => {
+  const rows = await prisma.payGroup.findMany({ where: { tenantId: req.user!.tenantId }, orderBy: { name: 'asc' } })
+  const counts = await prisma.employee.groupBy({ by: ['payGroupId'], where: { tenantId: req.user!.tenantId, active: true, payGroupId: { in: rows.map((r) => r.id) } }, _count: true })
+  res.json({ success: true, data: rows.map((r) => ({ ...r, people: counts.find((c) => c.payGroupId === r.id)?._count ?? 0 })) })
+}))
+payrollRouter.post('/pay-groups', requirePermission('payroll:run'), validate(z.object({ body: PayGroupBody })), asyncHandler(async (req, res) => {
+  try {
+    const g = await prisma.payGroup.create({ data: { tenantId: req.user!.tenantId, ...req.body } })
+    await prisma.auditLog.create({ data: { tenantId: req.user!.tenantId, userId: req.user!.userId, action: 'PAY_GROUP_CREATED', entityType: 'pay_group', entityId: g.id, newValue: req.body } })
+    res.status(201).json({ success: true, data: g })
+  } catch (e: any) { if (e?.code === 'P2002') throw new AppError('A pay group with that name exists', 409); throw e }
+}))
+payrollRouter.put('/pay-groups/:id', requirePermission('payroll:run'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: PayGroupBody })), asyncHandler(async (req, res) => {
+  const g = await prisma.payGroup.findFirst({ where: { id: String(req.params.id), tenantId: req.user!.tenantId } })
+  if (!g) throw new AppError('Pay group not found', 404)
+  res.json({ success: true, data: await prisma.payGroup.update({ where: { id: g.id }, data: req.body }) })
+}))
+
+// Bank file layouts (Payroll): the company's own formats plus built-in starting points
+payrollRouter.get('/bank-formats', payrollStaffOnly, asyncHandler(async (req, res) => { res.json({ success: true, data: await bankFormats.list(req.user!) }) }))
+payrollRouter.post('/bank-formats', payrollStaffOnly, validate(z.object({ body: FormatBody })), asyncHandler(async (req, res) => { res.status(201).json({ success: true, data: await bankFormats.save(req.user!, null, req.body) }) }))
+payrollRouter.put('/bank-formats/:id', payrollStaffOnly, validate(z.object({ params: z.object({ id: z.string().uuid() }), body: FormatBody })), asyncHandler(async (req, res) => { res.json({ success: true, data: await bankFormats.save(req.user!, String(req.params.id), req.body) }) }))
 payrollRouter.get('/cycles/:id/bank-file/preview', requirePermission('payroll:disburse'), payrollStaffOnly, payrollController.bankFilePreview)
 payrollRouter.get('/cycles/:id/bank-file', requirePermission('payroll:disburse'), payrollStaffOnly, payrollController.bankFile)
 payrollRouter.get('/cycles/:id/gl-export', requirePermission('payroll:read'), payrollStaffOnly, payrollController.glExport)

@@ -15,7 +15,7 @@ const round = (n) => Math.round(n * 100) / 100
   // ─── Catalog & access ──────────────────────────────────────
   check('HR sees every report except payroll', (await keys(admin)) === 'attendance,attrition,expenses,headcount,leave', await keys(admin))
   check('a manager sees attendance and leave', (await keys(john)) === 'attendance,leave', await keys(john))
-  check('payroll admin sees payroll, expenses and the leave liability', (await keys(finance)) === 'expenses,leave_liability,payroll', await keys(finance))
+  check('payroll admin sees payroll, consolidated payroll cost, expenses and the leave liability', (await keys(finance)) === 'expenses,leave_liability,payroll,payroll_consolidated', await keys(finance))
   check('an employee sees none', (await keys(jane)) === '', await keys(jane))
   for (const [who, key, label] of [[jane, 'attendance', 'employee → attendance'], [john, 'headcount', 'manager → headcount'], [john, 'payroll', 'manager → payroll'], [finance, 'attendance', 'payroll admin → attendance']]) {
     const r = await api(who, 'GET', `/reports/${key}`)

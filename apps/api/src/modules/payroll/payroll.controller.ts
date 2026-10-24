@@ -105,7 +105,7 @@ export const payrollController = {
 
   bankFile: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!
-    const { csv, filename } = await payrollService.generateBankFile(id(req), tenantId, userId, { allowPartial: req.query.allowPartial === 'true' })
+    const { csv, filename } = await payrollService.generateBankFile(id(req), tenantId, userId, { allowPartial: req.query.allowPartial === 'true', ...(typeof req.query.formatId === 'string' && /^[0-9a-f-]{36}$/.test(req.query.formatId) && { formatId: req.query.formatId }), ...(typeof req.query.paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.paymentDate) && { paymentDate: req.query.paymentDate }) })
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
     res.send(csv)
