@@ -5,6 +5,7 @@ export interface User {
   avatarUrl?: string
   mfaEnabled?: boolean
   tourDoneAt?: string | null
+  locale?: 'en' | 'hi' | 'bem' | null
   mustChangePassword?: boolean
   roles: { id: string; name: string }[]
   employee: {

@@ -11,6 +11,7 @@ import Icon, { type IconName } from '../components/ui/Icon'
 import { fmtHours } from '../lib/format'
 import Avatar from '../components/ui/Avatar'
 import Badge from '../components/ui/Badge'
+import { greeting as greet } from '../lib/i18n'
 
 // Role-based home. The API decides which sections exist for this person (self / team / company / payroll);
 // this page lays them out on a 12-column grid so every row lines up, whatever the role.
@@ -21,10 +22,7 @@ const fmt = (s: string, o: Intl.DateTimeFormatOptions) => utc(s).toLocaleDateStr
 const STAGE: Record<string, string> = { draft: 'Draft', processing: 'Calculating', review: 'Review', approved: 'First approval', finance_approved: 'Second approval', disbursed: 'Paid' }
 const STAGES = ['draft', 'processing', 'review', 'approved', 'finance_approved', 'disbursed']
 
-function greeting() {
-  const h = new Date().getHours()
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
-}
+const greeting = () => greet(new Date().getHours())
 
 export default function DashboardPage() {
   const { user } = useAuth()

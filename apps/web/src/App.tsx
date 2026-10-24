@@ -6,6 +6,7 @@ import { queryClient } from './lib/queryClient'
 import ProtectedRoute, { SplashScreen } from './components/ProtectedRoute'
 import { ToastProvider } from './components/ui/Toast'
 import { ErrorBoundary } from './pages/system/StatusPages'
+import { useLang } from './lib/i18n'
 
 // Every page is its own chunk: the first load only pulls the shell and the page being opened
 const AppShell = lazy(() => import('./components/AppShell'))
@@ -80,13 +81,14 @@ const PageLoading = () => <div style={{ padding: 8 }}>{[0, 1, 2].map((i) => <div
 const page = (el: ReactNode) => <Suspense fallback={<PageLoading />}>{el}</Suspense>
 
 export default function App() {
+  const lang = useLang() // labels built in code re-render in the new language
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ToastProvider>
             <BrowserRouter>
-              <Suspense fallback={<SplashScreen />}>
+              <Suspense key={lang} fallback={<SplashScreen />}>
                 <Routes>
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/login" element={<LoginPage />} />

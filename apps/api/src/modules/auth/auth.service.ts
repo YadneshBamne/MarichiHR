@@ -80,6 +80,7 @@ async function issueSession(user: LoginUser, tenant: LoginTenant): Promise<AuthT
       avatarUrl: user.avatarUrl,
       mfaEnabled: user.mfaEnabled,
       tourDoneAt: user.tourDoneAt,
+      locale: (user as any).locale ?? null,
       mustChangePassword: user.mustChangePassword,
       roles: user.userRoles.map((ur) => ({ id: ur.role.id, name: ur.role.name })),
       employee: user.employee
@@ -285,6 +286,7 @@ export const authService = {
       avatarUrl: user.avatarUrl,
       mfaEnabled: user.mfaEnabled,
       tourDoneAt: user.tourDoneAt,
+      locale: (user as any).locale ?? null,
       mustChangePassword: user.mustChangePassword,
       lastLoginAt: user.lastLoginAt,
       roles: user.userRoles.map((ur) => ({

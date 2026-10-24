@@ -8,6 +8,7 @@ import { gsap, reduced } from '../lib/motion'
 import Logo, { Mark } from '../components/brand/Logo'
 import Icon from '../components/ui/Icon'
 import GoogleButton from '../components/auth/GoogleButton'
+import LanguagePicker from '../components/LanguagePicker'
 
 export const API_URL = import.meta.env.MARICHI_API_URL || 'http://localhost:4000/api/v1'
 export const SSO_ERRORS: Record<string, string> = {
@@ -240,6 +241,7 @@ export default function LoginPage() {
         <footer className="muted" style={{ fontSize: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <span>© {new Date().getFullYear()} Marichi Labs</span>
           <span>Secured with encryption in transit and at rest</span>
+          <LanguagePicker compact />
         </footer>
       </section>
       <BrandPanel />

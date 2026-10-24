@@ -4,6 +4,9 @@ import { validate } from '../../middleware/validate.middleware'
 import { authenticate } from '../../middleware/auth.middleware'
 import { LoginSchema, RefreshSchema, MfaVerifySchema, MfaCodeSchema, SsoExchangeSchema, GoogleIdTokenSchema, TourSchema, SignupSchema, ChangePasswordSchema } from './auth.schema'
 import { googleSso } from './google.sso'
+import { z } from 'zod'
+import { asyncHandler } from '../../shared/utils/asyncHandler'
+import { prisma } from '../../infrastructure/database/prisma'
 
 export const authRouter = Router()
 
@@ -15,6 +18,11 @@ authRouter.post('/refresh', validate(RefreshSchema), authController.refresh)
 authRouter.post('/logout', authController.logout)
 authRouter.get('/me', authenticate, authController.me)
 authRouter.post('/me/tour', authenticate, validate(TourSchema), authController.setTour)
+// Interface language, kept per person (en | hi | bem); null = follow the browser
+authRouter.put('/me/locale', authenticate, validate(z.object({ body: z.object({ locale: z.enum(['en', 'hi', 'bem']).nullable() }).strict() })), asyncHandler(async (req, res) => {
+  await prisma.user.updateMany({ where: { id: req.user!.userId, tenantId: req.user!.tenantId }, data: { locale: req.body.locale } })
+  res.json({ success: true, data: { locale: req.body.locale } })
+}))
 
 // ─── MFA (TOTP) ───────────────────────────────────────────────
 authRouter.post('/mfa/verify', validate(MfaVerifySchema), authController.mfaVerify)

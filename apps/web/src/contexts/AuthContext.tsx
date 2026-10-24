@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import api, { setAccessToken, refreshSession } from '../lib/api'
 import { queryClient } from '../lib/queryClient'
 import type { User } from '../types'
+import { setLang } from '../lib/i18n'
 
 // Either email + password, or googleCode from Continue with Google (email and photo then come from Google)
 export type SignupInput = { companyName: string; fullName: string } & ({ email: string; password: string } | { googleCode: string })
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (await refreshSession()) {
           const meRes = await api.get('/auth/me')
           setUser(meRes.data.data)
+          if (meRes.data.data?.locale) setLang(meRes.data.data.locale)
         }
         break
       } catch (err: any) {
@@ -64,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAccessToken(data.accessToken)
     localStorage.setItem('refreshToken', data.refreshToken)
     setUser(data.user)
+    if (data.user?.locale) setLang(data.user.locale)
     return null
   }
 

@@ -1,5 +1,6 @@
 import type { IconName } from '../components/ui/Icon'
 import type { AppKey } from './apps'
+import { tr } from './i18n'
 
 // The product map, in standard HRMS terms. It drives the sidebar, the command palette, route titles and the tour.
 // `soon` modules are on the roadmap: admins see them with a "Soon" tag and a preview page.
@@ -98,7 +99,8 @@ export const canSee = (item: NavItem, roleNames: string[], apps?: string[]) =>
 
 // People who only see their own records get "My …" labels
 export const hasTeamScope = (roleNames: string[]) => roleNames.some((r) => ROLE.DIRECTORY.includes(r))
-export const labelFor = (item: NavItem, roleNames: string[]) => {
+export const labelFor = (item: NavItem, roleNames: string[]) => tr(englishLabel(item, roleNames))
+const englishLabel = (item: NavItem, roleNames: string[]) => {
   if (!item.selfLabel) return item.label
   if (item.path === '/employees') return roleNames.some((r) => ROLE.HR.includes(r) || r === 'payroll_admin' || r === 'compliance_officer') ? item.label : item.selfLabel
   if (item.path === '/payroll') return roleNames.some((r) => ROLE.PAYROLL.includes(r)) ? item.label : item.selfLabel
@@ -107,7 +109,7 @@ export const labelFor = (item: NavItem, roleNames: string[]) => {
 }
 
 export function visibleSections(roleNames: string[], apps?: string[]) {
-  return SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => canSee(i, roleNames, apps)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
+  return SECTIONS.map((s) => ({ ...s, label: tr(s.label), items: s.items.filter((i) => canSee(i, roleNames, apps)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
 }
 
 // Most specific match wins (/settings/apps before /settings)

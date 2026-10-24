@@ -104,6 +104,12 @@ const keyCall = async (key, method, path, body) => { const r = await fetch(`${BA
   const slips = await prisma.payslip.findMany({ where: { payrollCycleId: zmRun.id }, select: { employeeId: true } })
   check('the Zed Co run pays only Zed Co’s person', r.status === 200 && slips.length === 1 && slips[0].employeeId === e2.id, slips)
 
+  // ─── Language ───────────────────────────────────────────
+  r = await api(asE2, 'PUT', '/auth/me/locale', { locale: 'fr' })
+  check('only supported languages (400)', r.status === 400, r.status)
+  await api(asE2, 'PUT', '/auth/me/locale', { locale: 'hi' })
+  check('Jack’s language is saved for him', (await prisma.user.findUnique({ where: { id: e2.userId } })).locale === 'hi', null)
+
   await prisma.tenant.update({ where: { id: tenant.id }, data: { active: false } })
   redis.disconnect()
   await done()
