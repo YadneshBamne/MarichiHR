@@ -2,13 +2,13 @@ import webpush from 'web-push'
 import { prisma } from '../database/prisma'
 
 // Web Push (browser and installed-app notifications on phones and computers). Needs VAPID_PUBLIC_KEY,
-// VAPID_PRIVATE_KEY and VAPID_SUBJECT; without them push is simply off. A subscription the push service reports as
+// VAPID_PRIVATE_KEY and VAPID_SUBJECT, and is off unless PUSH_ENABLED=true (not offered for now; code kept). A subscription the push service reports as
 // gone (404/410) is removed.
 let configured: boolean | null = null
 export function pushEnabled() {
   if (configured === null) {
     const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env
-    configured = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)
+    configured = process.env.PUSH_ENABLED === 'true' && !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)
     if (configured) webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@example.com', VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!)
   }
   return configured

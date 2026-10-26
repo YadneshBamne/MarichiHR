@@ -66,17 +66,13 @@ const keyCall = async (key, method, path, body) => { const r = await fetch(`${BA
   r = await keyCall(key, 'POST', '/integration/leave', { employeeId: wanda?.employeeId, leaveType: 'Casual Leave', startDate: '2026-12-02', endDate: '2026-12-02', reason: 'From the kiosk' })
   check('…and applies leave for her, which waits for approval', r.status === 201 && r.body.data.status === 'pending', r.body)
 
-  // ─── Push ───────────────────────────────────────────────
+  // ─── Push (switched off for now: PUSH_ENABLED is not set) ─
   r = await api(asE2, 'GET', '/notifications/push/key')
-  check('the server hands out its push key', r.status === 200 && typeof r.body.key === 'string' && r.body.key.length > 40, r.body)
-  r = await api(asE2, 'POST', '/notifications/push/subscribe', { endpoint: 'http://insecure.example.com/x', keys: { p256dh: 'BOr8vVd6l1lEoS2cS1Z9w6mkb1o0xS1X', auth: 'a1b2c3d4e5f6' } })
-  check('only https push endpoints are accepted (400)', r.status === 400, r.status)
-  const endpoint = `https://fcm.googleapis.com/fcm/send/test-${TAG}`
-  r = await api(asE2, 'POST', '/notifications/push/subscribe', { endpoint, keys: { p256dh: 'BOr8vVd6l1lEoS2cS1Z9w6mkb1o0xS1XyZ', auth: 'a1b2c3d4e5f6' } })
+  check('push is off: no key is handed out', r.status === 200 && r.body.key === null, r.body)
+  r = await api(asE2, 'POST', '/notifications/push/subscribe', { endpoint: `https://fcm.googleapis.com/fcm/send/test-${TAG}`, keys: { p256dh: 'BOr8vVd6l1lEoS2cS1Z9w6mkb1o0xS1XyZ', auth: 'a1b2c3d4e5f6' } })
+  check('…and devices cannot subscribe (503)', r.status === 503, r.status)
   r = await api(asE2, 'GET', '/notifications/preferences')
-  check('Jack turns push on for a device', r.status === 200 && r.body.channels.push === true && r.body.devices === 1, r.body)
-  await api(asE2, 'POST', '/notifications/push/unsubscribe', { endpoint })
-  check('…and off again', (await prisma.pushSubscription.count({ where: { userId: e2.userId } })) === 0, null)
+  check('…and the settings do not offer it', r.status === 200 && r.body.channels.push === false, r.body?.channels)
 
   // ─── Legal entities ─────────────────────────────────────
   r = await api(asE2, 'POST', '/company/entities', { name: 'Zed Co', country: 'ZM', currency: 'ZMW' })

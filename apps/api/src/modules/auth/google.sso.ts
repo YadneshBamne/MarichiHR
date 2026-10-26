@@ -16,7 +16,8 @@ import { auditSignIn } from '../../shared/utils/auditSignIn'
 // the normal POST /auth/signup with it (company name still asked), so a workspace is never created from the login page.
 // The browser never sees tokens in a URL: the callback hands the SPA a one-time code (60 s, Redis) to exchange.
 
-export const googleEnabled = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+// On hold: Google sign-in is offered only when GOOGLE_SIGNIN_ENABLED=true and the client is configured (code kept for later)
+export const googleEnabled = () => process.env.GOOGLE_SIGNIN_ENABLED === 'true' && !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 const stateKey = () => `${process.env.JWT_ACCESS_SECRET}.oauth`
 const callbackUrl = () => process.env.GOOGLE_CALLBACK_URL || `http://localhost:${process.env.PORT || 4000}/api/v1/auth/google/callback`
 const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:5173'
