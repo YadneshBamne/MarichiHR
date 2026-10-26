@@ -224,6 +224,6 @@ if (require.main === module) {
 
   const xml = renderBankFile([...rows, { ...rows[0], branchSwift: '260006', amount: 0.1 }], { ...PRESETS[3], vars: { debtorName: 'Acme & Co', debtorAccount: '62000000001', debtorBic: 'FIRNZMLX' } }, '2026-10-30')
   console.assert(xml.includes('<NbOfTxs>2</NbOfTxs><CtrlSum>10984.60</CtrlSum>') && xml.includes('<BIC>ZNCOZMLU</BIC>') && xml.includes('<MmbId>260006</MmbId>') && xml.includes('Acme &amp; Co'), 'pain001')
-  require('fs').writeFileSync(process.env.PAIN_OUT || 'pain001-sample.xml', xml)
+  if (process.env.PAIN_OUT) require('fs').writeFileSync(process.env.PAIN_OUT, xml) // to validate against the XSD
   console.log('bank formats ok')
 }

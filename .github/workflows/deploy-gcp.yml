@@ -1,0 +1,127 @@
+# CI/CD for Google Cloud Run. Every push and pull request: install, production builds, unit self-checks, Docker
+# images built. Pushes to main (or a manual run) also deploy, once the repository variables below are set:
+#   1. build and push the API and web images to Artifact Registry
+#   2. run Prisma migrations as a Cloud Run job (marichihr-migrate) and wait for it
+#   3. deploy marichihr-api, marichihr-worker (always on, runs queues and cron) and marichihr-web
+# Repository variables (Settings > Secrets and variables > Actions > Variables):
+#   GCP_PROJECT_ID, GCP_REGION, GCP_WIF_PROVIDER, GCP_DEPLOY_SA, GCP_RUNTIME_SA, GCP_SQL_INSTANCE,
+#   GCP_VPC_NETWORK, GCP_VPC_SUBNET, MARICHI_API_URL
+# No secret values live in GitHub: the app reads them from Secret Manager (deploy/gcp/secrets.txt).
+# Setup: docs/deploy/gcp-handover.md. Render and Vercel deploys keep working; this workflow does not touch them.
+name: CI and deploy (Cloud Run)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AR_REPO: marichihr
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - name: Schemas in step
+        run: diff packages/database/prisma/schema.prisma apps/api/prisma/schema.prisma
+      - run: npm run build -w @marichihr/api
+      - run: npm run build -w web
+        env:
+          MARICHI_API_URL: https://api.example.com/api/v1
+      - name: Self-checks (no database needed)
+        working-directory: apps/api
+        run: |
+          for f in src/modules/payroll/bank-formats.ts src/modules/accounting/accounting.service.ts src/integrations/digitax.ts src/integrations/filing/adapters.ts src/infrastructure/notifications/whatsapp-templates.ts; do
+            npx ts-node --files "$f"
+          done
+
+  images:
+    if: github.event_name == 'pull_request' || vars.GCP_PROJECT_ID == ''
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f apps/api/Dockerfile -t marichihr-api:ci .
+      - run: docker build -f apps/web/Dockerfile --build-arg MARICHI_API_URL=https://api.example.com/api/v1 -t marichihr-web:ci .
+      - name: API image starts Chromium for payslip PDFs
+        run: docker run --rm --entrypoint chromium marichihr-api:ci --headless --no-sandbox --disable-gpu --dump-dom about:blank
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID != ''
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push images
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          BASE="$REGION-docker.pkg.dev/$PROJECT/$AR_REPO"
+          echo "API_IMAGE=$BASE/api:$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "WEB_IMAGE=$BASE/web:$GITHUB_SHA" >> "$GITHUB_ENV"
+          docker build -f apps/api/Dockerfile -t "$BASE/api:$GITHUB_SHA" .
+          docker build -f apps/web/Dockerfile --build-arg MARICHI_API_URL="${{ vars.MARICHI_API_URL }}" -t "$BASE/web:$GITHUB_SHA" .
+          docker push "$BASE/api:$GITHUB_SHA"
+          docker push "$BASE/web:$GITHUB_SHA"
+
+      - name: Common settings
+        run: |
+          SECRETS=$(grep -vE '^\s*(#|$)' deploy/gcp/secrets.txt | while read -r v; do echo -n "$v=marichihr-$(echo "$v" | tr 'A-Z_' 'a-z-'):latest,"; done)
+          echo "SECRETS=${SECRETS%,}" >> "$GITHUB_ENV"
+          echo "COMMON=--region=$REGION --service-account=${{ vars.GCP_RUNTIME_SA }} --set-cloudsql-instances=${{ vars.GCP_SQL_INSTANCE }} --network=${{ vars.GCP_VPC_NETWORK }} --subnet=${{ vars.GCP_VPC_SUBNET }} --vpc-egress=private-ranges-only" >> "$GITHUB_ENV"
+          # The API leaves queues and cron to the worker
+          cp deploy/gcp/env.yaml "$RUNNER_TEMP/api-env.yaml" && echo 'JOBS_ENABLED: "false"' >> "$RUNNER_TEMP/api-env.yaml"
+
+      - name: Migrate the database
+        run: |
+          gcloud run jobs deploy marichihr-migrate --image="$API_IMAGE" $COMMON --env-vars-file=deploy/gcp/env.yaml --set-secrets="$SECRETS" \
+            --command=npx --args=prisma,migrate,deploy,--schema,../../packages/database/prisma/schema.prisma \
+            --max-retries=0 --task-timeout=900s
+          gcloud run jobs execute marichihr-migrate --region="$REGION" --wait
+
+      - name: Deploy API
+        run: |
+          gcloud run deploy marichihr-api --image="$API_IMAGE" $COMMON --env-vars-file="$RUNNER_TEMP/api-env.yaml" --set-secrets="$SECRETS" \
+            --allow-unauthenticated --port=8080 \
+            --cpu=1 --memory=1Gi --min-instances=1 --max-instances=10 --timeout=300 --session-affinity
+
+      - name: Deploy worker (queues and cron, always on)
+        run: |
+          gcloud run deploy marichihr-worker --image="$API_IMAGE" $COMMON --env-vars-file=deploy/gcp/env.yaml --set-secrets="$SECRETS" \
+            --command=node --args=dist/worker.js --no-allow-unauthenticated --port=8080 \
+            --cpu=1 --memory=1Gi --min-instances=1 --max-instances=1 --no-cpu-throttling
+
+      - name: Deploy web
+        run: |
+          gcloud run deploy marichihr-web --image="$WEB_IMAGE" --region="$REGION" --allow-unauthenticated --port=8080 \
+            --cpu=1 --memory=256Mi --min-instances=0 --max-instances=5
+
+      - name: Readiness check
+        run: |
+          URL=$(gcloud run services describe marichihr-api --region="$REGION" --format='value(status.url)')
+          curl -fsS "$URL/health/ready"

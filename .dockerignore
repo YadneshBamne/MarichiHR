@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.claude
+.agents
+.codex
+.impeccable
+.playwright
+.playwright-cli
+CLAUDE.md
+docs
+apps/api/tests
+apps/api/uploads

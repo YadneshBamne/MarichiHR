@@ -67,3 +67,7 @@ CYCLE_MONTH=2030-02 node -r dotenv/config tests/http/expenses.test.js
 
 - Never commit `.env` files; only the `.env.example` templates belong in git.
 - Bank account numbers and MFA secrets are encrypted with `BANK_ENCRYPTION_KEY`. Back that key up; data encrypted with it cannot be recovered without it.
+
+## Hosting
+
+Google Cloud Run (CI/CD in `.github/workflows/deploy-gcp.yml`): see [docs/deploy/gcp-handover.md](docs/deploy/gcp-handover.md). Render and Vercel deploys work as before.
