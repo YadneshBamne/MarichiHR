@@ -4,7 +4,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc",
+    "build": "tsc && node scripts/ensure-chrome.js",
     "start": "node dist/server.js",
     "worker": "ts-node --files src/worker.ts",
     "db:migrate": "prisma migrate dev",
