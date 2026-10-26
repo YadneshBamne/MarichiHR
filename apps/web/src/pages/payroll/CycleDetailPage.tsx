@@ -8,6 +8,7 @@ import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import VariancePanel from './VariancePanel'
 import BankFileModal from './BankFileModal'
+import AccountingExportModal from './AccountingExportModal'
 import InputsPanel from './InputsPanel'
 import { money, fmtPeriod, fmtDate } from '../../lib/format'
 
@@ -41,6 +42,7 @@ export default function CycleDetailPage() {
   const [showAdj, setShowAdj] = useState(false)
   const [runResult, setRunResult] = useState<any>(null)
   const [showBank, setShowBank] = useState(false)
+  const [showAcc, setShowAcc] = useState(false)
   const [glBusy, setGlBusy] = useState(false)
   const [confirm, setConfirm] = useState<null | { action: string; title: string; body: string }>(null)
 
@@ -119,6 +121,7 @@ export default function CycleDetailPage() {
     const ghost = { padding: '9px 18px', borderRadius: 12, fontSize: 13, fontWeight: 500, cursor: 'pointer', backgroundColor: 'var(--well)', color: 'var(--ink)', border: '1px solid var(--line)' } as const
     actions.push(<button key="bank-file" onClick={() => setShowBank(true)} style={ghost}>Bank file</button>)
     actions.push(<button key="gl-export" onClick={downloadGl} disabled={glBusy} style={{ ...ghost, opacity: glBusy ? 0.6 : 1 }}>{glBusy ? 'Preparing...' : 'GL export'}</button>)
+    actions.push(<button key="acc-export" onClick={() => setShowAcc(true)} style={ghost}>Accounting export</button>)
   }
 
   return (
@@ -225,6 +228,7 @@ export default function CycleDetailPage() {
       {tab === 'inputs' && <InputsPanel cycleId={id!} editable={inputsEditable} currency={currency} />}
 
       {showBank && <BankFileModal cycleId={id!} open={showBank} onClose={() => setShowBank(false)} />}
+      {showAcc && <AccountingExportModal cycleId={id!} open={showAcc} onClose={() => setShowAcc(false)} />}
 
       <Modal open={!!confirm} onClose={() => setConfirm(null)} title={confirm?.title || ''} width={420}>
         <p style={{ fontSize: 13, color: 'var(--dim)', marginTop: 0 }}>{confirm?.body}</p>

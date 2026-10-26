@@ -6,6 +6,7 @@ import { runAutomations } from '../../modules/automation/automation.service'
 import { queueWebhooks } from '../../modules/automation/integrations.service'
 import { creditLeave } from '../../modules/leave/credits.service'
 import { postNews } from '../../modules/forums/forum-extras.service'
+import { accounting } from '../../modules/accounting/accounting.service'
 
 // Consumers of domain_events, run by the domain-events worker. Each handler must be safe to run twice:
 // notifications dedupe on (eventId, userId, type) and data fixes are idempotent.
@@ -77,6 +78,11 @@ export const EVENT_HANDLERS: Record<string, Handler[]> = {
       const admins = [...new Set([...(await userIdsWithRole(e.tenantId, 'payroll_admin')), ...(await userIdsWithRole(e.tenantId, 'system_admin'))])]
       await notify({ tenantId: e.tenantId, userIds: admins, type: 'payroll.disbursed', title: `${c.offCycle ? 'Off-cycle payroll' : 'Payroll'} for ${month} paid`, body: `${slips} payslip${slips === 1 ? '' : 's'}, net ${Number(total._sum.netPay ?? 0).toFixed(2)}. Download the bank file from the run if you have not yet.`, link: `/payroll/cycles/${c.id}`, entityType: 'payroll_cycle', entityId: c.id, eventId: e.id })
       if (!c.offCycle) await postNews(e.tenantId, e.payload.disbursedBy, `${month} payroll is paid`, `Payslips for ${month} are ready in [My payslips](/payroll).`, ['payroll'], e.id)
+    },
+    // Send the journal to the company's ERP when auto-push is on. Retried events re-send with the same Idempotency-Key.
+    async (e) => {
+      const st = await prisma.accountingSettings.findUnique({ where: { tenantId: e.tenantId }, select: { autoPush: true, webhookUrl: true } })
+      if (st?.autoPush && st.webhookUrl) await accounting.push(e.tenantId, e.payload.payrollCycleId, null)
     },
   ],
   // Everyone in the audience except the author

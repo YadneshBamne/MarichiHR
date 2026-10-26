@@ -11,6 +11,7 @@ import { CreateCycleSchema, AddInputSchema } from './payroll.schema'
 import { prisma } from '../../infrastructure/database/prisma'
 import { signoffThreshold } from './payroll.service'
 import { bankFormats, FormatBody } from './bank-formats'
+import { accounting, SettingsBody, FORMATS, Format } from '../accounting/accounting.service'
 
 export const payrollRouter = Router()
 
@@ -118,6 +119,19 @@ payrollRouter.put('/bank-formats/:id', payrollStaffOnly, validate(z.object({ par
 payrollRouter.get('/cycles/:id/bank-file/preview', requirePermission('payroll:disburse'), payrollStaffOnly, payrollController.bankFilePreview)
 payrollRouter.get('/cycles/:id/bank-file', requirePermission('payroll:disburse'), payrollStaffOnly, payrollController.bankFile)
 payrollRouter.get('/cycles/:id/gl-export', requirePermission('payroll:read'), payrollStaffOnly, payrollController.glExport)
+
+// ─── ACCOUNTING EXPORT (ERP-agnostic journal) ─────────────────
+payrollRouter.get('/accounting/settings', payrollStaffOnly, asyncHandler(async (req, res) => { res.json({ success: true, data: await accounting.settings(req.user!) }) }))
+payrollRouter.put('/accounting/settings', payrollStaffOnly, validate(z.object({ body: SettingsBody })), asyncHandler(async (req, res) => { res.json({ success: true, data: await accounting.save(req.user!, req.body) }) }))
+payrollRouter.get('/cycles/:id/journal', payrollStaffOnly, validate(z.object({ params: z.object({ id: z.string().uuid() }), query: z.object({ format: z.enum(FORMATS).default('json') }).strict() })), asyncHandler(async (req, res) => {
+  const out = await accounting.export(req.user!, String(req.params.id), (req.query.format as Format) ?? 'json')
+  res.setHeader('Content-Type', out.contentType)
+  res.setHeader('Content-Disposition', `attachment; filename="${out.filename}.${out.ext}"`)
+  res.send(out.body)
+}))
+payrollRouter.post('/cycles/:id/journal/push', payrollStaffOnly, validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await accounting.push(req.user!.tenantId, String(req.params.id), req.user!.userId) })
+}))
 
 // ─── PAYROLL INPUTS ───────────────────────────────────────────
 payrollRouter.post('/cycles/:id/inputs', requirePermission('payroll:run'), validate(AddInputSchema), payrollController.addInput)

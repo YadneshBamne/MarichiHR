@@ -2907,3 +2907,18 @@ model BankFileFormat {
   @@unique([tenantId, name])
   @@map("bank_file_formats")
 }
+
+// Accounting (ERP-agnostic): the company's own ledger accounts for the payroll journal, how to split it, and where to
+// push it. Any ERP takes the journal as CSV / JSON / XML / a ready import file, or by signed webhook.
+model AccountingSettings {
+  tenantId          String   @id
+  accounts          Json     @default("{}") // { SALARY_EXPENSE: { code, name }, NET_PAYABLE: {...}, ... }
+  deductionAccounts Json     @default("{}") // { <deduction code>: { code, name } } for deductions owed to someone else
+  splitBy           String   @default("none") // none | department | entity
+  webhookUrl        String?
+  webhookSecret     String? // HMAC key for X-MarichiHR-Signature; shown once
+  autoPush          Boolean  @default(false) // push the journal when a payroll is paid
+  updatedAt         DateTime @updatedAt
+
+  @@map("accounting_settings")
+}
