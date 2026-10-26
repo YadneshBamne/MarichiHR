@@ -29,13 +29,14 @@ jobs:
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npx prisma generate
+        working-directory: apps/api
       - name: Schemas in step
         run: diff packages/database/prisma/schema.prisma apps/api/prisma/schema.prisma
       - run: npm run build -w @marichihr/api
@@ -54,7 +55,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build -f apps/api/Dockerfile -t marichihr-api:ci .
       - run: docker build -f apps/web/Dockerfile --build-arg MARICHI_API_URL=https://api.example.com/api/v1 -t marichihr-web:ci .
       - name: API image starts Chromium for payslip PDFs
@@ -71,7 +72,7 @@ jobs:
       PROJECT: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}

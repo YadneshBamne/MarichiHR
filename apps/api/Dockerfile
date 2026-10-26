@@ -14,7 +14,8 @@ COPY packages/database/package.json packages/database/
 RUN npm ci --workspace=@marichihr/api --workspace=@marichihr/database --include-workspace-root --no-audit --no-fund
 COPY apps/api apps/api
 COPY packages/database/prisma packages/database/prisma
-RUN npx prisma generate --schema apps/api/prisma/schema.prisma && npm run build -w @marichihr/api
+# prisma is installed under apps/api/node_modules (workspace), so run it from there
+RUN cd apps/api && npx prisma generate && npm run build
 
 FROM node:22-bookworm-slim
 RUN apt-get update \
