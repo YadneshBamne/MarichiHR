@@ -16,10 +16,33 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10))
   const [adding, setAdding] = useState('')
   const addFormat = useMutation({
-    mutationFn: async () => { const preset = fm!.presets[Number(adding)]; const name = window.prompt('Name of this layout (e.g. your bank)', preset.name); if (!name) return null; return (await api.post('/payroll/bank-formats', { ...preset, name })).data.data },
+    mutationFn: async () => {
+      const { status: _s, source: _src, notes: _n, needs, ...preset } = fm!.presets[Number(adding)]
+      const name = window.prompt('Name of this layout (e.g. your bank)', preset.name)
+      if (!name) return null
+      const vars = askVars(needs ?? [], {})
+      if (!vars) return null
+      return (await api.post('/payroll/bank-formats', { ...preset, name, vars })).data.data
+    },
     onSuccess: (f) => { if (f) { setFormatId(f.id); qc.invalidateQueries({ queryKey: ['bank-formats'] }) } setAdding('') },
     onError: (e: any) => setError(e?.response?.data?.message || 'Could not save the layout'),
   })
+
+  // Company values a layout uses ({ownAccount}, {corporateId}…): asked when it is added, editable afterwards
+  const editVars = useMutation({
+    mutationFn: async () => {
+      const f = fm!.formats.find((x) => x.id === formatId)
+      const labels = new Map<string, string>(fm!.presets.flatMap((p) => p.needs ?? []).map((n: any) => [n.key, n.label]))
+      const vars = askVars(Object.keys(f.vars ?? {}).map((key) => ({ key, label: labels.get(key) ?? key })), f.vars ?? {})
+      if (!vars) return null
+      const { id: _i, tenantId: _t, createdAt: _c, ...body } = f
+      return (await api.put(`/payroll/bank-formats/${f.id}`, { ...body, vars })).data.data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bank-formats'] }),
+    onError: (e: any) => setError(e?.response?.data?.message || 'Could not save the values'),
+  })
+  const chosenPreset = adding === '' ? null : fm?.presets[Number(adding)]
+  const chosenFormat = (fm?.formats ?? []).find((f) => f.id === formatId)
 
   const excluded: any[] = data?.excluded || []
   const included: any[] = data?.included || []
@@ -81,14 +104,21 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 8, alignItems: 'end' }}>
-            <label className="field"><span>Layout</span><select className="input" value={formatId} onChange={(e) => setFormatId(e.target.value)}><option value="">Generic CSV</option>{(fm?.formats ?? []).filter((f) => f.active).map((f) => <option key={f.id} value={f.id}>{f.name} ({f.kind === 'fixed' ? 'fixed width' : 'delimited'})</option>)}</select></label>
+            <label className="field"><span>Layout</span><select className="input" value={formatId} onChange={(e) => setFormatId(e.target.value)}><option value="">Generic CSV</option>{(fm?.formats ?? []).filter((f) => f.active).map((f) => <option key={f.id} value={f.id}>{f.name} ({f.kind === 'fixed' ? 'fixed width' : f.kind === 'pain001' ? 'ISO 20022 XML' : 'delimited'})</option>)}</select></label>
             <label className="field"><span>Payment date</span><input className="input" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} disabled={!formatId} /></label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }} className="dim">
             <span>Your bank needs another layout? Start from</span>
             <select className="input" value={adding} onChange={(e) => setAdding(e.target.value)} style={{ height: 30, width: 'auto' }}><option value="">choose…</option>{(fm?.presets ?? []).map((p, i) => <option key={p.name} value={i}>{p.name}</option>)}</select>
             <button className="btn btn-ghost btn-sm" disabled={adding === '' || addFormat.isPending} onClick={() => addFormat.mutate()}>Add layout</button>
+            {Object.keys(chosenFormat?.vars ?? {}).length > 0 && <button className="btn btn-ghost btn-sm" disabled={editVars.isPending} onClick={() => editVars.mutate()}>Company values</button>}
           </div>
+          {chosenPreset && chosenPreset.status !== 'generic' && (
+            <div style={{ fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span><span className={`pill ${chosenPreset.status === 'verified' ? 'ok' : 'warn'}`}>{chosenPreset.status === 'verified' ? 'Verified from source' : 'Confirm with bank'}</span> <span className="dim">{chosenPreset.source}</span></span>
+              {chosenPreset.notes && <span className="dim">{chosenPreset.notes}</span>}
+            </div>
+          )}
 
           {error && <div style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderRadius: 12, padding: '10px 12px', fontSize: 13 }}>{error}</div>}
 
@@ -105,5 +135,15 @@ export default function BankFileModal({ cycleId, open, onClose }: { cycleId: str
     </Modal>
   )
 }
+function askVars(needs: { key: string; label: string }[], current: Record<string, string>) {
+  const out: Record<string, string> = { ...current }
+  for (const n of needs) {
+    const v = window.prompt(n.label, current[n.key] ?? '')
+    if (v === null) return null
+    out[n.key] = v.trim()
+  }
+  return out
+}
+
 const th: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: 'var(--faint)', borderBottom: '1px solid var(--line)', backgroundColor: 'var(--solid)' }
 const td: React.CSSProperties = { padding: '10px 12px', fontSize: 13, color: 'var(--ink)' }

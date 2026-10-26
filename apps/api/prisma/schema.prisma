@@ -2897,10 +2897,13 @@ model BankFileFormat {
   id        String   @id @default(uuid())
   tenantId  String
   name      String
-  kind      String   @default("delimited") // delimited | fixed
+  kind      String   @default("delimited") // delimited | fixed | pain001 (ISO 20022 XML)
   delimiter String   @default(",")
   header    Boolean  @default(true)
   columns   Json // [{ field, label, width?, align?, pad?, format? }]
+  vars      Json     @default("{}") // company values used by {tokens}: own account, corporate id, BIC...
+  preamble  String[] @default([]) // lines before the header/records, with {tokens}
+  trailer   String[] @default([]) // lines after the records, with {tokens}
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 

@@ -13,7 +13,7 @@ import { renderPayslipHtml, generatePayslipPdf } from './payslip.pdf'
 import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import crypto from 'crypto'
-import { formatFor, renderBankFile } from './bank-formats'
+import { formatFor, renderBankFile, fileExt } from './bank-formats'
 
 import { reapplyOverrides } from '../tax/tax-admin.service'
 import { applyFlexi, basicShareWarning, offCyclePayslip } from './payroll-extras.service'
@@ -778,7 +778,7 @@ export const payrollService = {
       newValue: { employees: included.length, totalAmount, sha256, allowPartial: opts.allowPartial },
     })
 
-    return { csv, filename: `bank-file-${period}${layout ? `-${layout.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : ''}.${layout?.kind === 'fixed' ? 'txt' : 'csv'}` }
+    return { csv, filename: `bank-file-${period}${layout ? `-${layout.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : ''}.${fileExt(layout)}` }
   },
 
   // ─── GL EXPORT ────────────────────────────────────────────

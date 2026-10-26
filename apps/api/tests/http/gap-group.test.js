@@ -66,7 +66,8 @@ const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 1 })
 
   // ─── Bank file layouts ──────────────────────────────────
   const fmts = (await api(asP1, 'GET', '/payroll/bank-formats')).body
-  r = await api(asP1, 'POST', '/payroll/bank-formats', { ...fmts.presets[2], name: 'Zanaco fixed' })
+  const { status: _s, source: _src, notes: _n, needs: _nd, ...fixedPreset } = fmts.presets.find((p) => p.kind === 'fixed')
+  r = await api(asP1, 'POST', '/payroll/bank-formats', { ...fixedPreset, name: 'Zanaco fixed' })
   const fixed = r.body
   check('Payroll saves a fixed-width layout from a starting point', r.status === 201 && fixed.kind === 'fixed', r.data)
   const res = await fetch(`${BASE}/api/v1/payroll/cycles/${cycle.id}/bank-file?formatId=${fixed.id}&paymentDate=2026-01-30`, { headers: { authorization: `Bearer ${asP1.token}` } })
