@@ -1,9 +1,11 @@
+import nodemailer from 'nodemailer'
 import { prisma } from '../database/prisma'
 import { wants } from './preferences'
 import { pushEnabled, pushTo } from './push'
 
 // In-app notification rows plus outbound delivery over pluggable transports.
-// Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | resend.
+// Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | smtp | resend.
+// SMTP (e.g. Mandrill): SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM.
 // WhatsApp is an adapter that needs WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID (Meta Cloud API) before it can send.
 
 export interface OutboundMessage {
@@ -22,6 +24,29 @@ export const logTransport: Transport = {
   name: 'log',
   async send(msg) {
     console.log(`[notify:email:log] to=${msg.to.email} subject="${msg.subject}"${msg.attachments?.length ? ` attachments=${msg.attachments.map((a) => a.filename).join(',')}` : ''}`)
+  },
+}
+
+// One pooled SMTP connection per process (Mandrill, or any SMTP relay)
+let smtp: ReturnType<typeof nodemailer.createTransport> | null = null
+export function smtpClient() {
+  const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS } = process.env
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) throw new Error('SMTP is not configured (SMTP_HOST, SMTP_USER, SMTP_PASS)')
+  smtp ??= nodemailer.createTransport({ host: SMTP_HOST, port: Number(SMTP_PORT) || 587, secure: SMTP_SECURE === 'true', auth: { user: SMTP_USER, pass: SMTP_PASS }, pool: true, maxConnections: 3 })
+  return smtp
+}
+export const smtpTransport: Transport = {
+  name: 'smtp',
+  async send(msg) {
+    if (!process.env.SMTP_FROM) throw new Error('SMTP_FROM is not set')
+    if (!msg.to.email) throw new Error('Recipient has no email address')
+    await smtpClient().sendMail({
+      from: { name: process.env.SMTP_FROM_NAME || 'MarichiHR', address: process.env.SMTP_FROM },
+      to: { name: msg.to.name, address: msg.to.email },
+      subject: msg.subject,
+      text: `${msg.text}\n\n— MarichiHR`,
+      ...(msg.attachments?.length && { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content })) }),
+    })
   },
 }
 
@@ -60,7 +85,7 @@ function transportsFor(): Record<string, Transport> {
   const channels = (process.env.NOTIFY_CHANNELS || 'email').split(',').map((c) => c.trim()).filter(Boolean)
   const out: Record<string, Transport> = {}
   for (const c of channels) {
-    if (c === 'email') out.email = process.env.EMAIL_TRANSPORT === 'resend' ? resendTransport : logTransport
+    if (c === 'email') out.email = process.env.EMAIL_TRANSPORT === 'smtp' ? smtpTransport : process.env.EMAIL_TRANSPORT === 'resend' ? resendTransport : logTransport
     if (c === 'whatsapp') out.whatsapp = whatsappTransport
   }
   return out
