@@ -3,10 +3,10 @@
 // mode. Live mode needs the provider's keys in the environment; nothing else changes when they arrive.
 //
 //   FILING_MODE=sandbox (default) | live
-//   DigiTax (ZRA, KRA eTIMS/iTax, NRS):   DIGITAX_BASE_URL, DIGITAX_API_KEY
 //   WhiteBooks (India TDS / GST):         WHITEBOOKS_BASE_URL, WHITEBOOKS_CLIENT_ID, WHITEBOOKS_CLIENT_SECRET
-//   NAPSA, NHIMA, NSSF, SHIF, PenCom, EPFO have no provider wired: they are filed on the authority's portal and the
-//   reference is recorded by hand.
+//   ZRA, KRA and NRS PAYE, NAPSA, NHIMA, NSSF, SHIF, PenCom and EPFO are filed on the authority's portal and the
+//   reference is recorded by hand. DigiTax (integrations/digitax.ts) is ZRA Smart Invoice only: its documented API
+//   (zm.docs.digitax.tech) has no PAYE or payroll return endpoint.
 
 export interface ReturnRow { employeeCode: string; name: string; taxId?: string | null; gross: number; amount: number }
 export interface FilingReturn {
@@ -21,7 +21,7 @@ export interface SubmitResult { reference: string; status: 'submitted' | 'accept
 export interface FilingAdapter {
   authority: string
   label: string
-  provider: 'DigiTax' | 'WhiteBooks' | null // null = filed by hand on the authority's portal
+  provider: 'WhiteBooks' | null // null = filed by hand on the authority's portal
   codes: string[] // payslip line codes this return carries
   keys: string[] // environment variables live mode needs
   validate(r: FilingReturn): string[]
@@ -43,8 +43,8 @@ async function post(url: string, headers: Record<string, string>, body: unknown)
   return { reference: String((raw as any).reference ?? (raw as any).acknowledgementNumber ?? (raw as any).id ?? ''), status: 'submitted', raw }
 }
 
-function provider(name: 'DigiTax' | 'WhiteBooks', authority: string, label: string, codes: string[], extraChecks: (r: FilingReturn) => string[] = () => []): FilingAdapter {
-  const keys = name === 'DigiTax' ? ['DIGITAX_BASE_URL', 'DIGITAX_API_KEY'] : ['WHITEBOOKS_BASE_URL', 'WHITEBOOKS_CLIENT_ID', 'WHITEBOOKS_CLIENT_SECRET']
+function provider(name: 'WhiteBooks', authority: string, label: string, codes: string[], extraChecks: (r: FilingReturn) => string[] = () => []): FilingAdapter {
+  const keys = ['WHITEBOOKS_BASE_URL', 'WHITEBOOKS_CLIENT_ID', 'WHITEBOOKS_CLIENT_SECRET']
   return {
     authority, label, provider: name, codes, keys,
     validate: (r) => [...basicChecks(r), ...extraChecks(r)],
@@ -52,16 +52,14 @@ function provider(name: 'DigiTax' | 'WhiteBooks', authority: string, label: stri
       if (mode === 'sandbox') return { reference: sandboxRef(authority), status: 'accepted', raw: { sandbox: true, rows: r.rows.length, total: r.total } }
       const missing = keys.filter((k) => !process.env[k])
       if (missing.length) throw new Error(`Live filing needs ${missing.join(', ')}`)
-      return name === 'DigiTax'
-        ? post(`${process.env.DIGITAX_BASE_URL}/returns/${authority.toLowerCase()}`, { authorization: `Bearer ${process.env.DIGITAX_API_KEY}` }, r)
-        : post(`${process.env.WHITEBOOKS_BASE_URL}/tds/returns`, { 'client-id': process.env.WHITEBOOKS_CLIENT_ID!, 'client-secret': process.env.WHITEBOOKS_CLIENT_SECRET! }, r)
+      return post(`${process.env.WHITEBOOKS_BASE_URL}/tds/returns`, { 'client-id': process.env.WHITEBOOKS_CLIENT_ID!, 'client-secret': process.env.WHITEBOOKS_CLIENT_SECRET! }, r)
     },
   }
 }
-function manual(authority: string, label: string, codes: string[]): FilingAdapter {
+function manual(authority: string, label: string, codes: string[], extraChecks: (r: FilingReturn) => string[] = () => []): FilingAdapter {
   return {
     authority, label, provider: null, codes, keys: [],
-    validate: basicChecks,
+    validate: (r) => [...basicChecks(r), ...extraChecks(r)],
     async submit(_r, mode) {
       if (mode === 'sandbox') return { reference: sandboxRef(authority), status: 'accepted', raw: { sandbox: true } }
       throw new Error(`${authority} is filed on its own portal: record the reference by hand`)
@@ -71,13 +69,13 @@ function manual(authority: string, label: string, codes: string[]): FilingAdapte
 
 const needTaxId = (r: FilingReturn) => (r.employer.taxId ? [] : ['Add the employer tax number (Company profile › Legal entities, or the company profile)'])
 export const ADAPTERS: FilingAdapter[] = [
-  provider('DigiTax', 'ZRA', 'Zambia PAYE (ZRA)', ['PAYE_ZM', 'WHT_ZM'], needTaxId),
+  manual('ZRA', 'Zambia PAYE (ZRA)', ['PAYE_ZM', 'WHT_ZM'], needTaxId),
   manual('NAPSA', 'Zambia NAPSA', ['NAPSA_EMP', 'NAPSA_EMPLOYER']),
   manual('NHIMA', 'Zambia NHIMA', ['NHIMA_EMP', 'NHIMA_EMPLOYER']),
-  provider('DigiTax', 'KRA', 'Kenya PAYE and housing levy (KRA)', ['PAYE_KE', 'AHL_EMP', 'AHL_EMPLOYER'], needTaxId),
+  manual('KRA', 'Kenya PAYE and housing levy (KRA)', ['PAYE_KE', 'AHL_EMP', 'AHL_EMPLOYER'], needTaxId),
   manual('NSSF (KE)', 'Kenya NSSF', ['NSSF_EMP', 'NSSF_EMPLOYER']),
   manual('SHIF', 'Kenya SHIF', ['SHIF']),
-  provider('DigiTax', 'NRS', 'Nigeria PAYE (NRS / State IRS)', ['PAYE_NG'], needTaxId),
+  manual('NRS', 'Nigeria PAYE (NRS / State IRS)', ['PAYE_NG'], needTaxId),
   manual('PenCom', 'Nigeria pension (PenCom)', ['PENSION_EMP', 'PENSION_EMPLOYER']),
   provider('WhiteBooks', 'Income Tax Dept', 'India TDS on salary (Form 24Q)', ['TDS'], needTaxId),
   manual('EPFO', 'India provident fund (EPFO)', ['EPF_EMP', 'EPF_EMPLOYER']),
