@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { prisma } from '../database/prisma'
 import { wants } from './preferences'
 import { pushEnabled, pushTo } from './push'
+import { templateFor, waVar, detailFor } from './whatsapp-templates'
 
 // In-app notification rows plus outbound delivery over pluggable transports.
 // Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | smtp | resend.
@@ -13,6 +14,8 @@ export interface OutboundMessage {
   subject: string
   text: string
   attachments?: { filename: string; content: Buffer }[] // email only
+  type?: string // notification type: picks the WhatsApp template
+  link?: string | null // page in the app: the WhatsApp button opens it
 }
 
 export interface Transport {
@@ -71,11 +74,23 @@ export const whatsappTransport: Transport = {
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
     if (!token || !phoneId) throw new Error('WhatsApp is not configured (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID)')
     if (!msg.to.phone) throw new Error('Recipient has no mobile number')
-    // ponytail: free-form text only reaches users inside the 24h service window; outside it Meta requires an approved template
+    // Business-started messages must use an approved template (whatsapp-templates.ts): {{1}} first name, {{2}} detail,
+    // and a URL button whose suffix is the page to open
+    const t = templateFor(msg.type ?? '')
+    const firstName = waVar(msg.to.name.split(' ')[0] || msg.to.name, 60)
     const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to: msg.to.phone.replace(/[^\d]/g, ''), type: 'text', text: { body: `${msg.subject}\n${msg.text}` } }),
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', to: msg.to.phone.replace(/[^\d]/g, ''), type: 'template',
+        template: {
+          name: t.name, language: { code: process.env.WHATSAPP_TEMPLATE_LANG || 'en' },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: firstName }, { type: 'text', text: waVar(detailFor(msg.type ?? '', msg.subject)) }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: (msg.link ?? '/dashboard').replace(/^\//, '') || 'dashboard' }] },
+          ],
+        },
+      }),
     })
     if (!res.ok) throw new Error(`WhatsApp responded ${res.status}`)
   },
@@ -141,6 +156,8 @@ export async function notify(input: NotifyInput) {
         to: { name: user.fullName, email: user.email, phone: user.employee?.mobileWork || user.employee?.mobilePersonal },
         subject: input.title,
         text: input.body,
+        type: input.type,
+        link: input.link ?? null,
       }
       if (channel === 'email' && input.attachments) {
         try { attachments ??= await input.attachments(); msg.attachments = attachments } catch (err: any) { deliveries.push({ channel, transport: transport.name, status: 'attachment_failed', error: String(err?.message || err) }) }
