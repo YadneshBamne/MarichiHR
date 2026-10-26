@@ -4,6 +4,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { AccessUser } from '../../shared/utils/access'
 import { ADAPTERS, adapterFor, filingMode, FilingReturn } from '../../integrations/filing/adapters'
 import { digitaxStatus } from '../../integrations/digitax'
+import { smartInvoice } from '../expenses/smart-invoice.service'
 
 // Filing dashboard: every approved or paid run, the returns it owes (from its payslip lines) and their status, and
 // submission through the filing adapters (sandbox now; live once the provider keys are set).
@@ -24,7 +25,8 @@ export const filingService = {
     return {
       mode,
       adapters: ADAPTERS.map((a) => ({ authority: a.authority, label: a.label, provider: a.provider, liveReady: a.keys.every((k) => !!process.env[k]) && a.provider !== null })),
-      digitax: await digitaxStatus(),
+      // DigiTax belongs to one company (DIGITAX_TENANT): others see nothing of it
+      ...(await smartInvoice.connected(u.tenantId) ? { digitax: await digitaxStatus(), smartInvoice: await smartInvoice.overview(u) } : {}),
       cycles: cycles.map((c) => ({
         ...c, payPeriodStart: day(c.payPeriodStart), payPeriodEnd: day(c.payPeriodEnd),
         returns: ADAPTERS.map((a) => {

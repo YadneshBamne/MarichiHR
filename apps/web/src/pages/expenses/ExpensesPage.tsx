@@ -8,6 +8,7 @@ import NewClaimModal from './NewClaimModal'
 import { useMyClaims, usePendingClaims, useAwaitingFinance, useWithdrawClaim, useClaimAction } from '../../lib/hooks/useExpenses'
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import { money, fmtDate } from '../../lib/format'
+import SmartInvoicePanel from './SmartInvoicePanel'
 
 type Tab = 'mine' | 'requests' | 'approvals' | 'finance'
 
@@ -50,7 +51,7 @@ export default function ExpensesPage() {
       {tab === 'mine' && <MyClaims />}
       {tab === 'requests' && <RequestsPanel />}
       {tab === 'approvals' && canApprove && <Queue claims={pending} mode="manager" userId={user?.id} employeeId={user?.employee?.id} />}
-      {tab === 'finance' && canFinance && <Queue claims={awaiting} mode="finance" userId={user?.id} employeeId={user?.employee?.id} />}
+      {tab === 'finance' && canFinance && <><Queue claims={awaiting} mode="finance" userId={user?.id} employeeId={user?.employee?.id} /><SmartInvoicePanel /></>}
 
       <NewClaimModal open={showNew} onClose={() => setShowNew(false)} />
     </div>

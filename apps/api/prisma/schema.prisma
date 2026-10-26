@@ -1162,6 +1162,7 @@ model ExpenseCategory {
   maxAmount            Decimal? @db.Decimal(18, 2)
   enforceLimit         Boolean  @default(false)
   receiptRequiredAbove Decimal? @db.Decimal(18, 2)
+  digitaxItemId        String? // DigiTax item the category's purchases are recorded against (ZRA Smart Invoice)
   active               Boolean  @default(true)
   createdAt            DateTime @default(now())
 
@@ -1235,6 +1236,7 @@ model ReimbursementClaim {
   rejectedByUserId        String?
   paidInCycleId           String?
   paidAt                  DateTime?
+  digitax                 Json? // ZRA Smart Invoice purchase via DigiTax: { purchaseId, status, error, sentAt, supplierTin, supplierName, supplierInvoiceNumber }
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 

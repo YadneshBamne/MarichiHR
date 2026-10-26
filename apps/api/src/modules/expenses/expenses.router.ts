@@ -10,6 +10,7 @@ import {
   CreateClaimSchema, ClaimIdSchema, ReasonSchema,
   CreateCategorySchema, UpdateCategorySchema, CreatePerDiemRateSchema, UpdatePerDiemRateSchema, CreateFxRateSchema, UpdateFxRateSchema,
 } from './expenses.schema'
+import { smartInvoice, SendBody } from './smart-invoice.service'
 
 export const expensesRouter = Router()
 
@@ -41,6 +42,14 @@ expensesRouter.post('/claims/:id/approve', requirePermission('expenses:approve')
 expensesRouter.post('/claims/:id/reject', requirePermission('expenses:approve'), validate(ReasonSchema), c.reject)
 expensesRouter.post('/claims/:id/finance-approve', requirePermission('expenses:finance'), validate(ClaimIdSchema), c.financeApprove)
 expensesRouter.post('/claims/:id/finance-reject', requirePermission('expenses:finance'), validate(ReasonSchema), c.financeReject)
+
+// ZRA Smart Invoice purchases through DigiTax (only for the company the DigiTax key belongs to)
+expensesRouter.get('/smart-invoice/items', requirePermission('expenses:finance'), asyncHandler(async (req, res) => ok(res, await smartInvoice.items(req.user!))))
+expensesRouter.put('/smart-invoice/categories/:id', requirePermission('expenses:finance'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: z.object({ itemId: z.string().trim().min(1).max(80).nullable() }).strict() })), asyncHandler(async (req, res) => ok(res, await smartInvoice.mapCategory(req.user!, String(req.params.id), req.body.itemId))))
+expensesRouter.post('/claims/:id/smart-invoice', requirePermission('expenses:finance'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: SendBody })), asyncHandler(async (req, res) => ok(res, await smartInvoice.send(req.user!, String(req.params.id), req.body))))
+expensesRouter.post('/claims/:id/smart-invoice/refresh', requirePermission('expenses:finance'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => ok(res, await smartInvoice.refresh(req.user!, String(req.params.id)))))
+expensesRouter.get('/smart-invoice', requirePermission('expenses:finance'), asyncHandler(async (req, res) => ok(res, await smartInvoice.overview(req.user!))))
+expensesRouter.get('/smart-invoice/claims', requirePermission('expenses:finance'), asyncHandler(async (req, res) => ok(res, await smartInvoice.claims(req.user!))))
 
 // ─── CONFIG ───────────────────────────────────────────────────
 expensesRouter.get('/config/categories', requirePermission('expenses:configure'), c.listAllCategories)

@@ -112,8 +112,25 @@ export function FilingDashboard() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><h3 style={{ fontSize: 16, flex: 1 }}>Statutory filing</h3><span className={`pill ${data.mode === 'live' ? 'ok' : 'warn'}`} style={{ textTransform: 'none' }}>{data.mode === 'live' ? 'Live filing' : 'Test mode: nothing is sent to the authorities'}</span></div>
         <p className="dim" style={{ fontSize: 13 }}>Each paid run owes these returns. Submit sends one through its filing service (WhiteBooks for India TDS). ZRA, KRA and NRS PAYE and the contribution returns have no filing API: file them on the authority’s portal and record the reference below.</p>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{data.adapters.map((a: any) => <span key={a.authority} className={`pill ${a.provider ? (a.liveReady ? 'ok' : 'mute') : 'info'}`} style={{ textTransform: 'none' }}>{a.authority}: {a.provider ? `${a.provider}${a.liveReady ? ' ready' : ', keys needed'}` : 'portal'}</span>)}
-          {data.digitax?.configured && <span className={`pill ${data.digitax.ok ? (data.digitax.test ? 'warn' : 'ok') : 'danger'}`} style={{ textTransform: 'none' }} title="DigiTax connects to ZRA Smart Invoice (sales invoices), not PAYE">DigiTax Smart Invoice: {data.digitax.ok ? (data.digitax.test ? 'test business connected' : 'live business connected') : data.digitax.error}</span>}</div>
+          {data.digitax?.configured && <span className={`pill ${data.digitax.ok ? (data.digitax.test ? 'warn' : 'ok') : 'danger'}`} style={{ textTransform: 'none' }} title="DigiTax connects to ZRA Smart Invoice (purchases and sales), not PAYE">DigiTax Smart Invoice: {data.digitax.ok ? (data.digitax.test ? 'test business connected' : 'live business connected') : data.digitax.error}</span>}</div>
       </section>
+      {data.smartInvoice?.connected && (
+        <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <h3 style={{ fontSize: 16, flex: 1 }}>ZRA Smart Invoice</h3>
+            {['COMPLETED', 'PENDING', 'FAILED', 'ERROR'].filter((k) => data.smartInvoice.purchases[k]).map((k) => <span key={k} className={`pill ${k === 'COMPLETED' ? 'ok' : k === 'PENDING' ? 'warn' : 'danger'}`} style={{ textTransform: 'none' }}>{data.smartInvoice.purchases[k]} expense purchase{data.smartInvoice.purchases[k] === 1 ? '' : 's'} {k.toLowerCase()}</span>)}
+          </div>
+          <p className="dim" style={{ fontSize: 13 }}>Finance-approved expense claims with a supplier’s Smart Invoice can be recorded as purchases (Expenses › claim). Notices from ZRA{data.smartInvoice.test ? ' (sandbox)' : ''}:</p>
+          {data.smartInvoice.noticesError && <span className="pill danger">{data.smartInvoice.noticesError}</span>}
+          {data.smartInvoice.notices?.length ? data.smartInvoice.notices.map((n: any) => (
+            <details key={n.number} style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13 }}><strong>{n.title}</strong> <span className="dim">· {new Date(n.date).toLocaleDateString()} · {n.by}</span></summary>
+              <p style={{ fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 6 }}>{n.content}</p>
+              {n.url && /^https:\/\//.test(n.url) && <a href={n.url} target="_blank" rel="noreferrer noopener" style={{ fontSize: 12 }}>Details</a>}
+            </details>
+          )) : !data.smartInvoice.noticesError && <span className="dim" style={{ fontSize: 13 }}>No notices.</span>}
+        </section>
+      )}
       {!data.cycles.length ? <section className="card" style={{ padding: 20 }}><p className="dim">No approved or paid payroll runs yet.</p></section> : data.cycles.map((c: any) => (
         <section key={c.id} data-card className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
           <strong>{month(c.payPeriodStart)}{c.offCycle && <span className="pill mute" style={{ marginLeft: 6 }}>off-cycle</span>}</strong>
