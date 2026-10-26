@@ -20,3 +20,6 @@ CLAUDE.md
 # uploads and local artefacts
 uploads/
 *.local
+
+# Puppeteer Chrome (downloaded at install)
+.cache/

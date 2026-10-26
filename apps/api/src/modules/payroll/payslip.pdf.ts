@@ -1,4 +1,5 @@
 import puppeteer, { Browser } from 'puppeteer'
+import { AppError } from '../../shared/utils/AppError'
 
 export function escapeHtml(s: unknown): string {
   if (s === null || s === undefined) return ''
@@ -119,7 +120,9 @@ function getBrowser(): Promise<Browser> {
       })
       .catch((err) => {
         browserPromise = null
-        throw err
+        // A clear answer instead of a bare 500; the log names the cause (usually Chrome missing on the host)
+        console.error('[pdf] Chrome did not start:', err?.message)
+        throw new AppError('Payslip PDFs are unavailable: the PDF engine could not start on the server. Please tell your administrator.', 503)
       })
   }
   return browserPromise
