@@ -94,8 +94,10 @@ export const PayrollInputType = loose('PayrollInputType', 'payroll_input_types')
 export const ShiftTemplate = loose('ShiftTemplate', 'shift_templates')
 export const ResourceCalendar = loose('ResourceCalendar', 'resource_calendars')
 export const LeaveBalance = loose('LeaveBalance', 'leave_balances')
+export const JobPosition = loose('JobPosition', 'job_positions')
+export const AuditLog = loose('AuditLog', 'audit_logs')
 
-export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance]
+export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog]
 
 // Create collections and indexes up front (needed before the first transaction writes to them)
 export async function syncMongoIndexes() {
