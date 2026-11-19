@@ -93,7 +93,8 @@ if (require.main === module) {
     try { await bootstrapCompany({ companyName: 'Dup', slug, email: 'dup@example.com', fullName: 'Dup User', passwordHash: 'x' }) } catch { rejected = true }
     console.assert(rejected && (await count(User, {})) === before, 'duplicate slug rejected and rolled back')
     await LeaveBalance.deleteMany({ employeeId: (await Employee.findOne({ tenantId }))?._id })
-    for (const m of [Tenant, Role, User, OrgUnit, Employee, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar]) await m.deleteMany({ tenantId })
+    for (const m of [Role, User, OrgUnit, Employee, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar]) await m.deleteMany({ tenantId })
+    await Tenant.deleteOne({ _id: tenantId })
     console.log('bootstrap self-check done')
     await mongoose.disconnect()
   })().catch((e) => { console.error(e); process.exit(1) })
