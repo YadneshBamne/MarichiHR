@@ -135,7 +135,32 @@ export const EmployeeContract = model('EmployeeContract', 'employee_contracts', 
   stateTransitions: { type: [TransitionSub], default: [] },
 }, [[{ tenantId: 1, status: 1 }], [{ employeeId: 1, status: 1 }], [{ salaryStructureId: 1 }]])
 
-export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract]
+
+// ─── Payroll (stage 3) ───
+export const PayrollCycle = model('PayrollCycle', 'payroll_cycles', {
+  tenantId: { type: S, required: true }, payPeriodStart: { type: D, required: true }, payPeriodEnd: { type: D, required: true }, cycleType: { type: S, default: 'monthly' },
+  offCycle: { type: B, default: false }, reason: S, correctsCycleId: S, legalEntityId: S, payGroupId: S, status: { type: S, default: 'draft' }, attendanceLockedAt: D,
+  approvedBy: S, approvedAt: D, financeApprovedBy: S, financeApprovedAt: D, signoffBy: S, signoffAt: D, disbursedAt: D, payslipsReleasedAt: D,
+}, [[{ tenantId: 1, payPeriodStart: -1 }]])
+// A payslip's lines and worked-day rows are embedded: they are always read and replaced with it
+const PayslipLineSub = new Schema<any>({
+  _id: { type: S, default: uuid }, salaryRuleId: S, category: { type: S, required: true }, name: S, code: S, sequence: N, amount: { type: N, required: true }, quantity: { type: N, default: 1 }, rate: { type: N, default: 1 },
+  computationMethod: S, formulaUsed: S, sourceRefType: S, sourceRefId: S, statutoryRef: Schema.Types.Mixed,
+})
+const WorkedDaySub = new Schema<any>({ _id: { type: S, default: uuid }, dayType: S, numberOfDays: N, numberOfHours: N })
+export const Payslip = model('Payslip', 'payslips', {
+  tenantId: { type: S, required: true }, payrollCycleId: { type: S, required: true }, employeeId: { type: S, required: true }, salaryStructureId: S, contractId: S,
+  grossEarnings: { type: N, required: true }, totalDeductions: { type: N, required: true }, netPay: { type: N, required: true }, currency: { type: S, required: true },
+  workingDays: N, paidDays: N, lwpDays: N, status: { type: S, default: 'draft' }, withheld: { type: B, default: false }, withheldReason: S, disbursedAt: D,
+  lines: { type: [PayslipLineSub], default: [] }, workedDays: { type: [WorkedDaySub], default: [] },
+}, [[{ payrollCycleId: 1, employeeId: 1 }, { unique: true }], [{ employeeId: 1 }], [{ tenantId: 1 }]])
+export const PayrollInput = model('PayrollInput', 'payroll_inputs', {
+  tenantId: { type: S, required: true }, payrollCycleId: { type: S, required: true }, employeeId: { type: S, required: true }, inputTypeId: { type: S, required: true }, amount: { type: N, required: true },
+  description: S, addedBy: { type: S, required: true }, approvedBy: S, approvedAt: D,
+}, [[{ payrollCycleId: 1 }]])
+export const Notification = loose('Notification', 'notifications')
+
+export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract, PayrollCycle, Payslip, PayrollInput, Notification]
 
 // Create collections and indexes up front (needed before the first transaction writes to them)
 export async function syncMongoIndexes() {
