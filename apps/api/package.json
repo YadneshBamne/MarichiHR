@@ -11,7 +11,9 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts",
-    "storage:check": "ts-node --transpile-only scripts/storage-check.ts"
+    "storage:check": "ts-node --transpile-only scripts/storage-check.ts",
+    "dev:mongo": "ts-node-dev --respawn --transpile-only src/server.mongo.ts",
+    "start:mongo": "node dist/server.mongo.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
