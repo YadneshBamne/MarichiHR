@@ -102,7 +102,40 @@ export const PayGroup = loose('PayGroup', 'pay_groups')
 export const DomainEvent = loose('DomainEvent', 'domain_events')
 export const PositionHistory = loose('PositionHistory', 'employee_position_history')
 
-export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory]
+
+// ─── Salary and contracts (stage 2) ───
+export const SalaryRuleCategory = model('SalaryRuleCategory', 'salary_rule_categories', { name: { type: S, required: true }, code: { type: S, required: true }, sequence: { type: N, required: true } }, [[{ code: 1 }, { unique: true }]])
+export const StatutoryTable = model('StatutoryTable', 'statutory_tables', {
+  country: S, code: { type: S, required: true }, name: S, effectiveFrom: { type: D, required: true }, params: Schema.Types.Mixed, sourceUrl: S, sourceNote: S,
+  verified: { type: B, default: false }, tenantId: { type: S, default: null }, createdBy: S,
+}, [[{ code: 1, effectiveFrom: 1, tenantId: 1 }, { unique: true }]], false)
+export const SalaryStructureType = model('SalaryStructureType', 'salary_structure_types', {
+  tenantId: { type: S, required: true }, name: { type: S, required: true }, wageType: { type: S, default: 'monthly' }, active: { type: B, default: true },
+}, [[{ tenantId: 1, name: 1 }, { unique: true }]])
+// A structure's rules are embedded (they are always read with it); categoryCode sits next to categoryId so the payroll engine needs no join
+const SalaryRuleSub = new Schema<any>({
+  _id: { type: S, default: uuid }, categoryId: { type: S, required: true }, categoryCode: { type: S, required: true }, name: { type: S, required: true }, code: { type: S, required: true },
+  sequence: { type: N, required: true }, amountType: { type: S, required: true }, amountFixed: Number, amountPercentage: Number, amountPercentageBase: S, pythonCode: S,
+  conditionSelect: { type: S, default: 'always' }, conditionExpr: S, appearsOnPayslip: { type: B, default: true }, active: { type: B, default: true }, createdAt: { type: D, default: Date.now },
+})
+export const SalaryStructure = model('SalaryStructure', 'salary_structures', {
+  tenantId: { type: S, required: true }, structureTypeId: { type: S, required: true }, name: { type: S, required: true }, code: { type: S, required: true },
+  countryCode: S, description: S, active: { type: B, default: true }, rules: { type: [SalaryRuleSub], default: [] },
+}, [[{ tenantId: 1, code: 1 }, { unique: true }], [{ 'rules._id': 1 }]])
+// ponytail: money is stored as Number (the API already rounds to cents); move to Decimal128 if amounts ever exceed ~2^53 cents
+export const GradeBand = model('GradeBand', 'grade_bands', {
+  tenantId: { type: S, required: true }, code: { type: S, required: true }, name: { type: S, required: true }, salaryMin: { type: N, required: true }, salaryMid: { type: N, required: true },
+  salaryMax: { type: N, required: true }, currency: { type: S, required: true }, active: { type: B, default: true },
+}, [[{ tenantId: 1, code: 1 }, { unique: true }]])
+const TransitionSub = new Schema<any>({ _id: { type: S, default: uuid }, fromState: S, toState: S, transitionedBy: S, reason: S, createdAt: { type: D, default: Date.now } })
+export const EmployeeContract = model('EmployeeContract', 'employee_contracts', {
+  tenantId: { type: S, required: true }, employeeId: { type: S, required: true }, ctcAnnual: { type: N, required: true }, wageMonthly: { type: N, required: true }, currency: { type: S, required: true },
+  variablePayPercent: { type: N, default: 0 }, noticePeriodDays: { type: N, default: 30 }, effectiveFrom: { type: D, required: true }, effectiveUntil: D, salaryStructureId: S, gradeBandId: S,
+  revisionReason: S, status: { type: S, default: 'new' }, stateChangedAt: D, stateChangedBy: S, expiryAlertSent: { type: B, default: false }, active: { type: B, default: true },
+  stateTransitions: { type: [TransitionSub], default: [] },
+}, [[{ tenantId: 1, status: 1 }], [{ employeeId: 1, status: 1 }], [{ salaryStructureId: 1 }]])
+
+export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract]
 
 // Create collections and indexes up front (needed before the first transaction writes to them)
 export async function syncMongoIndexes() {

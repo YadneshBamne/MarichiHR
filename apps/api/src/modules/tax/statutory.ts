@@ -28,9 +28,12 @@ export function bandTax(amount: number, bands: Band[]): number {
 // several API instances a new company version can take up to 10 minutes to reach the others
 type Row = { code: string; effectiveFrom: Date; params: any; tenantId: string | null }
 let cache: { at: number; rows: Row[] } | null = null
+// Where the rows come from is pluggable: Postgres by default, the MongoDB data layer calls useStatutoryRows()
+let load: () => Promise<Row[]> = () => prisma.statutoryTable.findMany({ select: { code: true, effectiveFrom: true, params: true, tenantId: true } })
+export const useStatutoryRows = (fn: () => Promise<Row[]>) => { load = fn; cache = null }
 async function rows() {
   if (!cache || Date.now() - cache.at > 600_000) {
-    const all = await prisma.statutoryTable.findMany({ select: { code: true, effectiveFrom: true, params: true, tenantId: true } })
+    const all = await load()
     // Oldest first; on the same date a company's own version comes after (and so wins over) the shared one
     all.sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime() || (a.tenantId ? 1 : 0) - (b.tenantId ? 1 : 0))
     cache = { at: Date.now(), rows: all }

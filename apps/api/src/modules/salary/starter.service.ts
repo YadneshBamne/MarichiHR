@@ -3,8 +3,8 @@ import { AppError } from '../../shared/utils/AppError'
 
 // One-click starter salary structure for the company's country, so a new company can run payroll without writing
 // formulas first. Statutory items use the app's statutory tables (each rate has a source; HR can edit everything after).
-type Rule = { code: string; name: string; cat: string; formula?: string; fixed?: number; payslip?: boolean }
-const TEMPLATES: Record<string, { name: string; description: string; rules: Rule[] }> = {
+export type Rule = { code: string; name: string; cat: string; formula?: string; fixed?: number; payslip?: boolean }
+export const TEMPLATES: Record<string, { name: string; description: string; rules: Rule[] }> = {
   ZM: {
     name: 'Zambia Standard Monthly', description: 'Basic 60%, housing 25%, transport 15% of the monthly wage; NAPSA, NHIMA and PAYE from the statutory tables. Edit the split to match your contracts.',
     rules: [
@@ -74,7 +74,7 @@ const TEMPLATES: Record<string, { name: string; description: string; rules: Rule
 }
 
 // Contractors are paid a fee with tax withheld at a flat rate: no PAYE, pension or health contributions
-const CONTRACTOR: Record<string, { name: string; description: string; rules: Rule[] }> = {
+export const CONTRACTOR: Record<string, { name: string; description: string; rules: Rule[] }> = {
   ZM: { name: 'Zambia Contractor Fee', description: 'The monthly fee, less withholding tax at the rate in the statutory tables (confirm it with ZRA).', rules: [
     { code: 'FEE', name: 'Contractor fee', cat: 'BASIC', formula: 'result = contract.wageMonthly' },
     { code: 'GROSS', name: 'Gross fee', cat: 'GROSS', formula: 'result = categories.BASIC' },
