@@ -354,3 +354,4 @@ th { text-transform: none !important; letter-spacing: 0 !important; background-c
 .lp2 .btn-sm { height: 44px; }
 .lp2 a[href="/"] { display: inline-flex; align-items: center; min-height: 44px; }
 .lp2 select { min-height: 44px; border-radius: 999px; padding-inline: 16px; }
+.lp2 .card { background: #fff; border: 1.5px solid var(--line-2); box-shadow: none; border-radius: 28px; }
