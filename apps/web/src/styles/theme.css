@@ -310,3 +310,47 @@ th { text-transform: none !important; letter-spacing: 0 !important; background-c
   .print-area, .print-area * { visibility: visible; }
   .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; box-shadow: none; }
 }
+
+/* ─── Login page in the flat, wide-type style (scoped to .lp2; pages/LoginPage.tsx). Layout and behaviour are unchanged. ───── */
+.canvas.lp2 { background: #ffffff; }
+.lp2 h1, .lp2 h2 { font-family: 'TikTok Sans', var(--font-display); font-weight: 800; font-stretch: 125%; letter-spacing: -0.015em; text-wrap: balance; }
+/* the inline sizes were set for the lighter face; the wide face needs less to hold the same measure */
+.lp2 h1 { font-size: clamp(26px, 3vw, 36px) !important; line-height: 1.1 !important; }
+.lp2 .login-brand h2 { font-size: clamp(24px, 2.6vw, 38px) !important; line-height: 1.12 !important; }
+
+/* fields: pills, flat, ink outline when focused */
+.lp2 .field > label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.lp2 .input { height: 52px; padding: 0 22px; border-radius: 999px; background: #fff; border: 1.5px solid var(--line-2); font-size: 15px; }
+.lp2 .input:focus { border-color: var(--ink); box-shadow: none; background: #fff; }
+.lp2 [role='group'][aria-label='6-digit code'] .input { height: 58px; padding: 0; border-radius: 20px; }
+.lp2 .field .link { top: 4px !important; right: 8px !important; padding: 0 12px; }
+
+/* buttons: yellow pill with a dark circle arrow; ghost buttons are outlined pills that fill dark on hover */
+.lp2 .btn { border-radius: 999px; font-weight: 600; font-size: 15px; }
+.lp2 .btn-primary { background: var(--honey); color: var(--ink); height: 56px !important; padding: 0 8px 0 26px; justify-content: space-between; }
+.lp2 .btn-primary:hover:not(:disabled) { background: #f3b922; }
+.lp2 .btn-primary svg { flex: none; width: 40px; height: 40px; padding: 11px; border-radius: 50%; background: var(--ink); color: #fff; }
+.lp2 .btn-primary .spinner { margin: 0 auto; border-top-color: var(--ink) !important; border-color: rgba(29, 29, 27, 0.2); }
+.lp2 .btn-ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+.lp2 .btn-ghost:hover:not(:disabled) { background: var(--ink); color: #fff; border-color: var(--ink); }
+.lp2 .btn-sm { height: 36px; padding: 0 16px; font-size: 13px; }
+.lp2 .btn:focus-visible, .lp2 .link:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.lp2 .link { font-size: 13px; font-weight: 600; text-underline-offset: 4px; text-decoration-thickness: 1.5px; }
+.lp2 .link:hover { text-decoration-color: var(--honey); }
+
+/* the right-hand panel: flat ink, honey half-disc and ring behind the widgets, no gradient, no drop shadows */
+.lp2 .login-brand { background: var(--ink) !important; border-radius: 28px !important; }
+.lp2 .login-brand::before { content: ''; position: absolute; right: -90px; bottom: -150px; width: 440px; height: 440px; border-radius: 50%; background: #e9c9a1; clip-path: inset(0 0 50% 0); transform: rotate(-12deg); }
+.lp2 .login-brand::after { content: ''; position: absolute; left: -70px; bottom: 40px; width: 150px; height: 150px; border-radius: 50%; border: 22px solid var(--honey); }
+.lp2 .login-brand > * { position: relative; z-index: 1; }
+.lp2 .login-brand [data-float] { box-shadow: none !important; border-radius: 28px !important; }
+.lp2 .login-brand [data-bar] { border-radius: 999px !important; }
+.lp2 .login-brand .pill { background: var(--honey) !important; color: var(--ink) !important; font-weight: 600; }
+/* 44px tap targets: buttons grow, text links in a sentence keep their line and gain padding */
+.lp2 button.link { display: inline-flex; align-items: center; min-height: 44px; text-align: left; }
+.lp2 a.link { display: inline-block; padding-block: 15px; margin-block: -15px; }
+.lp2 section > div:first-child { gap: 12px; }
+.lp2 section > div:first-child > span { text-align: right; }
+.lp2 .btn-sm { height: 44px; }
+.lp2 a[href="/"] { display: inline-flex; align-items: center; min-height: 44px; }
+.lp2 select { min-height: 44px; border-radius: 999px; padding-inline: 16px; }

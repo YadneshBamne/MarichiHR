@@ -138,7 +138,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="canvas login-grid" style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.1fr)', gap: 18, padding: 18 }}>
+    <div className="canvas login-grid lp2" style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.1fr)', gap: 18, padding: 18 }}>
       <section style={{ display: 'flex', flexDirection: 'column', padding: 'clamp(20px, 4vw, 48px)' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <Link to="/" aria-label="MarichiHR home"><Logo size={24} /></Link>
