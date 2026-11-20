@@ -11,7 +11,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script>try { if (localStorage.getItem('refreshToken')) location.replace('/dashboard') } catch (e) {}</script>
+<script>try { if (localStorage.getItem('refreshToken')) location.replace('/dashboard'); sessionStorage.removeItem('landing-retry'); if (location.pathname !== '/') history.replaceState(null, '', '/' + location.search + location.hash) } catch (e) {}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MarichiHR: HR, time and payroll in one workspace</title>
 <meta name="description" content="MarichiHR is built as separate apps: attendance, leave, payroll, expenses and exits on a shared core of people, approvals and tasks. Payroll tax tables for Zambia and India, two-person approval and encrypted bank details.">
@@ -1243,6 +1243,30 @@ motionKit.scene("overheard-thread", () => {
   const thread = document.querySelector("#overheard .oh-thread"), win = document.querySelector("#overheard .oh-window");
   motionKit.measure(() => motionKit.set(thread, { "--overheard-climb": -Math.max(0, thread.offsetHeight - win.clientHeight + 24) + "px" }));
 });
+</script>
+<script data-8b-part="clean-url">
+// Menu and footer links scroll to their section without putting #section in the address bar
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const go = (id, smooth) => {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: smooth && !reduce ? 'smooth' : 'auto', block: 'start' });
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus({ preventScroll: true });
+    return true;
+  };
+  document.addEventListener('click', event => {
+    const a = event.target.closest && event.target.closest('a[href^="#"]');
+    if (!a || event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const id = decodeURIComponent(a.getAttribute('href').slice(1));
+    if (id && go(id, true)) event.preventDefault();
+  });
+  if (location.hash.length > 1) {
+    const id = decodeURIComponent(location.hash.slice(1));
+    setTimeout(() => { go(id, false); history.replaceState(null, '', location.pathname + location.search); }, 80);
+  }
+})();
 </script>
 </body>
 </html>
