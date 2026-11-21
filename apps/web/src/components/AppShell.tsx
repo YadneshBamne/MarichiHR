@@ -13,6 +13,7 @@ import Popover from './ui/Popover'
 import NotificationBell from './NotificationBell'
 import CommandPalette from './CommandPalette'
 import ProductTour from './ProductTour'
+import AssistantPanel from './AssistantPanel'
 import LanguagePicker from './LanguagePicker'
 
 const ROLE_LABEL: Record<string, string> = { system_admin: 'Administrator', hr_admin: 'HR administrator', payroll_admin: 'Payroll & finance', compliance_officer: 'Compliance', manager: 'Manager', employee: 'Employee' }
@@ -131,6 +132,7 @@ export default function AppShell() {
 
       {drawer && <Drawer onClose={() => setDrawer(false)}>{sidebar('drawer')}</Drawer>}
       <CommandPalette open={palette} onClose={() => setPalette(false)} onTour={startTour} />
+      <AssistantPanel />
       {tour && <ProductTour onClose={() => setTour(false)} />}
     </div>
   )

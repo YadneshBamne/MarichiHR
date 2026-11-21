@@ -81,6 +81,7 @@ export function createApp() {
   if (process.env.DB_PROVIDER === 'mongo') {
     app.use('/api/v1/helpdesk', require('./modules/helpdesk/helpdesk.mongo.router').helpdeskRouter)
     app.use('/api/v1/confirmation', require('./modules/employees/confirmation.mongo.router').confirmationRouter)
+    app.use('/api/v1/assistant', require('./modules/assistant/assistant.mongo.router').assistantRouter)
     app.use('/api/v1/timesheets', require('./modules/timesheets/timesheets.mongo.router').timesheetsRouter)
   }
 

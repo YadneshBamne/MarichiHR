@@ -29,7 +29,7 @@ export const FEATURES: Feature[] = [
   { key: 'api', name: 'API and webhooks', blurb: 'API keys with scopes, signed webhooks, integration endpoints', status: 'live' },
   { key: 'sso', name: 'Single sign-on', blurb: 'Sign in through the company identity provider', status: 'planned' },
   { key: 'multiCompany', name: 'Multi-company', blurb: 'Several legal entities in one workspace', status: 'live' },
-  { key: 'assistant', name: 'AI assistant', blurb: 'Ask HR questions and act on them, scoped to your role and company', status: 'planned' },
+  { key: 'assistant', name: 'AI assistant', blurb: 'Ask HR questions and act on them, scoped to your role and company', status: 'live' },
 ]
 const FEATURE_KEYS = FEATURES.map((f) => f.key)
 
