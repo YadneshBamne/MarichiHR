@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { prisma } from '../../infrastructure/database/prisma'
 import { notify, userIdOfEmployee } from '../../infrastructure/notifications/notify'
 import { AppError } from '../../shared/utils/AppError'
-import { AccessUser, isReportingChainOf } from '../../shared/utils/access'
+import { AccessUser, isReportingChainOf, getReportingSubtreeIds } from '../../shared/utils/access'
 import { businessToday } from '../../shared/utils/businessDate'
 
 // Goals and appraisal. A manager (anyone above the person in the reporting line, with the Manager role) or HR sets a
@@ -105,10 +105,7 @@ export const performanceService = {
     else if (scope === 'all') { if (!isHR(user)) throw new AppError('Only HR sees every goal', 403) }
     else {
       if (!user.employeeId) return []
-      const below = await prisma.$queryRaw<{ id: string }[]>`
-        WITH RECURSIVE t AS (SELECT id FROM employees WHERE "managerId" = ${user.employeeId} AND "tenantId" = ${user.tenantId}
-          UNION SELECT e.id FROM employees e JOIN t ON e."managerId" = t.id WHERE e."tenantId" = ${user.tenantId}) SELECT id FROM t`
-      where.employeeId = { in: below.map((b) => b.id) }
+      where.employeeId = { in: await getReportingSubtreeIds(user.employeeId, user.tenantId) }
     }
     const rows = await prisma.performanceGoal.findMany({ where, include, orderBy: [{ updatedAt: 'desc' }] })
     const n = await names(user.tenantId, rows.flatMap((g) => [g.employeeId, g.setByEmployeeId]))

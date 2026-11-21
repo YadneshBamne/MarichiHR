@@ -34,7 +34,7 @@ export const ENABLED = new Set<string>([
   'leaveType', 'leaveBalance', 'leaveRequest', 'leaveApproval', 'leaveAllocation', 'leaveAllocationRequest', 'leaveBlackout', 'leaveYearEndRun',
   'attendanceRecord', 'attendanceRegularisation', 'attendanceAdjustment', 'attendancePolicy', 'overtimeRequest', 'rosterDay', 'shiftTemplate', 'employeeShift',
   'holiday', 'holidayCalendar', 'workLocation',
-  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken',
+  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi',
 ])
 
 const col = (m: M) => mongoose.connection.collection(m.coll)
@@ -250,6 +250,19 @@ async function toDoc(m: M, data: any, session: any, after: Array<(id: string) =>
   }
   return doc
 }
+async function splitNested(m: M, data: any, session: any): Promise<{ rest: any; run: (id: string) => Promise<void> }> {
+  const rest: any = {}, jobs: Array<(id: string) => Promise<void>> = []
+  for (const [k, v] of Object.entries<any>(data)) {
+    const f = m.fields.get(k)
+    if (f?.kind === 'object' && v && !f.relationFromFields?.length && (v.create || v.createMany)) {
+      const o = await relOpposite(m, f)
+      if (!o) throw notAvailable(`Updating ${m.name}.${k}`)
+      const items = [...arr(v.create ?? []), ...(v.createMany?.data ?? [])]
+      jobs.push(async (id) => { for (const c of items) { const rd = await toDoc(o.r, { ...c, [o.fk]: id }, session, []); await col(o.r).insertOne(rd, { session }) } })
+    } else rest[k] = v
+  }
+  return { rest, run: async (id) => { for (const j of jobs) await j(id) } }
+}
 function updateOps(m: M, data: any) {
   const $set: any = {}, $inc: any = {}, $push: any = {}
   for (const f of m.scalars) if (f.isUpdatedAt) $set[f.name] = new Date()
@@ -388,10 +401,12 @@ function delegate(m: M, delegateName: string, tx?: any) {
       catch (e: any) { if (args.skipDuplicates && e?.code === 11000) return { count: e.result?.insertedCount ?? e.insertedCount ?? 0 }; throw dupError(m, e) }
     }),
     update: (args: any) => op(async (s) => {
-      const u = updateOps(m, args.data)
-      if (!Object.keys(u).length) { const d0 = await col(m).findOne(await buildWhere(m, args.where, s), { session: s }); if (!d0) throw miss(); return (await shape(m, [d0], args, s))[0] }
+      const nested = await splitNested(m, args.data, s)
+      const u = updateOps(m, nested.rest)
+      if (!Object.keys(u).length) { const d0 = await col(m).findOne(await buildWhere(m, args.where, s), { session: s }); if (!d0) throw miss(); await nested.run(d0._id as any); return (await shape(m, [d0], args, s))[0] }
       const d = await col(m).findOneAndUpdate(await buildWhere(m, args.where, s), u, { returnDocument: 'after', session: s }).catch((e) => { throw dupError(m, e) })
       if (!d) throw miss()
+      await nested.run(d._id as any)
       return (await shape(m, [d], args, s))[0]
     }),
     updateMany: (args: any) => op(async (s) => {
