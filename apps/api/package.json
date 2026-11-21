@@ -12,7 +12,7 @@
     "db:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts",
     "storage:check": "ts-node --transpile-only scripts/storage-check.ts",
-    "dev:mongo": "ts-node-dev --respawn --transpile-only src/server.mongo.ts",
+    "dev:mongo": "nodemon --watch src --ext ts,json --exec \"ts-node --transpile-only src/server.mongo.ts\"",
     "start:mongo": "node dist/server.mongo.js"
   },
   "dependencies": {
