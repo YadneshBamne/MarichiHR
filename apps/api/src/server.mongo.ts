@@ -11,6 +11,11 @@ const PORT = process.env.PORT || 4000
 process.on('unhandledRejection', (reason: any) => console.error('Unhandled rejection:', reason?.message ?? reason))
 
 async function main() {
+  // A wrong encryption key would only show up later as 500s on bank details, ID numbers, API keys and two-step sign-in: refuse to start instead
+  if (process.env.NODE_ENV === 'production' && !/^[0-9a-fA-F]{64}$/.test(process.env.BANK_ENCRYPTION_KEY ?? '')) {
+    console.error('✗ BANK_ENCRYPTION_KEY must be exactly 64 hex characters (make one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))")')
+    process.exit(1)
+  }
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('  MarichiHR API — MongoDB mode')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
