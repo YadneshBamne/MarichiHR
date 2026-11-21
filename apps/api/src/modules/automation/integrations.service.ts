@@ -37,6 +37,10 @@ export async function assertPublicUrl(raw: string) {
   return u
 }
 
+// The request sender; tests replace it so no real request leaves the machine
+let send: typeof fetch = (...a) => fetch(...a)
+export const setWebhookFetch = (f: typeof fetch | null) => { send = f ?? ((...a) => fetch(...a)) }
+
 export const sign = (secret: string, ts: number, body: string) => crypto.createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex')
 
 export const WebhookBody = z.object({
@@ -60,7 +64,7 @@ async function attempt(deliveryId: string) {
   let code: number | null = null, error: string | null = null
   try {
     await assertPublicUrl(hook.url) // again at send time: DNS may have changed since the URL was saved
-    const res = await fetch(hook.url, {
+    const res = await send(hook.url, {
       method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(8000),
       headers: { 'content-type': 'application/json', 'user-agent': 'MarichiHR-Webhooks/1', 'x-marichihr-event': event.eventType, 'x-marichihr-delivery': d.id, 'x-marichihr-signature': `t=${ts},v1=${sign(decryptField(hook.secret), ts, body)}` },
       body,

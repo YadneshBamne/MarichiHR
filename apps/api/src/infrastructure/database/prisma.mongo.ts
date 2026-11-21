@@ -34,7 +34,7 @@ export const ENABLED = new Set<string>([
   'leaveType', 'leaveBalance', 'leaveRequest', 'leaveApproval', 'leaveAllocation', 'leaveAllocationRequest', 'leaveBlackout', 'leaveYearEndRun',
   'attendanceRecord', 'attendanceRegularisation', 'attendanceAdjustment', 'attendancePolicy', 'overtimeRequest', 'rosterDay', 'shiftTemplate', 'employeeShift',
   'holiday', 'holidayCalendar', 'workLocation',
-  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi',
+  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi', 'webhook', 'webhookDelivery', 'automationRule', 'automationRun', 'apiKey',
 ])
 
 const col = (m: M) => mongoose.connection.collection(m.coll)
