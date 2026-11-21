@@ -74,7 +74,7 @@ export const taxAdmin = {
     const data = { name: shared.name, country: shared.country, params: body.params, sourceUrl: body.sourceUrl ?? shared.sourceUrl, sourceNote: body.sourceNote, verified: true, createdBy: u.userId }
     const existing = await prisma.statutoryTable.findFirst({ where: { code: body.code, effectiveFrom, tenantId: u.tenantId } })
     // Figures already used by a paid run stay as they were: a later date makes a new version instead
-    if (existing && (await prisma.payslipLine.count({ where: { statutoryRef: { contains: `${body.code} ${body.effectiveFrom} (company)` }, payslip: { payrollCycle: { tenantId: u.tenantId, status: { in: ['disbursed', 'locked'] } } } } })))
+    if (existing && (await refUsed(u.tenantId, `${body.code} ${body.effectiveFrom} (company)`, true)))
       throw new AppError('Paid payroll already used this version. Enter the change with a later "in force from" date.', 400)
     const row = existing
       ? await prisma.statutoryTable.update({ where: { id: existing.id }, data })
@@ -89,7 +89,7 @@ export const taxAdmin = {
     const row = await prisma.statutoryTable.findFirst({ where: { id, tenantId: u.tenantId } })
     if (!row) throw new AppError('Not found', 404)
     const ref = `${row.code} ${row.effectiveFrom.toISOString().slice(0, 10)} (company)`
-    if (await prisma.payslipLine.count({ where: { statutoryRef: { contains: ref }, payslip: { payrollCycle: { tenantId: u.tenantId } } } })) throw new AppError('Payroll has used this version, so it stays on record', 400)
+    if (await refUsed(u.tenantId, ref, false)) throw new AppError('Payroll has used this version, so it stays on record', 400)
     await prisma.statutoryTable.delete({ where: { id: row.id } })
     clearStatutoryCache()
     await audit(u, 'TAX_TABLE_REMOVED', 'statutory_table', row.id, { code: row.code })
@@ -102,7 +102,7 @@ export const taxAdmin = {
     const cycle = await prisma.payrollCycle.findFirst({ where: { id: b.cycleId, tenantId: u.tenantId } })
     if (!cycle) throw new AppError('Payroll run not found', 404)
     if (cycle.status !== 'review') throw new AppError('Tax can be overridden while the run is in review (reopen it first)', 400)
-    const line = await prisma.payslipLine.findFirst({ where: { code: b.lineCode, category: 'TAX', payslip: { payrollCycleId: cycle.id, employeeId: b.employeeId } } })
+    const line = (await taxLine(u.tenantId, cycle.id, b.employeeId, b.lineCode))?.line
     if (!line) throw new AppError('That tax line is not on this payslip', 404)
     if (await prisma.taxOverride.count({ where: { cycleId: cycle.id, employeeId: b.employeeId, lineCode: b.lineCode, status: 'pending' } })) throw new AppError('An override for this line is already waiting for sign-off', 400)
     const o = await prisma.taxOverride.create({ data: { tenantId: u.tenantId, cycleId: cycle.id, employeeId: b.employeeId, lineCode: b.lineCode, originalAmount: line.amount, amount: b.amount, reason: b.reason, requestedBy: u.userId } })
@@ -145,13 +145,31 @@ export const taxAdmin = {
 // Replaces the line's amount on the person's current payslip in the run and moves deductions and net pay by the
 // difference. Also called after a re-run, for every override already signed off.
 export async function applyOverride(o: { id: string; tenantId: string; cycleId: string; employeeId: string; lineCode: string; amount: any; reason: string }) {
-  const line = await prisma.payslipLine.findFirst({ where: { code: o.lineCode, category: 'TAX', payslip: { payrollCycle: { tenantId: o.tenantId, id: o.cycleId }, employeeId: o.employeeId } }, include: { payslip: true } })
-  if (!line) return
+  const found = await taxLine(o.tenantId, o.cycleId, o.employeeId, o.lineCode)
+  if (!found) return
+  const { line, payslip } = found
   const delta = round2(Number(o.amount) - Number(line.amount))
+  const ref = `Override signed off by Compliance (${o.reason})`.slice(0, 300)
+  if (process.env.DB_PROVIDER === 'mongo') { // the line lives inside the payslip document
+    const { Payslip } = require('../../infrastructure/mongo/mongo')
+    await Payslip.updateOne({ _id: payslip.id }, { $set: { 'lines.$[l].amount': Number(o.amount), 'lines.$[l].computationMethod': 'override', 'lines.$[l].statutoryRef': ref, totalDeductions: round2(Number(payslip.totalDeductions) + delta), netPay: round2(Number(payslip.netPay) - delta) } }, { arrayFilters: [{ 'l.code': o.lineCode, 'l.category': 'TAX' }] })
+    return
+  }
   await prisma.$transaction([
-    prisma.payslipLine.update({ where: { id: line.id }, data: { amount: Number(o.amount), computationMethod: 'override', statutoryRef: `Override signed off by Compliance (${o.reason})`.slice(0, 300) } }),
-    prisma.payslip.update({ where: { id: line.payslipId }, data: { totalDeductions: round2(Number(line.payslip.totalDeductions) + delta), netPay: round2(Number(line.payslip.netPay) - delta) } }),
+    prisma.payslipLine.update({ where: { id: line.id }, data: { amount: Number(o.amount), computationMethod: 'override', statutoryRef: ref } }),
+    prisma.payslip.update({ where: { id: payslip.id }, data: { totalDeductions: round2(Number(payslip.totalDeductions) + delta), netPay: round2(Number(payslip.netPay) - delta) } }),
   ])
+}
+
+// Payslip lines are rows on Postgres and embedded in the payslip on MongoDB: both are read through the payslip
+async function taxLine(tenantId: string, cycleId: string, employeeId: string, code: string) {
+  const p = await prisma.payslip.findFirst({ where: { payrollCycleId: cycleId, employeeId, payrollCycle: { tenantId } }, select: { id: true, totalDeductions: true, netPay: true, lines: { select: { id: true, code: true, category: true, amount: true } } } })
+  const line = p?.lines.find((l: any) => l.code === code && l.category === 'TAX')
+  return p && line ? { payslip: p, line } : null
+}
+async function refUsed(tenantId: string, ref: string, paidOnly: boolean) {
+  const slips = await prisma.payslip.findMany({ where: { payrollCycle: { tenantId, ...(paidOnly && { status: { in: ['disbursed', 'locked'] } }) } }, select: { lines: { select: { statutoryRef: true } } } })
+  return slips.some((p: any) => p.lines.some((l: any) => (l.statutoryRef ?? '').includes(ref)))
 }
 
 export async function reapplyOverrides(cycleId: string) {

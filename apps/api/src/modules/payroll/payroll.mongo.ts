@@ -8,6 +8,8 @@ import { CreateCycleDto, AddPayrollInputDto } from './payroll.types'
 import { AppError } from '../../shared/utils/AppError'
 import { renderPayslipHtml, generatePayslipPdf } from './payslip.pdf'
 import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
+import { formatFor, renderBankFile, fileExt } from './bank-formats'
+import { reapplyOverrides } from '../tax/tax-admin.service'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import {
   Tenant, User, Employee, EmployeeContract, SalaryStructure, ResourceCalendar, PayrollCycle, Payslip, PayrollInput, PayrollInputType, AuditLog, DomainEvent, Notification, LegalEntity, PayGroup,
@@ -320,6 +322,7 @@ export const payrollService = {
       const pool = Math.max(1, Number(process.env.PAYROLL_CONCURRENCY) || 8)
       let next = 0
       await Promise.all(Array.from({ length: Math.min(pool, employees.length) }, async () => { while (next < employees.length) await one(employees[next++]) }))
+      await reapplyOverrides(cycleId) // tax overrides already signed off survive a re-run
       await PayrollCycle.updateOne({ _id: cycleId }, { status: 'review' })
     } catch (err) {
       await PayrollCycle.updateOne({ _id: cycleId }, { status: 'draft' })
@@ -540,7 +543,6 @@ export const payrollService = {
   },
 
   async generateBankFile(cycleId: string, tenantId: string, userId: string, opts: { allowPartial: boolean; formatId?: string; paymentDate?: string }) {
-    if (opts.formatId) throw new AppError('Custom bank layouts are not available on the MongoDB version yet; use the generic CSV', 501)
     const { cycle, included, excluded, totalAmount } = await evaluateBankEligibility(cycleId, tenantId)
     if (excluded.length > 0 && !opts.allowPartial) {
       const who = excluded.map((e) => `${e.name} (${e.employeeCode}): ${e.reason}`).join('; ')
@@ -548,10 +550,12 @@ export const payrollService = {
     }
     if (included.length === 0) throw new AppError('No payable employees to include in the bank file', 400)
     const period = dstr(cycle.payPeriodStart).slice(0, 7)
-    const csv = formatBankFile(included.map((r) => ({ employeeCode: r.employeeCode, name: r.name, bankName: r.bankName, accountNumber: r.accountNumber, branchSwift: r.branchSwift, amount: r.amount, currency: r.currency, reference: `SAL-${period}-${r.employeeCode}` })), 'generic_csv')
+    const bankRows = (included.map((r) => ({ employeeCode: r.employeeCode, name: r.name, bankName: r.bankName, accountNumber: r.accountNumber, branchSwift: r.branchSwift, amount: r.amount, currency: r.currency, reference: `SAL-${period}-${r.employeeCode}` })))
+    const layout = await formatFor(tenantId, opts.formatId)
+    const csv = layout ? renderBankFile(bankRows, layout, opts.paymentDate ?? dstr(new Date())) : formatBankFile(bankRows, 'generic_csv')
     const sha256 = crypto.createHash('sha256').update(csv).digest('hex')
     await audit({ tenantId, userId, action: 'PAYROLL_BANK_FILE_GENERATED', entityType: 'payroll_cycle', entityId: cycleId, newValue: { employees: included.length, totalAmount, sha256, allowPartial: opts.allowPartial } })
-    return { csv, filename: `bank-file-${period}.csv` }
+    return { csv, filename: `bank-file-${period}${layout ? `-${layout.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : ''}.${fileExt(layout)}` }
   },
 
   // ─── GL EXPORT ───
