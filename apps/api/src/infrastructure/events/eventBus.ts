@@ -15,6 +15,7 @@ function getEventQueue(): Queue {
 
 // jobId = eventId, so a sweep never queues an event that is already waiting
 export async function enqueueEvent(eventId: string) {
+  if (process.env.DB_PROVIDER === 'mongo') return // no worker consumes the queue on the MongoDB API yet; events stay recorded as pending
   await getEventQueue().add('dispatch', { eventId }, {
     jobId: eventId, attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true, removeOnFail: true,
   })

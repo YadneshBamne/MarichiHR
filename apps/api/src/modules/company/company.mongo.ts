@@ -1,3 +1,4 @@
+import { creditLeave } from '../leave/credits.service'
 import bcrypt from 'bcryptjs'
 import { AppError } from '../../shared/utils/AppError'
 import { forgetTenantTimezone } from '../../shared/utils/businessDate'
@@ -48,6 +49,7 @@ export const companyService = {
     const email = body.email!.trim().toLowerCase()
     const [slug, passwordHash] = await Promise.all([freeSlug(body.companyName), bcrypt.hash(body.password!, 12)])
     const { tenantId } = await bootstrapCompany({ companyName: body.companyName.trim(), slug, email, fullName: body.fullName, passwordHash })
+    void creditLeave(tenantId).catch((e: any) => console.error('[signup] leave credit failed:', e?.message))
     const [tenant, owner] = await Promise.all([load(tenantId), authRepository.findUserByEmail(email, tenantId)])
     return { workspace: tenant.slug, ...(await completeLogin(owner!, tenant)) }
   },
@@ -79,6 +81,7 @@ export const companyService = {
     if (refused.length) throw new AppError(`Your plan does not include: ${refused.join(', ')}. Change the plan or add it as an add-on.`, 403, 'NOT_IN_PLAN')
     const t: any = ser(await Tenant.findByIdAndUpdate(tenantId, { modules: clean }, { returnDocument: 'after' }).lean())
     forgetTenantModules(tenantId)
+    if (clean.includes('leave') && !(before.modules ?? []).includes('leave')) void creditLeave(tenantId).catch((e: any) => console.error('[apps] leave credit failed:', e?.message))
     await AuditLog.create({ tenantId, userId, action: 'APPS_CHANGED', entityType: 'tenant', entityId: tenantId, oldValue: { modules: before.modules ?? [] }, newValue: { modules: clean } })
     return shape(t)
   },

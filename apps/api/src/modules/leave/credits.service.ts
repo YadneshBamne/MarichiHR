@@ -22,6 +22,10 @@ async function apply(tx: Tx, rows: { employeeId: string; leaveTypeId: string; da
   if (!rows.length) return
   await tx.leaveAllocation.createMany({ data: rows.map((r) => ({ ...r, approvedBy: 'system', status: 'approved' })) })
   const now = new Date()
+  if (process.env.DB_PROVIDER === 'mongo') { // same effect without the Postgres-only upsert statement
+    for (const r of rows) await tx.leaveBalance.upsert({ where: { employeeId_leaveTypeId: { employeeId: r.employeeId, leaveTypeId: r.leaveTypeId } }, create: { employeeId: r.employeeId, leaveTypeId: r.leaveTypeId, balanceDays: r.daysAllocated, asOfDate: now }, update: { balanceDays: { increment: r.daysAllocated }, asOfDate: now } })
+    return
+  }
   await tx.$executeRaw`
     INSERT INTO leave_balances ("employeeId", "leaveTypeId", "balanceDays", "usedDays", "pendingDays", "encashedDays", "lapsedDays", "asOfDate")
     VALUES ${Prisma.join(rows.map((r) => Prisma.sql`(${r.employeeId}, ${r.leaveTypeId}, ${r.daysAllocated}, 0, 0, 0, 0, ${now})`))}

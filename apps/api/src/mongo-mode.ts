@@ -7,7 +7,8 @@ import path from 'path'
 // answers 501 NOT_AVAILABLE_ON_MONGO. Import this file before anything else.
 
 process.env.DB_PROVIDER = 'mongo'
-process.env.JOBS_ENABLED = 'false' // the scheduled jobs are Postgres code; they come back with their modules
+process.env.JOBS_ENABLED ??= 'false' // scheduled jobs are opt-in on MongoDB: set JOBS_ENABLED=true to run the ones listed in JOBS_ONLY
+process.env.JOBS_ONLY ??= 'leave-accrual,leave-sla-escalation,leave-year-end,carry-forward-expiry,leave-attendance-check,absent-marking,absence-flags'
 
 const SWAPS: Record<string, string> = {
   'infrastructure/database/prisma': 'infrastructure/database/prisma.stub',
@@ -28,6 +29,7 @@ const SWAPS: Record<string, string> = {
   'modules/policies/policies.service': 'modules/policies/policies.service.shim',
   'modules/dashboard/dashboard.router': 'modules/dashboard/dashboard.router.mongo',
   'modules/notifications/notifications.router': 'modules/notifications/notifications.router.shim',
+  'infrastructure/notifications/notify': 'infrastructure/notifications/notify.shim',
 }
 
 const root = __dirname.replace(/\\/g, '/')

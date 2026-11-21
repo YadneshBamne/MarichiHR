@@ -1,3 +1,4 @@
+import { creditLeave } from '../leave/credits.service'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import mongoose from 'mongoose'
@@ -217,6 +218,7 @@ export const employeeService = {
         await session.endSession()
       }
     }
+    if (((await Tenant.findById(tenantId).select('modules').lean()) as any)?.modules?.includes('leave')) void creditLeave(tenantId, { employeeId }).catch((e: any) => console.error('[leave] credit failed:', e?.message))
     await audit({ tenantId, userId: createdBy, action: 'EMPLOYEE_CREATED', entityType: 'employee', entityId: employeeId, newValue: { employeeCode: code, name: fullName } })
     const created: any = await Employee.findById(employeeId).lean()
     return { employee: toSafeEmployee(ser(created)), message: 'Employee created. Grant login access to let them sign in.' }

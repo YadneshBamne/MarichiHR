@@ -134,9 +134,13 @@ export function getCronQueue() {
   return cronQueue
 }
 
+// JOBS_ONLY=name,name registers just those cron jobs (the MongoDB API runs only the jobs of the modules ported to it)
+const only = () => (process.env.JOBS_ONLY ? new Set(process.env.JOBS_ONLY.split(',').map((x) => x.trim()).filter(Boolean)) : null)
+const active = () => Object.entries(JOBS).filter(([name]) => !only() || only()!.has(name))
+
 export async function startJobs() {
+  if (process.env.DB_PROVIDER !== 'mongo') workers.push(new Worker('domain-events', async (job) => dispatchEvent(job.data.eventId), { connection: redis, prefix: QUEUE_PREFIX, concurrency: 5, ...IDLE_CHEAP }))
   workers.push(
-    new Worker('domain-events', async (job) => dispatchEvent(job.data.eventId), { connection: redis, prefix: QUEUE_PREFIX, concurrency: 5, ...IDLE_CHEAP }),
     new Worker(
       'cron',
       async (job) => {
@@ -152,12 +156,12 @@ export async function startJobs() {
   for (const w of workers) w.on('failed', (job, err) => console.error(`[jobs] ${job?.queueName}/${job?.name} failed:`, err.message))
 
   const queue = getCronQueue()
-  for (const [name, def] of Object.entries(JOBS)) {
+  for (const [name, def] of active()) {
     await queue.upsertJobScheduler(name, { pattern: def.pattern, tz: 'UTC' }, { name, opts: { removeOnComplete: 50, removeOnFail: 50 } })
   }
   // Drop schedulers for jobs that no longer exist
-  for (const s of await queue.getJobSchedulers()) if (!JOBS[s.key]) await queue.removeJobScheduler(s.key)
-  console.log(`✓ Jobs         : workers started, ${Object.keys(JOBS).length} cron schedules registered`)
+  for (const s of await queue.getJobSchedulers()) if (!active().some(([n]) => n === s.key)) await queue.removeJobScheduler(s.key)
+  console.log(`✓ Jobs         : workers started, ${active().length} cron schedules registered`)
 }
 
 export async function stopJobs() {
