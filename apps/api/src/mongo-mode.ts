@@ -8,7 +8,8 @@ import path from 'path'
 
 process.env.DB_PROVIDER = 'mongo'
 process.env.JOBS_ENABLED ??= 'false' // scheduled jobs are opt-in on MongoDB: set JOBS_ENABLED=true to run the ones listed in JOBS_ONLY
-process.env.JOBS_ONLY ??= 'leave-accrual,leave-sla-escalation,leave-year-end,carry-forward-expiry,leave-attendance-check,absent-marking,absence-flags'
+// webhook-retry is left out: the in-process event pump retries webhooks itself
+process.env.JOBS_ONLY ??= 'events-sweep,people-dates,leave-sla-escalation,absent-marking,contracts,position-changes,document-expiry,leave-year-end,absence-flags,leave-attendance-check,carry-forward-expiry,declaration-window,leave-accrual'
 
 const SWAPS: Record<string, string> = {
   'infrastructure/database/prisma': 'infrastructure/database/prisma.stub',

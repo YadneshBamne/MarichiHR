@@ -1,10 +1,12 @@
 import { DomainEvent } from '../mongo/mongo'
 import { runAutomations } from '../../modules/automation/automation.service'
 import { queueWebhooks, retryWebhooks } from '../../modules/automation/integrations.service'
+import { EVENT_HANDLERS } from './handlers'
 
 // MongoDB API: delivers recorded domain events to company automation rules and signed webhooks, in this process, without Redis or a queue.
 // Every pending event is claimed atomically (so several API instances never send the same event twice), handed to the rules and webhooks
-// of its company, and marked delivered. Only these two consumers run here: the other event handlers of the Postgres API are not ported.
+// of its company, and marked delivered. The same event handlers as the Postgres API run first (notifications, leave credits, news posts,
+// the accounting auto-push). A handler that fails is logged and does not stop the event: notifications dedupe on the event id, so a retry is safe.
 // Events written by the hand-made Mongo services carry `type`; the Prisma-compatible client writes `eventType`. Both are read.
 const STUCK_MS = 5 * 60_000
 
@@ -18,6 +20,7 @@ export async function pumpOnce(limit = 50): Promise<number> {
     try {
       if (!raw.eventType && eventType) await DomainEvent.updateOne({ _id: raw._id }, { $set: { eventType } }) // webhook deliveries read the event back by id
       const e = { id: raw._id as string, tenantId: raw.tenantId as string, eventType: eventType as string, payload: raw.payload ?? {}, createdAt: raw.createdAt }
+      for (const handler of EVENT_HANDLERS[eventType] ?? []) { try { await handler(e as any) } catch (err: any) { console.error('[events] handler failed:', eventType, err?.message) } }
       await runAutomations(e as any) // neither throws: failures are recorded on their own rows
       await queueWebhooks(e)
       await DomainEvent.updateOne({ _id: raw._id }, { $set: { status: 'delivered', deliveredAt: new Date() } })
@@ -36,6 +39,6 @@ export function startEventPump() {
   const guard = (fn: () => Promise<unknown>) => async () => { if (busy) return; busy = true; try { await fn() } catch (e: any) { console.error('[events] pump:', e?.message) } finally { busy = false } }
   timers = [setInterval(guard(() => pumpOnce()), 5_000), setInterval(guard(() => retryWebhooks()), 60_000)]
   timers.forEach((t) => t.unref())
-  console.log('✓ Events       : delivering to automations and webhooks every 5 s')
+  console.log('✓ Events       : delivering to handlers, automations and webhooks every 5 s')
 }
 export const stopEventPump = () => { timers.forEach(clearInterval); timers = [] }

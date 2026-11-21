@@ -9,8 +9,7 @@ import { EntityBody } from './modules/company/entities.service'
 import { PayGroup, LegalEntity, Employee, AuditLog } from './infrastructure/mongo/mongo'
 
 // Small routes the payroll and company screens call that sit inline in the Postgres routers: pay groups, legal entities and
-// the flexi-basket check. Mounted ahead of the original routers only in MongoDB mode (see app.ts).
-// ponytail: the flexi-basket is not ported, so every employee simply has no basket ("enabled: false").
+// (the flexi-basket now runs through the original router). Mounted ahead of the original routers only in MongoDB mode (see app.ts).
 
 const ser = (d: any) => { if (!d) return d; const { _id, ...rest } = d; return { id: _id, ...rest } }
 const countBy = async (tenantId: string, field: 'payGroupId' | 'legalEntityId', ids: string[]) => {
@@ -24,7 +23,6 @@ const id = z.object({ id: z.string().uuid() })
 
 export const mongoExtras = Router()
 
-mongoExtras.get('/salary/flexi/mine', authenticate, asyncHandler(async (_req, res) => { res.json({ success: true, data: { enabled: false } }) }))
 
 mongoExtras.get('/payroll/pay-groups', authenticate, asyncHandler(async (req, res) => {
   const rows: any[] = await PayGroup.find({ tenantId: req.user!.tenantId }).collation({ locale: 'en', strength: 2 }).sort({ name: 1 }).lean()

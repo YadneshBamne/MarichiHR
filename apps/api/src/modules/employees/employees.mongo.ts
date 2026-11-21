@@ -16,12 +16,23 @@ import {
 
 // MongoDB version of the core of employees.service.ts / employees.repository.ts: directory, profile, create, update,
 // bank details, archive, login access and the org chart. Same rules and response shapes.
-// Not ported yet (kept on Postgres until their stage): org unit / job position / work location editing, skills and resume
-// lines, masters validation (assertMasters), the mandatory-field check, and publishing events to the queue (events are recorded
-// in domain_events only).
+// Not ported: masters validation (assertMasters), the mandatory-field check, and publishing events to the queue (events are recorded
+// in domain_events and delivered by the in-process pump).
 // ponytail: employee code collisions are caught by the unique index and retried, as in the SQL version.
 
 const ser = (d: any) => { if (!d) return d; const { _id, ...rest } = d; return { id: _id, ...rest } }
+// A person's skills with their skill, skill type and level (the shape the Postgres include gives)
+async function skillsOf(employeeId: string) {
+  const rows: any[] = await col('employee_skills').find({ employeeId }).sort({ createdAt: -1 }).toArray()
+  if (!rows.length) return []
+  const skills: any[] = await col('skills').find({ _id: { $in: rows.map((r) => r.skillId) } } as any).toArray()
+  const types: any[] = await col('skill_types').find({ _id: { $in: skills.map((k) => k.skillTypeId) } } as any).toArray()
+  const levels: any[] = await col('skill_levels').find({ _id: { $in: rows.map((r) => r.skillLevelId).filter(Boolean) } } as any).toArray()
+  return rows.map((r) => {
+    const k = skills.find((x) => x._id === r.skillId)
+    return { ...ser(r), skill: k && { ...ser(k), skillType: ser(types.find((t) => t._id === k.skillTypeId)) }, skillLevel: ser(levels.find((l) => l._id === r.skillLevelId)) ?? null }
+  })
+}
 const ids = (rows: any[], k: string) => [...new Set(rows.map((r) => r[k]).filter(Boolean))] as string[]
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const col = (name: string) => mongoose.connection.collection(name)
@@ -77,7 +88,7 @@ export const employeeRepository = {
   async findById(id: string, tenantId: string) {
     const e: any = await Employee.findOne({ _id: id, tenantId }).lean()
     if (!e) return null
-    const [build, calendar, reports, contracts, nContracts, nLeave, nAtt] = await Promise.all([
+    const [build, calendar, reports, contracts, nContracts, nLeave, nAtt, skills, resumeLines] = await Promise.all([
       related([e], true),
       e.resourceCalendarId ? ResourceCalendar.findById(e.resourceCalendarId).lean() : null,
       Employee.find({ tenantId, managerId: id, active: true }).lean() as Promise<any[]>,
@@ -85,6 +96,8 @@ export const employeeRepository = {
       col('employee_contracts').countDocuments({ employeeId: id }),
       col('leave_requests').countDocuments({ employeeId: id }),
       col('attendance_records').countDocuments({ employeeId: id }),
+      skillsOf(id),
+      col('resume_lines').find({ employeeId: id }).sort({ dateStart: -1 }).toArray().then((rows) => rows.map(ser)),
     ])
     const rb = await related(reports)
     const row = build(e)
@@ -93,7 +106,7 @@ export const employeeRepository = {
       resourceCalendar: calendar && { ...ser(calendar), days: (calendar as any).days ?? [] },
       directReports: reports.map((r) => { const x = rb(r); return { ...x, user: x.user && { fullName: undefined, avatarUrl: x.user.avatarUrl }, jobPosition: x.jobPosition && { title: x.jobPosition.title } } }),
       contracts: contracts.map(ser),
-      skills: [], resumeLines: [],
+      skills, resumeLines,
       _count: { contracts: nContracts, leaveRequests: nLeave, attendanceRecords: nAtt },
     }
   },

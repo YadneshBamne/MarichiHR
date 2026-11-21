@@ -33,6 +33,14 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '*/10 * * * *',
     description: 'Re-dispatch domain events that were never enqueued or whose handlers failed; publish scheduled announcements',
     run: async (tenantId) => {
+      if (process.env.DB_PROVIDER === 'mongo') {
+        // The in-process pump delivers pending events; this puts failed ones (under 10 tries) back in its queue
+        const { DomainEvent } = require('../mongo/mongo')
+        const back = (await DomainEvent.updateMany({ ...(tenantId && { tenantId }), status: 'failed', retryCount: { $lt: 10 } }, { $set: { status: 'pending' } })).modifiedCount
+        const announced = await announcementService.publishDue()
+        if (announced) console.log(`[cron] events-sweep: ${announced} scheduled announcement(s) published`)
+        return back
+      }
       const stale = await prisma.domainEvent.findMany({
         where: {
           ...(tenantId && { tenantId }),

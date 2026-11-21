@@ -2,10 +2,11 @@ import mongoose from 'mongoose'
 import { AppError } from '../../shared/utils/AppError'
 import { assertRefsInTenant } from './employees.mongo'
 import { CreateOrgUnitDto, CreateJobPositionDto, CreateWorkLocationDto, AddSkillDto, AddResumeLineDto } from './employees.types'
+// the Prisma-compatible MongoDB client (a .mongo file would otherwise be handed the real Prisma client)
+import { prisma } from '../../infrastructure/database/prisma.stub'
 import { OrgUnit, JobPosition, WorkLocation, Employee, AuditLog } from '../../infrastructure/mongo/mongo'
 
-// MongoDB version of the org unit, job position and work location services (and the Masters hub), plus the employee
-// skills and resume lines, which are not ported yet and answer 501.
+// MongoDB version of the org unit, job position and work location services (and the Masters hub), plus the employee skills and resume lines.
 
 const ser = (d: any) => { if (!d) return d; const { _id, ...rest } = d; return { id: _id, ...rest } }
 const col = (n: string) => mongoose.connection.collection(n)
@@ -133,13 +134,29 @@ export async function mastersOverview(tenantId: string) {
   }
 }
 
-// Not ported yet
-const later = (what: string) => { throw new AppError(`${what} are not available on the MongoDB version yet`, 501, 'NOT_AVAILABLE_ON_MONGO') }
+// Skills and resume lines go through the Prisma-compatible client, the same calls as the Postgres version
+const inTenant = async (employeeId: string, tenantId: string) => { if (!(await Employee.exists({ _id: employeeId, tenantId }))) throw new AppError('Employee not found', 404) }
 export const employeeExtras = {
-  async addSkill(_e: string, _t: string, _d: AddSkillDto) { return later('Skills') },
-  async removeSkill(_s: string, _e: string, _t: string) { return later('Skills') },
-  async addResumeLine(_e: string, _t: string, _d: AddResumeLineDto) { return later('Resume lines') },
-  async updateResumeLine(_i: string, _e: string, _t: string, _d: Partial<AddResumeLineDto>) { return later('Resume lines') },
-  async removeResumeLine(_i: string, _e: string, _t: string) { return later('Resume lines') },
-  async getSkillTypes(_t: string) { return [] as any[] },
+  async addSkill(employeeId: string, tenantId: string, d: AddSkillDto) {
+    await inTenant(employeeId, tenantId)
+    if (!(await prisma.skill.findFirst({ where: { id: d.skillId, skillType: { tenantId } }, select: { id: true } }))) throw new AppError('Skill not found', 404)
+    if (d.skillLevelId && !(await prisma.skillLevel.findFirst({ where: { id: d.skillLevelId, skillId: d.skillId }, select: { id: true } }))) throw new AppError('Skill level not found', 404)
+    return prisma.employeeSkill.create({ data: { employeeId, skillId: d.skillId, skillLevelId: d.skillLevelId, justification: d.justification }, include: { skill: { include: { skillType: true } }, skillLevel: true } })
+  },
+  async removeSkill(skillId: string, employeeId: string, tenantId: string) { await inTenant(employeeId, tenantId); await prisma.employeeSkill.deleteMany({ where: { id: skillId, employeeId } }) },
+  async addResumeLine(employeeId: string, tenantId: string, d: AddResumeLineDto) {
+    await inTenant(employeeId, tenantId)
+    return prisma.resumeLine.create({ data: { employeeId, lineType: d.lineType, name: d.name, description: d.description, dateStart: d.dateStart ? new Date(d.dateStart) : undefined, dateEnd: d.dateEnd ? new Date(d.dateEnd) : undefined, organisation: d.organisation } })
+  },
+  async updateResumeLine(id: string, employeeId: string, tenantId: string, d: Partial<AddResumeLineDto>) {
+    await inTenant(employeeId, tenantId)
+    const data: any = { ...d }
+    if (d.dateStart) data.dateStart = new Date(d.dateStart)
+    if (d.dateEnd) data.dateEnd = new Date(d.dateEnd)
+    return prisma.resumeLine.updateMany({ where: { id, employeeId }, data })
+  },
+  async removeResumeLine(id: string, employeeId: string, tenantId: string) { await inTenant(employeeId, tenantId); await prisma.resumeLine.deleteMany({ where: { id, employeeId } }) },
+  async getSkillTypes(tenantId: string) {
+    return prisma.skillType.findMany({ where: { tenantId }, include: { skills: { include: { levels: { orderBy: { sequence: 'asc' } } } } }, orderBy: { name: 'asc' } })
+  },
 }

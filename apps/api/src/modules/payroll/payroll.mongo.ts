@@ -10,6 +10,8 @@ import { renderPayslipHtml, generatePayslipPdf } from './payslip.pdf'
 import { formatBankFile, buildGlLines, formatGlCsv } from './payroll.export'
 import { formatFor, renderBankFile, fileExt } from './bank-formats'
 import { reapplyOverrides } from '../tax/tax-admin.service'
+import { applyFlexi } from './payroll-extras.service'
+import { verifiedExemption } from '../tax/declarations.service'
 import { decryptField, last4 } from '../../shared/utils/crypto'
 import {
   Tenant, User, Employee, EmployeeContract, SalaryStructure, ResourceCalendar, PayrollCycle, Payslip, PayrollInput, PayrollInputType, AuditLog, DomainEvent, Notification, LegalEntity, PayGroup,
@@ -19,8 +21,7 @@ import {
 // System admin sign-off, disburse, inputs, payslip release and hold, payslip access and PDF, the bank file and the GL journal.
 // Payslips carry their lines and worked days inside the document. Same rules, same response shapes; the engine and the
 // statutory calculators are the unchanged ones.
-// ponytail: not ported yet (each is a separate piece): off-cycle runs and corrections, flexi baskets, tax overrides, India tax
-// declaration exemptions, custom bank layouts (generic CSV only), and publishing events to the queue (recorded in domain_events).
+// ponytail: not ported yet: publishing events to the queue (they are recorded in domain_events and delivered by the in-process pump).
 // Leave, attendance, overtime and reimbursements are read from their collections as raw documents, so payroll picks them up as
 // soon as those modules are ported; until then they are simply empty.
 
@@ -176,7 +177,7 @@ export async function computeEmployeePayslip(emp: any, cycle: any, cycleInputs: 
       gross: round2(prior.reduce((a, p) => a + p.grossEarnings, 0)),
       tax: round2(prior.reduce((a, p) => a + p.lines.filter((l: any) => l.category === 'TAX').reduce((b: number, l: any) => b + l.amount, 0), 0)),
       monthsLeft: indiaMonthsLeft(periodStart),
-      exemption: 0, // ponytail: tax declaration exemptions are ported with the tax stage
+      exemption: await verifiedExemption(emp.tenantId, emp.id, Number(indiaFyStart(periodStart).slice(0, 4))),
     }
   }
 
@@ -194,7 +195,7 @@ export async function computeEmployeePayslip(emp: any, cycle: any, cycleInputs: 
     factor: 1, workingDays: periodWorking.length, paidDays: periodWorking.length, lwpDays: 0, extraLines: [], inputsByCode, statutory,
   } as any)
 
-  const payLines: any[] = result.lines // ponytail: flexi baskets (applyFlexi) are not ported yet
+  const payLines: any[] = await applyFlexi(emp.id, contract.salaryStructure, result.lines) // the approved flexi split of the pot line
   const basicNow = result.lines.filter((l: any) => l.categoryCode === 'BASIC').reduce((a: number, l: any) => a + l.amount, 0)
   const shareWarn = await basicShareWarning(emp.tenantId, emp, basicNow, result.gross)
   if (shareWarn) warnings.push(shareWarn)
@@ -225,6 +226,27 @@ async function basicShareWarning(tenantId: string, emp: any, basic: number, gros
   return null
 }
 
+// An off-cycle payment: only the approved inputs added to the run, no tax computed (a tax deduction input covers a taxable payment)
+async function offCyclePayslip(emp: any, cycle: any, inputs: any[]) {
+  const mine = inputs.filter((i) => i.employeeId === emp.id)
+  if (!mine.length) return { skip: 'No inputs for this person in this off-cycle run', warnings: [] as string[] }
+  const contract: any = await EmployeeContract.findOne({ employeeId: emp.id, active: true, status: { $in: ['running', 'expired', 'closed'] } }).sort({ effectiveFrom: -1 }).lean()
+  if (!contract) return { skip: 'No contract on record', warnings: [] as string[] }
+  const warnings: string[] = ['Off-cycle payment: tax is not computed automatically. Add a tax deduction input if this payment is taxable.']
+  const lines: any[] = []
+  let earnings = 0, deductions = 0, seq = 10
+  for (const inp of mine) {
+    if (!inp.approvedBy) { warnings.push(`Payroll input "${inp.inputType.name}" (${inp.amount}) is not approved and was ignored`); continue }
+    const ded = inp.inputType.category === 'deductions'
+    if (ded) deductions += inp.amount; else earnings += inp.amount
+    lines.push({ salaryRuleId: null, category: ded ? 'DED' : 'ALW', name: inp.description ? `${inp.inputType.name} — ${inp.description}` : inp.inputType.name, code: inp.inputType.code, sequence: (seq += 10), amount: inp.amount, quantity: 1, rate: 1, computationMethod: 'payroll_input', formulaUsed: null, sourceRefType: 'payroll_input', sourceRefId: inp.id })
+  }
+  if (!lines.length) return { skip: 'No approved inputs', warnings }
+  lines.push({ salaryRuleId: null, category: 'GROSS', name: 'Gross', code: 'GROSS', sequence: 900, amount: round2(earnings), quantity: 1, rate: 1, computationMethod: 'off_cycle', formulaUsed: null, sourceRefType: null, sourceRefId: null })
+  lines.push({ salaryRuleId: null, category: 'NET', name: 'Net Pay', code: 'NET', sequence: 999, amount: round2(earnings - deductions), quantity: 1, rate: 1, computationMethod: 'off_cycle', formulaUsed: null, sourceRefType: null, sourceRefId: null })
+  return { warnings, payslip: { tenantId: cycle.tenantId, payrollCycleId: cycle.id, employeeId: emp.id, salaryStructureId: contract.salaryStructureId, contractId: contract._id, grossEarnings: round2(earnings), totalDeductions: round2(deductions), netPay: round2(earnings - deductions), currency: contract.currency, workingDays: 0, paidDays: 0, lwpDays: 0, status: 'draft', lines, workedDays: [] } }
+}
+
 const payslipView = async (docs: any[]) => {
   const emps = new Map<string, any>(((await Employee.find({ _id: { $in: docs.map((p) => p.employeeId) } }).select('employeeCode firstName lastName bankName bankAccountNo bankVerified bankIfscSwift tenantId').lean()) as any[]).map((e) => [e._id, e]))
   return docs.map((p) => ({ ...ser(p), lines: p.lines.map(ser), workedDays: p.workedDays.map(ser), employee: ser(emps.get(p.employeeId)) }))
@@ -234,15 +256,16 @@ export const payrollService = {
   // ─── CYCLES ───
   async createCycle(tenantId: string, userId: string, dto: CreateCycleDto) {
     if (dto.payPeriodStart > dto.payPeriodEnd) throw new AppError('Pay period start must be on or before the end date', 400)
-    if (dto.offCycle || dto.correctsCycleId) throw new AppError('Off-cycle runs and corrections are not available on the MongoDB version yet', 501)
+    if (dto.offCycle && !dto.reason?.trim()) throw new AppError('Say what the off-cycle run is for', 400)
+    if (dto.correctsCycleId && !(await PayrollCycle.exists({ _id: dto.correctsCycleId, tenantId, status: { $in: ['disbursed', 'locked'] } }))) throw new AppError('Corrections are for a run that was already paid', 400)
     if (dto.legalEntityId && !(await LegalEntity.exists({ _id: dto.legalEntityId, tenantId, active: true }))) throw new AppError('Legal entity not found', 404)
     if (dto.payGroupId && !(await PayGroup.exists({ _id: dto.payGroupId, tenantId, active: true }))) throw new AppError('Pay group not found', 404)
     const start = toDate(dto.payPeriodStart), end = toDate(dto.payPeriodEnd)
     // A run for everyone overlaps any run; an entity's run overlaps that entity's runs and runs for everyone
-    const overlap: any = await PayrollCycle.findOne({ tenantId, offCycle: false, payPeriodStart: { $lte: end }, payPeriodEnd: { $gte: start },
+    const overlap: any = dto.offCycle ? null : await PayrollCycle.findOne({ tenantId, offCycle: false, payPeriodStart: { $lte: end }, payPeriodEnd: { $gte: start },
       $and: [...(dto.legalEntityId ? [{ $or: [{ legalEntityId: null }, { legalEntityId: { $exists: false } }, { legalEntityId: dto.legalEntityId }] }] : []), ...(dto.payGroupId ? [{ $or: [{ payGroupId: null }, { payGroupId: { $exists: false } }, { payGroupId: dto.payGroupId }] }] : [])] }).lean()
     if (overlap) throw new AppError(`This period overlaps an existing cycle (${dstr(overlap.payPeriodStart)} to ${dstr(overlap.payPeriodEnd)}, ${overlap.status})`, 409)
-    const cycle: any = (await PayrollCycle.create({ tenantId, payPeriodStart: start, payPeriodEnd: end, cycleType: dto.cycleType || 'monthly', offCycle: false, legalEntityId: dto.legalEntityId ?? undefined, payGroupId: dto.payGroupId ?? undefined, status: 'draft' })).toObject()
+    const cycle: any = (await PayrollCycle.create({ tenantId, payPeriodStart: start, payPeriodEnd: end, cycleType: dto.offCycle ? 'off_cycle' : dto.cycleType || 'monthly', offCycle: !!dto.offCycle, reason: dto.reason?.trim() || undefined, correctsCycleId: dto.correctsCycleId ?? undefined, legalEntityId: dto.legalEntityId ?? undefined, payGroupId: dto.payGroupId ?? undefined, status: 'draft' })).toObject()
     await audit({ tenantId, userId, action: 'PAYROLL_CYCLE_CREATED', entityType: 'payroll_cycle', entityId: cycle._id, newValue: dto })
     return cycleView(cycle)
   },
@@ -311,7 +334,9 @@ export const payrollService = {
         const exitDay = exitByEmployee.get(emp.id)
         if (exitDay) { skipped.push({ employeeId: emp.id, employeeCode: emp.employeeCode, name, reason: `Exiting on ${exitDay}: paid through the full & final settlement` }); return }
         try {
-          const out = await computeEmployeePayslip(emp, cycle, cycleInputs, inputCodes)
+          // Off-cycle runs pay only the inputs added to them; people without any are left out quietly
+          if (cycle.offCycle && !cycleInputs.some((i: any) => i.employeeId === emp.id)) return
+          const out: any = cycle.offCycle ? await offCyclePayslip(emp, cycle, cycleInputs) : await computeEmployeePayslip(emp, cycle, cycleInputs, inputCodes)
           if (out.skip) { skipped.push({ employeeId: emp.id, employeeCode: emp.employeeCode, name, reason: out.skip }); return }
           await Payslip.create(out.payslip)
           processed++

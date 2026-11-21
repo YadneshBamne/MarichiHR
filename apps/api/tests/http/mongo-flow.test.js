@@ -132,7 +132,7 @@ async function call(method, path, token, body) {
     const unported = await call('GET', '/attendance/policies', owner)
     check(unported.status === 403, 'an app that is off stays 403')
     const lv = await call('GET', '/salary/flexi', owner)
-    check(lv.status === 501 && lv.body.code === 'NOT_AVAILABLE_ON_MONGO', `unported module answers 501 (got ${lv.status})`)
+    check(lv.status !== 501, `the flexi-basket is ported: it answers ${lv.status}, not 501`)
     const rt = await call('POST', '/auth/refresh', null, { refreshToken: relogin.refreshToken })
     check(rt.status === 200 && rt.data.refreshToken !== relogin.refreshToken, 'refresh rotates over HTTP')
     check((await call('POST', '/auth/logout', null, { refreshToken: rt.data.refreshToken })).status === 200, 'logout')

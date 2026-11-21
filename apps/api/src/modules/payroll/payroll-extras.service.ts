@@ -89,7 +89,8 @@ export const flexiService = {
     if (!s?.flexiPotCode) return { enabled: false }
     const [choice, last] = await Promise.all([
       prisma.flexiChoice.findUnique({ where: { employeeId_structureId: { employeeId: u.employeeId!, structureId: s.id } } }),
-      prisma.payslipLine.findFirst({ where: { code: s.flexiPotCode, payslip: { employeeId: u.employeeId! } }, orderBy: { payslip: { createdAt: 'desc' } }, select: { amount: true } }),
+      // the pot is the pot line plus what was split out of it, on the newest payslip that has it (read through the payslip: works on both databases)
+      prisma.payslip.findMany({ where: { employeeId: u.employeeId! }, orderBy: { createdAt: 'desc' }, take: 6, include: { lines: true } }).then((ps: any[]) => { for (const p of ps) { if (!p.lines.some((x: any) => x.code === s.flexiPotCode)) continue; return { amount: Math.round(p.lines.filter((x: any) => x.code === s.flexiPotCode || String(x.code).startsWith('FLEXI_')).reduce((t: number, x: any) => t + x.amount, 0) * 100) / 100 } } return null }),
     ])
     return { enabled: true, structure: s.name, potCode: s.flexiPotCode, components: s.flexiComponents, pot: last ? Number(last.amount) : null, choice }
   },
