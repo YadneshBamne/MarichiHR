@@ -13,6 +13,8 @@ import { computeGratuity, statutoryFor } from '../tax/statutory'
 import { DEPARTMENTS } from './exits.schema'
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+// The payroll engine returns payslip lines as { create: [...] } for Postgres and as a plain array on MongoDB (lines are embedded)
+const payslipLines = (p: any): any[] => (Array.isArray(p.lines) ? p.lines : p.lines.create)
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000)
 
@@ -194,7 +196,7 @@ export const exitsService = {
     if (salaryPaid) warnings.push(`Salary for ${ymd(start).slice(0, 7)} was already paid in the regular payroll cycle — not repeated here`)
 
     const lines: SettlementLine[] = []
-    for (const l of out.payslip.lines.create as any[]) {
+    for (const l of payslipLines(out.payslip)) {
       if (l.category === 'REIMB') {
         lines.push({ section: 'reimbursement', kind: 'earning', code: l.code, name: l.name, amount: l.amount, sourceRefType: l.sourceRefType, sourceRefId: l.sourceRefId })
       } else if (!salaryPaid && ['BASIC', 'ALW', 'DED', 'TAX'].includes(l.category)) {
@@ -233,8 +235,9 @@ export const exitsService = {
     // Gratuity by the employee's tax country (statutory_tables IN_GRATUITY / ZM_GRATUITY)
     const contract = await prisma.employeeContract.findFirst({ where: { employeeId: emp.id, active: true, effectiveFrom: { lte: lwd } }, orderBy: { effectiveFrom: 'desc' }, select: { effectiveFrom: true, effectiveUntil: true } })
     const contractFrom = contract?.effectiveFrom ?? emp.hireDate
-    const paidBasic = await prisma.payslipLine.aggregate({ _sum: { amount: true }, where: { category: 'BASIC', payslip: { employeeId: emp.id, payrollCycle: { tenantId, status: { in: ['disbursed', 'locked'] }, payPeriodStart: { gte: contractFrom } } } } })
-    const finalBasic = salaryPaid ? 0 : (out.payslip.lines.create as any[]).filter((l) => l.category === 'BASIC').reduce((t, l) => t + Number(l.amount), 0)
+    const paidSlips = await prisma.payslip.findMany({ where: { employeeId: emp.id, payrollCycle: { tenantId, status: { in: ['disbursed', 'locked'] }, payPeriodStart: { gte: contractFrom } } }, select: { lines: { select: { category: true, amount: true } } } })
+    const paidBasic = { _sum: { amount: paidSlips.reduce((t: number, p: any) => t + (p.lines as any[]).filter((l) => l.category === 'BASIC').reduce((s, l) => s + Number(l.amount), 0), 0) } }
+    const finalBasic = salaryPaid ? 0 : (payslipLines(out.payslip)).filter((l) => l.category === 'BASIC').reduce((t, l) => t + Number(l.amount), 0)
     const grat = computeGratuity({
       country: emp.taxJurisdiction, hireDate: ymd(emp.hireDate), lastWorkingDate: ymd(lwd), exitType: exit.exitType, basicMonthly,
       basicEarnedInContract: round2(Number(paidBasic._sum.amount ?? 0) + finalBasic), contractFrom: ymd(contractFrom), contractUntil: contract?.effectiveUntil ? ymd(contract.effectiveUntil) : null,

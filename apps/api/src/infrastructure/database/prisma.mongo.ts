@@ -34,7 +34,7 @@ export const ENABLED = new Set<string>([
   'leaveType', 'leaveBalance', 'leaveRequest', 'leaveApproval', 'leaveAllocation', 'leaveAllocationRequest', 'leaveBlackout', 'leaveYearEndRun',
   'attendanceRecord', 'attendanceRegularisation', 'attendanceAdjustment', 'attendancePolicy', 'overtimeRequest', 'rosterDay', 'shiftTemplate', 'employeeShift',
   'holiday', 'holidayCalendar', 'workLocation',
-  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage',
+  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken',
 ])
 
 const col = (m: M) => mongoose.connection.collection(m.coll)
@@ -160,6 +160,10 @@ async function loadRelation(m: M, f: F, spec: any, raws: any[], session?: any): 
     const shaped = await shape(r, docs, sp, session)
     docs.forEach((d, i) => out.set(String(d[to]), shaped[i]))
     for (const d of raws) out.set(`p:${d._id}`, out.get(String(d[key(from)])) ?? null)
+    return out
+  }
+  if (f.isList && raws.some((d) => Array.isArray(d[f.name]))) { // children stored inside the parent (embedded)
+    for (const d of raws) out.set(`p:${d._id}`, await shape(r, (d[f.name] ?? []).map((c: any) => ({ _id: c._id ?? c.id, ...c })), sp, session))
     return out
   }
   const o = await relOpposite(m, f)
@@ -446,6 +450,10 @@ function makeClient(tx?: any): any {
       return d
     },
   })
+}
+
+export async function ensureEnabledModels() {
+  for (const name of ENABLED) { const m = BY_DELEGATE.get(name); if (m) await ensure(m) }
 }
 
 export const prisma: any = makeClient()

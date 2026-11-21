@@ -16,6 +16,7 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   await connectMongo()
   await syncMongoIndexes()
+  await require('./infrastructure/database/prisma.mongo').ensureEnabledModels()
   console.log('✓ MongoDB      : Connected')
   const { createApp } = await import('./app')
   const httpServer = createServer(createApp())
