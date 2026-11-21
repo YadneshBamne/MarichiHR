@@ -237,6 +237,16 @@ button { font: inherit; color: inherit; }
 #navigation .nav-overlay .m-btn { align-self: flex-start; }
 #navigation .nav-overlay .nav-logo { color: var(--color-1); }
 #navigation .nav-overlay :focus-visible { outline-color: var(--color-5); }
+/* opening: the ink panel grows from the menu button as a circle, then the links rise in one by one; closing runs it back */
+@media (prefers-reduced-motion: no-preference) {
+  #navigation .nav-overlay { animation: nav-ov-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  #navigation .nav-overlay.is-closing { animation: nav-ov-out 0.4s cubic-bezier(0.55, 0, 0.8, 0.3) both; }
+  #navigation .nav-overlay__top, #navigation .nav-overlay__links li, #navigation .nav-overlay .m-btn { animation: nav-ov-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(0.18s + var(--i, 0) * 0.07s); }
+  #navigation .nav-overlay.is-closing .nav-overlay__top, #navigation .nav-overlay.is-closing .nav-overlay__links li, #navigation .nav-overlay.is-closing .m-btn { animation: none; }
+}
+@keyframes nav-ov-in { from { clip-path: circle(0 at calc(100% - 40px) 40px); } to { clip-path: circle(150% at calc(100% - 40px) 40px); } }
+@keyframes nav-ov-out { from { clip-path: circle(150% at calc(100% - 40px) 40px); } to { clip-path: circle(0 at calc(100% - 40px) 40px); } }
+@keyframes nav-ov-rise { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
 @media (max-width: 899.98px) {
   #navigation .nav-bar { padding-block: 14px; }
   #navigation .nav-links, #navigation .nav-cta { display: none; }
@@ -715,42 +725,42 @@ if (matchMedia('(prefers-reduced-motion: no-preference)').matches && CSS.support
       <ul class="lg-track" data-8b-items=":scope > .lg-panel">
         <li class="lg-panel">
           <p class="m-text-8 lg-greet" style="--len:9">Clock in!</p>
-          <h3 class="m-text-6">Attendance</h3>
+          <h2 class="m-text-6">Attendance</h2>
           <p class="m-text-4">Web clock-in with location, monthly timesheets</p>
           <p class="m-text-4">Overtime and regularisation approvals</p>
           <span class="m-shape-2 lg-shape lg-shape--a" aria-hidden="true"></span><span class="m-shape-4 lg-shape lg-shape--b" aria-hidden="true"></span>
         </li>
         <li class="lg-panel">
           <p class="m-text-8 lg-greet" style="--len:9">Time off!</p>
-          <h3 class="m-text-6">Leave</h3>
+          <h2 class="m-text-6">Leave</h2>
           <p class="m-text-4">Accrual and carry-forward rules, team calendar</p>
           <p class="m-text-4">Approval SLAs with escalation</p>
           <svg class="m-shape-3 lg-shape lg-shape--a" viewBox="0 0 100 100" aria-hidden="true"><use href="#shape-scallop"/></svg><span class="m-shape lg-shape lg-shape--b" aria-hidden="true"></span>
         </li>
         <li class="lg-panel">
           <p class="m-text-8 lg-greet" style="--len:9">Get paid!</p>
-          <h3 class="m-text-6">Payroll</h3>
+          <h2 class="m-text-6">Payroll</h2>
           <p class="m-text-4">Formula-based salary rules, payslip PDFs</p>
           <p class="m-text-4">Two Payroll admins approve every run</p>
           <span class="m-shape-6 lg-shape lg-shape--a" aria-hidden="true"></span><span class="m-shape-5 lg-shape lg-shape--b" aria-hidden="true"></span>
         </li>
         <li class="lg-panel">
           <p class="m-text-8 lg-greet" style="--len:9">Claim it!</p>
-          <h3 class="m-text-6">Expenses</h3>
+          <h2 class="m-text-6">Expenses</h2>
           <p class="m-text-4">Receipts and limits per category, multi-currency</p>
           <p class="m-text-4">Manager and finance approval</p>
           <span class="m-shape lg-shape lg-shape--a" aria-hidden="true"></span><span class="m-shape-4 lg-shape lg-shape--b" aria-hidden="true"></span>
         </li>
         <li class="lg-panel">
           <p class="m-text-8 lg-greet" style="--len:9">Farewell!</p>
-          <h3 class="m-text-6">Exits</h3>
+          <h2 class="m-text-6">Exits</h2>
           <p class="m-text-4">Notice period tracking, department clearance</p>
           <p class="m-text-4">Full and final computation</p>
           <span class="m-shape-2 lg-shape lg-shape--a" aria-hidden="true"></span><span class="m-shape-5 lg-shape lg-shape--b" aria-hidden="true"></span>
         </li>
         <li class="lg-panel">
           <p class="m-text-8 lg-greet" style="--len:9">Included!</p>
-          <h3 class="m-text-6">The shared core</h3>
+          <h2 class="m-text-6">The shared core</h2>
           <p class="m-text-4">People and org chart, approvals in one inbox</p>
           <p class="m-text-4">Tasks and notifications</p>
           <svg class="m-shape-3 lg-shape lg-shape--a" viewBox="0 0 100 100" aria-hidden="true"><use href="#shape-scallop"/></svg><span class="m-shape-4 lg-shape lg-shape--b" aria-hidden="true"></span>
@@ -1027,15 +1037,25 @@ if (matchMedia('(prefers-reduced-motion: no-preference)').matches && CSS.support
   };
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
-  const setOpen = open => {
-    overlay.hidden = !open;
+  overlay.querySelectorAll('.nav-overlay__links li').forEach((li, i) => li.style.setProperty('--i', i + 1));
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const setOpen = (open, refocus = true) => {
     openBtn.setAttribute('aria-expanded', String(open));
-    if (open) { window.motionKit?.wheel?.stop(); closeBtn.focus(); }
-    else { window.motionKit?.wheel?.start(); openBtn.focus(); }
+    if (open) {
+      overlay.classList.remove('is-closing');
+      overlay.hidden = false;
+      window.motionKit?.wheel?.stop(); closeBtn.focus();
+    } else {
+      window.motionKit?.wheel?.start();
+      if (refocus) openBtn.focus();
+      if (calm) { overlay.hidden = true; return; }
+      overlay.classList.add('is-closing');
+      overlay.addEventListener('animationend', () => { if (overlay.classList.contains('is-closing')) { overlay.hidden = true; overlay.classList.remove('is-closing'); } }, { once: true });
+    }
   };
   openBtn.addEventListener('click', () => setOpen(true));
   closeBtn.addEventListener('click', () => setOpen(false));
-  overlay.addEventListener('click', event => { if (event.target.closest('a')) { overlay.hidden = true; openBtn.setAttribute('aria-expanded', 'false'); window.motionKit?.wheel?.start(); } });
+  overlay.addEventListener('click', event => { if (event.target.closest('a')) setOpen(false, false); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !overlay.hidden) setOpen(false); });
 })();
 </script>

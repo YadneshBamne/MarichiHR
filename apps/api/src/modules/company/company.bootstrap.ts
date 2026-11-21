@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { prisma } from '../../infrastructure/database/prisma'
-import { ALL_APPS, ROLE_DEFS, DEFAULT_LEAVE_TYPES, DEFAULT_ACTIVITY_TYPES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INPUT_TYPES } from './company.catalog'
+import { DEFAULT_PLAN, entitlements } from './plans.catalog'
+import { ROLE_DEFS, DEFAULT_LEAVE_TYPES, DEFAULT_ACTIVITY_TYPES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INPUT_TYPES } from './company.catalog'
 
 // A new workspace is written in ONE SQL statement (data-modifying CTEs fed by a single JSON parameter), so signup costs
 // one database round trip instead of ~30. Rows are complete: jsonb_populate_recordset fills missing keys with NULL,
@@ -35,7 +36,7 @@ export async function bootstrapCompany(input: BootstrapInput) {
   const leaveTypes = DEFAULT_LEAVE_TYPES.map((lt) => ({ ...LEAVE_TYPE_DEFAULTS, id: id(), tenantId, createdAt: now, ...lt }))
 
   const rows: Rows = {
-    tenants: [{ id: tenantId, name: input.companyName, slug: input.slug, countryCodes: [], baseCurrency: 'USD', fiscalYearStart: `${now.slice(0, 4)}-01-01T00:00:00.000Z`, timezone: 'UTC', active: true, createdAt: now, updatedAt: now, modules: ALL_APPS, ownerUserId: userId, employeeCodePrefix: 'EMP', employeeCodeDigits: 4 }],
+    tenants: [{ id: tenantId, name: input.companyName, slug: input.slug, countryCodes: [], baseCurrency: 'USD', fiscalYearStart: `${now.slice(0, 4)}-01-01T00:00:00.000Z`, timezone: 'UTC', active: true, createdAt: now, updatedAt: now, plan: DEFAULT_PLAN, addons: [], modules: entitlements(DEFAULT_PLAN).apps, ownerUserId: userId, employeeCodePrefix: 'EMP', employeeCodeDigits: 4 }],
     roles: ROLE_DEFS.map((r) => ({ id: roleIds[r.name], tenantId, ...r, isSystemRole: true, createdAt: now })),
     leave_types: leaveTypes,
     activity_types: DEFAULT_ACTIVITY_TYPES.map((a) => ({ id: id(), tenantId, ...a, createdAt: now })),

@@ -6,6 +6,7 @@ import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
 import { apiKeyService } from './integrations.service'
+import { tenantHasFeature } from '../../middleware/module.middleware'
 
 import { attendanceExtras, PunchesBody } from '../attendance/attendance-extras.service'
 import { employeeService } from '../employees/employees.service'
@@ -20,6 +21,7 @@ integrationApiRouter.use(asyncHandler(async (req: KeyReq, _res: Response, next: 
   const key = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim()
   const row = key ? await apiKeyService.resolve(key) : null
   if (!row) throw new AppError('Missing, invalid, revoked or expired API key', 401)
+  if (!(await tenantHasFeature(row.tenantId, 'api'))) throw new AppError('Your plan does not include API access', 403, 'NOT_IN_PLAN')
   const bucket = `apikey:${row.id}:${Math.floor(Date.now() / 60_000)}`
   const used = await soft(async () => { const n = await redis.incr(bucket); if (n === 1) await redis.expire(bucket, 90); return n }, 0)
   if (used > RATE_PER_MIN) throw new AppError(`Rate limit: ${RATE_PER_MIN} requests a minute per key`, 429)

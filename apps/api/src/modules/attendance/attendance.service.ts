@@ -125,7 +125,7 @@ export const attendanceService = {
     if (rules.policy.requireGeofence && data.method !== 'qr' && !(data.locationId && data.latitude != null && data.longitude != null)) throw new AppError('Your attendance policy needs your location to clock in', 400)
 
     if (data.locationId && data.latitude && data.longitude) {
-      const location = await prisma.workLocation.findUnique({ where: { id: data.locationId } })
+      const location = await prisma.workLocation.findFirst({ where: { id: data.locationId, tenantId } })
       if (location?.latitude && location?.longitude && location?.geoFenceRadiusMeters) {
         const withinFence = validateGeoFence(
           data.latitude,

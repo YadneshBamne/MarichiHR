@@ -26,6 +26,8 @@ model Tenant {
   companySize     String?
   primaryCountry  String?
   modules         String[]  @default([])
+  plan            String?   // starter | growth | enterprise; null = made before plans existed (keeps everything)
+  addons          String[]  @default([])
   employeeCodePrefix String  @default("EMP") // employee ID series: prefix + zero-padded number
   employeeCodeDigits Int     @default(4)
   ownerUserId     String?

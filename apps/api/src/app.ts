@@ -31,7 +31,7 @@ import { taxRouter } from './modules/tax/tax.router'
 import { recruitmentRouter } from './modules/recruitment/recruitment.router'
 import { dashboardRouter } from './modules/dashboard/dashboard.router'
 import { authenticate } from './middleware/auth.middleware'
-import { requireModule } from './middleware/module.middleware'
+import { requireModule, requireFeature } from './middleware/module.middleware'
 import { automationRouter } from './modules/automation/automation.router'
 import { integrationApiRouter } from './modules/automation/integration-api.router'
 import { performanceRouter } from './modules/performance/performance.router'
@@ -101,6 +101,7 @@ export function createApp() {
   app.use('/api/v1/forums', forumsRouter)
   app.use('/api/v1/privacy', privacyRouter)
   app.use('/api/v1/performance', performanceRouter)
+  app.use(['/api/v1/automation/api-keys', '/api/v1/automation/webhooks', '/api/v1/automation/deliveries'], authenticate, requireFeature('api'))
   app.use('/api/v1/automation', automationRouter)
   app.use('/api/v1/integration', integrationApiRouter)
   app.use('/api/v1/approvals', approvalsRouter)

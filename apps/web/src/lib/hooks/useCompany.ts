@@ -14,6 +14,7 @@ export function useCompanyWrite() {
   return {
     update: useMutation({ mutationFn: async (body: Record<string, unknown>) => (await api.patch('/company', body)).data.data, onSuccess: done }),
     setApps: useMutation({ mutationFn: async (modules: string[]) => (await api.put('/company/modules', { modules })).data.data, onSuccess: done }),
+    setPlan: useMutation({ mutationFn: async (body: { plan: string; addons: string[] }) => (await api.put('/company/plan', body)).data.data, onSuccess: done }),
     complete: useMutation({ mutationFn: async () => (await api.post('/company/onboarding/complete')).data.data, onSuccess: done }),
   }
 }

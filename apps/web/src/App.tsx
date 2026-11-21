@@ -61,6 +61,7 @@ const ExitsPage = lazy(() => import('./pages/exits/ExitsPage'))
 const ExitDetailPage = lazy(() => import('./pages/exits/ExitDetailPage'))
 const SalarySetupPage = lazy(() => import('./pages/salary/SalarySetupPage'))
 const SecurityPage = lazy(() => import('./pages/SecurityPage'))
+const PlanPage = lazy(() => import('./pages/settings/PlanPage'))
 const MastersPage = lazy(() => import('./pages/settings/MastersPage'))
 const AutomationPage = lazy(() => import('./pages/settings/AutomationPage'))
 const RolesPage = lazy(() => import('./pages/settings/RolesPage'))
@@ -149,6 +150,7 @@ export default function App() {
                     <Route path="settings/company" element={page(guard(<CompanySettingsPage />, { roles: ADMINS }))} />
                     <Route path="settings/roles" element={page(guard(<RolesPage />, { roles: ADMINS }))} />
                     <Route path="settings/automation" element={page(guard(<AutomationPage />, { roles: ADMINS }))} />
+                    <Route path="settings/plan" element={page(guard(<PlanPage />, { roles: ['system_admin', 'hr_admin'] }))} />
                     <Route path="settings/apps" element={page(guard(<AppsSettingsPage />, { roles: ADMINS }))} />
                     <Route path="soon/:slug" element={page(<ComingSoonPage />)} />
                     <Route path="*" element={page(<NotFoundPage />)} />

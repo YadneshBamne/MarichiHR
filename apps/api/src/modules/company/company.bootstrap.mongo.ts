@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import mongoose from 'mongoose'
-import { ROLE_DEFS, ALL_APPS, DEFAULT_LEAVE_TYPES, DEFAULT_ACTIVITY_TYPES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INPUT_TYPES } from './company.catalog'
+import { DEFAULT_PLAN, entitlements } from './plans.catalog'
+import { ROLE_DEFS, DEFAULT_LEAVE_TYPES, DEFAULT_ACTIVITY_TYPES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INPUT_TYPES } from './company.catalog'
 import {
   connectMongo, syncMongoIndexes, Tenant, Role, User, OrgUnit, Employee, LeaveType, ActivityType, ExpenseCategory,
   PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance,
@@ -33,7 +34,7 @@ export async function bootstrapCompany(input: BootstrapInput) {
       const o = { session }
       await Tenant.create([{
         _id: tenantId, name: input.companyName, slug: input.slug, countryCodes: [], baseCurrency: 'USD', timezone: 'UTC',
-        fiscalYearStart: new Date(`${now.getUTCFullYear()}-01-01T00:00:00.000Z`), active: true, modules: ALL_APPS, ownerUserId: userId,
+        fiscalYearStart: new Date(`${now.getUTCFullYear()}-01-01T00:00:00.000Z`), active: true, plan: DEFAULT_PLAN, addons: [], modules: entitlements(DEFAULT_PLAN).apps, ownerUserId: userId,
         employeeCodePrefix: 'EMP', employeeCodeDigits: 4,
       }], o)
       await Role.insertMany(roles, o)

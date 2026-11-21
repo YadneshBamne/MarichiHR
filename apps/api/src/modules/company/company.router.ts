@@ -7,6 +7,7 @@ import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { companyService } from './company.service'
 import { APP_KEYS } from './company.catalog'
+import { FEATURES, PLANS } from './plans.catalog'
 import { entityService, EntityBody } from './entities.service'
 
 const isTimeZone = (tz: string) => { try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true } catch { return false } }
@@ -53,6 +54,10 @@ companyRouter.get('/setup-status', requireRoles('system_admin', 'hr_admin', 'pay
 }))
 companyRouter.put('/modules', requireRoles('system_admin'), validate(SetModulesSchema), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await companyService.setModules(req.user!.tenantId, req.user!.userId, req.body.modules) })
+}))
+companyRouter.get('/plans', asyncHandler(async (_req, res) => { res.json({ success: true, data: { plans: PLANS, features: FEATURES } }) }))
+companyRouter.put('/plan', requireRoles('system_admin'), validate(z.object({ body: z.object({ plan: z.string(), addons: z.array(z.string()).default([]) }).strict() })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await companyService.setPlan(req.user!.tenantId, req.user!.userId, req.body.plan, req.body.addons) })
 }))
 companyRouter.post('/onboarding/complete', admins, asyncHandler(async (req, res) => {
   res.json({ success: true, data: await companyService.completeOnboarding(req.user!.tenantId) })

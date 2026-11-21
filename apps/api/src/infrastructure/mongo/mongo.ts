@@ -33,7 +33,7 @@ export const Tenant = model('Tenant', 'tenants', {
   name: { type: S, required: true }, slug: { type: S, required: true }, countryCodes: { type: [S], default: [] },
   baseCurrency: { type: S, default: 'USD' }, fiscalYearStart: { type: D, required: true }, timezone: { type: S, default: 'UTC' },
   logoUrl: S, ssoProvider: S, legalName: S, industry: S, companySize: S, primaryCountry: S,
-  modules: { type: [S], default: [] }, employeeCodePrefix: { type: S, default: 'EMP' }, employeeCodeDigits: { type: N, default: 4 },
+  modules: { type: [S], default: [] }, plan: S, addons: { type: [S], default: [] }, employeeCodePrefix: { type: S, default: 'EMP' }, employeeCodeDigits: { type: N, default: 4 },
   ownerUserId: S, onboardedAt: D, active: { type: B, default: true }, payrollSignoffAbove: Schema.Types.Decimal128,
 }, [[{ slug: 1 }, { unique: true }]])
 

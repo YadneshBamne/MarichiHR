@@ -136,11 +136,11 @@ export const declarationsService = {
       if (v && v.verifiedAmount > i.amount) throw new AppError('A line cannot be verified for more than was declared', 400)
       return v ? { ...i, status: v.status, verifiedAmount: v.status === 'accepted' ? round2(v.verifiedAmount) : 0 } : i
     })
-    const r = await prisma.taxDeclaration.updateMany({ where: { id, status: 'submitted' }, data: { items: items as any, status: b.approve ? 'verified' : 'returned', note: b.note ?? null, verifiedBy: b.approve ? u.userId : null, verifiedAt: b.approve ? new Date() : null } })
+    const r = await prisma.taxDeclaration.updateMany({ where: { id, tenantId: u.tenantId, status: 'submitted' }, data: { items: items as any, status: b.approve ? 'verified' : 'returned', note: b.note ?? null, verifiedBy: b.approve ? u.userId : null, verifiedAt: b.approve ? new Date() : null } })
     if (!r.count) throw new AppError('Someone else just acted on this declaration', 409)
     await prisma.auditLog.create({ data: { tenantId: u.tenantId, userId: u.userId, action: b.approve ? 'TAX_DECLARATION_VERIFIED' : 'TAX_DECLARATION_RETURNED', entityType: 'tax_declaration', entityId: id, newValue: { note: b.note ?? null } } })
     const uid = await userIdOfEmployee(u.tenantId, d.employeeId)
     if (uid) await notify({ tenantId: u.tenantId, userIds: [uid], type: 'payroll.declaration', title: b.approve ? 'Your tax declaration is verified' : 'Your tax declaration needs changes', body: b.note ?? `${d.year}`, link: '/tax?tab=declaration', entityType: 'tax_declaration', entityId: id })
-    return view(await prisma.taxDeclaration.findUnique({ where: { id } }))
+    return view(await prisma.taxDeclaration.findFirst({ where: { id, tenantId: u.tenantId } }))
   },
 }

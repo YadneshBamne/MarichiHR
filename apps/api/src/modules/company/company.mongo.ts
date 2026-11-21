@@ -5,6 +5,7 @@ import { forgetTenantModules } from '../../middleware/module.middleware.mongo'
 import { authRepository, completeLogin } from '../auth/auth.mongo'
 import { bootstrapCompany } from './company.bootstrap.mongo'
 import { APP_KEYS } from './company.catalog'
+import { PLANS, ADDONABLE, entitlements } from './plans.catalog'
 import { Tenant, OrgUnit, ResourceCalendar, AuditLog } from '../../infrastructure/mongo/mongo'
 
 // MongoDB version of company.service.ts: self-serve signup (the whole workspace in one transaction), company profile,
@@ -30,6 +31,7 @@ export function shape(t: any) {
     id: t.id, name: t.name, slug: t.slug, legalName: t.legalName, industry: t.industry, companySize: t.companySize,
     primaryCountry: t.primaryCountry, baseCurrency: t.baseCurrency, timezone: t.timezone, logoUrl: t.logoUrl,
     fiscalYearStartMonth: new Date(t.fiscalYearStart).getUTCMonth() + 1, modules: t.modules ?? [], ownerUserId: t.ownerUserId,
+    plan: entitlements(t.plan, t.addons).plan, addons: t.addons ?? [], entitlements: entitlements(t.plan, t.addons),
     onboardedAt: t.onboardedAt, employeeCodePrefix: t.employeeCodePrefix, employeeCodeDigits: t.employeeCodeDigits,
   }
 }
@@ -70,11 +72,27 @@ export const companyService = {
   },
 
   async setModules(tenantId: string, userId: string, modules: string[]) {
-    const clean = APP_KEYS.filter((k) => modules.includes(k))
     const before = await load(tenantId)
+    const allowed = entitlements(before.plan, before.addons).apps
+    const clean = APP_KEYS.filter((k) => modules.includes(k) && allowed.includes(k))
+    const refused = modules.filter((k) => (APP_KEYS as readonly string[]).includes(k) && !(allowed as string[]).includes(k))
+    if (refused.length) throw new AppError(`Your plan does not include: ${refused.join(', ')}. Change the plan or add it as an add-on.`, 403, 'NOT_IN_PLAN')
     const t: any = ser(await Tenant.findByIdAndUpdate(tenantId, { modules: clean }, { returnDocument: 'after' }).lean())
     forgetTenantModules(tenantId)
     await AuditLog.create({ tenantId, userId, action: 'APPS_CHANGED', entityType: 'tenant', entityId: tenantId, oldValue: { modules: before.modules ?? [] }, newValue: { modules: clean } })
+    return shape(t)
+  },
+
+  // Plan and add-ons. Billing is not built: this records the commercial choice and applies it. Apps no longer in the plan are switched off.
+  async setPlan(tenantId: string, userId: string, plan: string, addons: string[]) {
+    if (!PLANS.some((p) => p.key === plan)) throw new AppError('Unknown plan', 400, 'VALIDATION_ERROR')
+    const before = await load(tenantId)
+    const clean = [...new Set(addons.filter((a) => ADDONABLE.includes(a)))]
+    const allowed = entitlements(plan, clean).apps as string[]
+    const modules = (before.modules ?? []).filter((m: string) => allowed.includes(m))
+    const t: any = ser(await Tenant.findByIdAndUpdate(tenantId, { plan, addons: clean, modules }, { returnDocument: 'after' }).lean())
+    forgetTenantModules(tenantId)
+    await AuditLog.create({ tenantId, userId, action: 'PLAN_CHANGED', entityType: 'tenant', entityId: tenantId, oldValue: { plan: before.plan ?? null, addons: before.addons ?? [] }, newValue: { plan, addons: clean, modules } })
     return shape(t)
   },
 

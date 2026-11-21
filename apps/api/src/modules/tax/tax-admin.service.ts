@@ -144,8 +144,8 @@ export const taxAdmin = {
 
 // Replaces the line's amount on the person's current payslip in the run and moves deductions and net pay by the
 // difference. Also called after a re-run, for every override already signed off.
-export async function applyOverride(o: { id: string; cycleId: string; employeeId: string; lineCode: string; amount: any; reason: string }) {
-  const line = await prisma.payslipLine.findFirst({ where: { code: o.lineCode, category: 'TAX', payslip: { payrollCycleId: o.cycleId, employeeId: o.employeeId } }, include: { payslip: true } })
+export async function applyOverride(o: { id: string; tenantId: string; cycleId: string; employeeId: string; lineCode: string; amount: any; reason: string }) {
+  const line = await prisma.payslipLine.findFirst({ where: { code: o.lineCode, category: 'TAX', payslip: { payrollCycle: { tenantId: o.tenantId, id: o.cycleId }, employeeId: o.employeeId } }, include: { payslip: true } })
   if (!line) return
   const delta = round2(Number(o.amount) - Number(line.amount))
   await prisma.$transaction([
