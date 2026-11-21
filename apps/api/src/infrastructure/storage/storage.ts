@@ -53,12 +53,25 @@ function cloud(): Storage {
   }
 }
 
+// Tests only (STORAGE_PROVIDER=memory): files live in this process and "signed URLs" are placeholders. Refused in production.
+function memory(): Storage {
+  if (process.env.NODE_ENV === 'production') throw new Error('The memory storage provider is for tests only')
+  const files = new Map<string, Buffer>()
+  return {
+    provider: 'memory',
+    async put(key, body) { files.set(key, body) },
+    async signedUrl(key, _s, name) { if (!files.has(key)) throw new Error('No such file'); return `memory://${key}${name ? `?name=${encodeURIComponent(name)}` : ''}` },
+    async remove(key) { files.delete(key) },
+    async exists(key) { return files.has(key) },
+  }
+}
+
 let instance: Storage | null = null
 export function storage(): Storage {
-  if (!instance) instance = (process.env.STORAGE_PROVIDER || 's3') === 'cloudinary' ? cloud() : s3()
+  if (!instance) { const p = process.env.STORAGE_PROVIDER || 's3'; instance = p === 'cloudinary' ? cloud() : p === 'memory' ? memory() : s3() }
   return instance
 }
 export const storageConfigured = () => {
   const p = process.env.STORAGE_PROVIDER || 's3'
-  return p === 'cloudinary' ? !!process.env.CLOUDINARY_API_SECRET : !!(process.env.S3_BUCKET && process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY)
+  return p === 'memory' ? process.env.NODE_ENV !== 'production' : p === 'cloudinary' ? !!process.env.CLOUDINARY_API_SECRET : !!(process.env.S3_BUCKET && process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY)
 }

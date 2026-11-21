@@ -5,6 +5,11 @@ import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
 import { tenantModules } from '../../middleware/module.middleware.mongo'
 import { hrScope } from '../../shared/utils/access.mongo'
+import { z } from 'zod'
+import { validate } from '../../middleware/validate.middleware'
+import { CATEGORIES } from '../../infrastructure/notifications/preferences'
+import { pushPublicKey, subscribe, unsubscribe } from '../../infrastructure/notifications/push'
+import { prisma as mongoPrisma } from '../../infrastructure/database/prisma.mongo'
 import { Employee, OrgUnit, User, PayrollCycle, PayrollInput, Payslip, Notification } from '../../infrastructure/mongo/mongo'
 
 // MongoDB version of the home dashboard, the sidebar counts and the notification bell. Only what is ported is shown: the
@@ -127,5 +132,40 @@ notificationsRouter.post('/:id/read', asyncHandler(async (req, res) => {
   if (!n) throw new AppError('Notification not found', 404)
   res.json({ success: true, data: { id: n._id, readAt: n.updatedAt } })
 }))
-notificationsRouter.get('/preferences', asyncHandler(async (_req, res) => { res.json({ success: true, data: { prefs: {} } }) }))
-notificationsRouter.get('/push/key', asyncHandler(async (_req, res) => { res.json({ success: true, data: { key: null } }) }))
+// Each person's delivery choices per category (the bell always gets everything), and web push on their devices
+type Prefs = Record<string, { email?: boolean; whatsapp?: boolean; push?: boolean }>
+notificationsRouter.get('/preferences', asyncHandler(async (req, res) => {
+  const u: any = await User.findOne({ _id: req.user!.userId, tenantId: req.user!.tenantId }).select('notifyPrefs').lean()
+  const prefs = (u?.notifyPrefs ?? {}) as Prefs
+  const on = (process.env.NOTIFY_CHANNELS || 'email').split(',').map((c) => c.trim())
+  res.json({ success: true, data: {
+    channels: { email: on.includes('email'), whatsapp: on.includes('whatsapp'), push: !!pushPublicKey() },
+    devices: await mongoPrisma.pushSubscription.count({ where: { userId: req.user!.userId } }),
+    categories: CATEGORIES.map((c) => ({ key: c.key, label: c.label, hint: c.hint, mandatory: c.mandatory, email: c.mandatory || prefs[c.key]?.email !== false, whatsapp: c.mandatory || prefs[c.key]?.whatsapp !== false, push: c.mandatory || prefs[c.key]?.push !== false })),
+  } })
+}))
+const Channel = z.object({ email: z.boolean().optional(), whatsapp: z.boolean().optional(), push: z.boolean().optional() }).strict()
+const PrefsBody = z.object({ prefs: z.object(Object.fromEntries(CATEGORIES.map((c) => [c.key, Channel.optional()]))).strict() }).strict()
+notificationsRouter.put('/preferences', validate(z.object({ body: PrefsBody })), asyncHandler(async (req, res) => {
+  const { userId, tenantId } = req.user!
+  const u: any = await User.findOne({ _id: userId, tenantId }).select('notifyPrefs').lean()
+  if (!u) throw new AppError('User not found', 404)
+  const merged: Record<string, unknown> = { ...(u.notifyPrefs ?? {}) }
+  for (const [k, v] of Object.entries(req.body.prefs as Record<string, object | undefined>)) {
+    if (!v || CATEGORIES.find((c) => c.key === k)?.mandatory) continue // mandatory categories cannot be switched off
+    merged[k] = { ...((merged[k] as object) ?? {}), ...v }
+  }
+  await User.updateOne({ _id: userId, tenantId }, { $set: { notifyPrefs: merged } })
+  res.json({ success: true, data: merged })
+}))
+notificationsRouter.get('/push/key', asyncHandler(async (_req, res) => { res.json({ success: true, data: { key: pushPublicKey() } }) }))
+const Sub = z.object({ endpoint: z.string().url().max(1000).refine((u) => u.startsWith('https://'), 'https only'), keys: z.object({ p256dh: z.string().min(10).max(200), auth: z.string().min(8).max(100) }).strict(), expirationTime: z.number().nullable().optional() }).strict()
+notificationsRouter.post('/push/subscribe', validate(z.object({ body: Sub })), asyncHandler(async (req, res) => {
+  if (!pushPublicKey()) throw new AppError('Push notifications are not set up on this server', 503)
+  await subscribe(req.user!.tenantId, req.user!.userId, req.body, req.headers['user-agent'])
+  res.status(201).json({ success: true, data: { subscribed: true } })
+}))
+notificationsRouter.post('/push/unsubscribe', validate(z.object({ body: z.object({ endpoint: z.string().url().max(1000) }).strict() })), asyncHandler(async (req, res) => {
+  await unsubscribe(req.user!.userId, req.body.endpoint)
+  res.json({ success: true, data: { subscribed: false } })
+}))
