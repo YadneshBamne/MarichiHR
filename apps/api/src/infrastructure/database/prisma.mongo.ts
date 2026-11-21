@@ -34,7 +34,7 @@ export const ENABLED = new Set<string>([
   'leaveType', 'leaveBalance', 'leaveRequest', 'leaveApproval', 'leaveAllocation', 'leaveAllocationRequest', 'leaveBlackout', 'leaveYearEndRun',
   'attendanceRecord', 'attendanceRegularisation', 'attendanceAdjustment', 'attendancePolicy', 'overtimeRequest', 'rosterDay', 'shiftTemplate', 'employeeShift',
   'holiday', 'holidayCalendar', 'workLocation',
-  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi', 'webhook', 'webhookDelivery', 'automationRule', 'automationRun', 'apiKey', 'announcement', 'announcementRead', 'policy', 'policyVersion', 'policyAcceptance', 'policyQuery', 'policyException', 'grievance', 'grievanceMessage', 'privacyRequest', 'customFieldDefinition', 'employeeAddress', 'employeeIdentity', 'employeeEducation', 'employeeFamilyMember', 'employeeEmergencyContact', 'employeePreviousEmployment', 'legalEntity',
+  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi', 'webhook', 'webhookDelivery', 'automationRule', 'automationRun', 'apiKey', 'announcement', 'announcementRead', 'policy', 'policyVersion', 'policyAcceptance', 'policyQuery', 'policyException', 'grievance', 'grievanceMessage', 'privacyRequest', 'customFieldDefinition', 'forumAttachment', 'forumComment', 'forumEvent', 'forumEventRsvp', 'forumFollow', 'forumPoll', 'forumReport', 'forumSettings', 'forumSpace', 'forumThread', 'forumVote', 'kudos', 'kudosPoint', 'incentive', 'incentiveBudget', 'incentiveScheme', 'incentiveSettings', 'incentiveType', 'payrollInput', 'savedReport', 'taxFiling', 'statutoryTable', 'employeeFieldSetting', 'employeePositionHistory', 'profileRequest', 'profileRequestSection', 'skill', 'skillLevel', 'skillType', 'employeeSkill', 'taxDeclaration', 'taxDeclarationWindow', 'taxCertificateRelease', 'employeeAddress', 'employeeIdentity', 'employeeEducation', 'employeeFamilyMember', 'employeeEmergencyContact', 'employeePreviousEmployment', 'legalEntity',
 ])
 
 const col = (m: M) => mongoose.connection.collection(m.coll)
@@ -149,6 +149,34 @@ const sortOf = (orderBy: any) => {
   s._id = s._id ?? 1
   return s
 }
+// A small in-memory version of where, for children embedded in their parent: equality, in, notIn, comparisons, contains, not, AND, OR, NOT
+function matches(row: any, where: any): boolean {
+  if (!where) return true
+  return Object.entries<any>(where).every(([k, v]) => {
+    if (v === undefined) return true
+    if (k === 'AND') return arr(v).every((w: any) => matches(row, w))
+    if (k === 'OR') return arr(v).some((w: any) => matches(row, w))
+    if (k === 'NOT') return !arr(v).some((w: any) => matches(row, w))
+    const x = row[k]
+    if (!isPlain(v)) return v === null ? x == null : String(x) === String(v)
+    return Object.entries<any>(v).every(([op, o]) => {
+      if (o === undefined || op === 'mode') return true
+      const ci = (t: any) => (v.mode === 'insensitive' ? String(t).toLowerCase() : String(t))
+      if (op === 'equals') return o === null ? x == null : x === o
+      if (op === 'not') return isPlain(o) ? !matches(row, { [k]: o }) : (o === null ? x != null : x !== o)
+      if (op === 'in') return o.includes(x)
+      if (op === 'notIn') return !o.includes(x)
+      if (op === 'lt') return x < o
+      if (op === 'lte') return x <= o
+      if (op === 'gt') return x > o
+      if (op === 'gte') return x >= o
+      if (op === 'contains') return ci(x ?? '').includes(ci(o))
+      if (op === 'startsWith') return ci(x ?? '').startsWith(ci(o))
+      if (op === 'endsWith') return ci(x ?? '').endsWith(ci(o))
+      throw notAvailable(`The "${op}" filter on embedded rows`)
+    })
+  })
+}
 async function loadRelation(m: M, f: F, spec: any, raws: any[], session?: any): Promise<Map<string, any>> {
   const r = MODELS.get(f.type)!
   const sp = spec === true ? {} : spec
@@ -163,7 +191,13 @@ async function loadRelation(m: M, f: F, spec: any, raws: any[], session?: any): 
     return out
   }
   if (f.isList && raws.some((d) => Array.isArray(d[f.name]))) { // children stored inside the parent (embedded)
-    for (const d of raws) out.set(`p:${d._id}`, await shape(r, (d[f.name] ?? []).map((c: any) => ({ _id: c._id ?? c.id, ...c })), sp, session))
+    for (const d of raws) {
+      let kids: any[] = (d[f.name] ?? []).map((c: any) => ({ _id: c._id ?? c.id, ...c })).filter((c: any) => matches(c, sp.where))
+      for (const o of arr(sp.orderBy ?? []).reverse()) for (const [k, dir] of Object.entries<any>(o)) kids = [...kids].sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * (dir === 'desc' ? -1 : 1))
+      if (sp.skip) kids = kids.slice(sp.skip)
+      if (sp.take != null) kids = kids.slice(0, sp.take)
+      out.set(`p:${d._id}`, await shape(r, kids, sp, session))
+    }
     return out
   }
   const o = await relOpposite(m, f)
@@ -342,6 +376,25 @@ function delegate(m: M, delegateName: string, tx?: any) {
   })
   const findDocs = async (args: any, s: any, one = false) => {
     const filter = await buildWhere(m, args?.where, s)
+    const relOrder = arr(args?.orderBy ?? []).find((o: any) => Object.entries<any>(o).some(([k, v]) => m.fields.get(k)?.kind === 'object' && typeof v === 'object'))
+    if (relOrder) { // sorted in memory after loading (no paging in the database)
+      let all: any[] = await col(m).find(filter, { session: s }).toArray()
+      const orders: Array<{ get: (d: any) => any; dir: number }> = []
+      for (const o of arr(args.orderBy)) for (const [k, v] of Object.entries<any>(o)) {
+        const f = m.fields.get(k)
+        if (f?.kind === 'object') {
+          const [rk, rd] = Object.entries<any>(v)[0]
+          const r = MODELS.get(f.type)!, fk = f.relationFromFields![0], to = key(f.relationToFields![0])
+          const rows: any[] = await col(r).find({ [to]: { $in: [...new Set(all.map((d) => d[fk]))] } }, { session: s }).toArray()
+          const mp = new Map(rows.map((x) => [String(x[to]), x[key(rk)]]))
+          orders.push({ get: (d) => mp.get(String(d[fk])), dir: (typeof rd === 'string' ? rd : rd?.sort) === 'desc' ? -1 : 1 })
+        } else orders.push({ get: (d) => d[key(k)], dir: (typeof v === 'string' ? v : v?.sort) === 'desc' ? -1 : 1 })
+      }
+      all = all.sort((a, b) => { for (const o of orders) { const x = o.get(a), y = o.get(b); if (x !== y) return (x > y ? 1 : -1) * o.dir } return 0 })
+      if (args.skip) all = all.slice(args.skip)
+      if (args.take != null) all = all.slice(0, Math.abs(args.take))
+      return one ? all.slice(0, 1) : all
+    }
     let cur = col(m).find(filter, { session: s })
     cur = cur.sort(sortOf(args?.orderBy))
     if (args?.skip) cur = cur.skip(args.skip)

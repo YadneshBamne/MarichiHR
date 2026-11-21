@@ -131,7 +131,7 @@ async function call(method, path, token, body) {
     // ── things not ported answer 501, not a crash
     const unported = await call('GET', '/attendance/policies', owner)
     check(unported.status === 403, 'an app that is off stays 403')
-    const lv = await call('GET', '/grievances', owner)
+    const lv = await call('GET', '/payroll/accounting/settings', owner)
     check(lv.status === 501 && lv.body.code === 'NOT_AVAILABLE_ON_MONGO', `unported module answers 501 (got ${lv.status})`)
     const rt = await call('POST', '/auth/refresh', null, { refreshToken: relogin.refreshToken })
     check(rt.status === 200 && rt.data.refreshToken !== relogin.refreshToken, 'refresh rotates over HTTP')

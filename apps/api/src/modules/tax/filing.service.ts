@@ -12,13 +12,21 @@ const day = (d: Date) => d.toISOString().slice(0, 10)
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const staffOnly = (u: AccessUser) => { if (!u.roleIds.some((r) => ['payroll_admin', 'compliance_officer'].includes(r))) throw new AppError('Forbidden', 403) }
 
+// Total of each payslip line code per payroll run (read through the payslips, which hold their lines)
+async function statutorySums(ids: string[]): Promise<{ cycle: string; code: string; total: number }[]> {
+  const slips = await prisma.payslip.findMany({ where: { payrollCycleId: { in: ids } }, select: { payrollCycleId: true, lines: { select: { code: true, amount: true } } } })
+  const t = new Map<string, number>()
+  for (const p of slips) for (const l of p.lines as any[]) { const k = `${p.payrollCycleId}|${l.code}`; t.set(k, (t.get(k) ?? 0) + Number(l.amount)) }
+  return [...t].map(([k, total]) => ({ cycle: k.split('|')[0], code: k.slice(k.indexOf('|') + 1), total }))
+}
+
 export const filingService = {
   async dashboard(u: AccessUser) {
     staffOnly(u)
     const cycles = await prisma.payrollCycle.findMany({ where: { tenantId: u.tenantId, status: { in: ['approved', 'disbursed', 'locked'] } }, orderBy: { payPeriodStart: 'desc' }, take: 24, select: { id: true, payPeriodStart: true, payPeriodEnd: true, status: true, offCycle: true } })
     const ids = cycles.map((c) => c.id)
     const [sums, filings] = await Promise.all([
-      ids.length ? prisma.$queryRaw<{ cycle: string; code: string; total: number }[]>`SELECT p."payrollCycleId" AS cycle, l.code, SUM(l.amount)::float AS total FROM payslip_lines l JOIN payslips p ON p.id = l."payslipId" WHERE p."payrollCycleId" = ANY(${ids}) GROUP BY 1, 2` : [],
+      ids.length ? statutorySums(ids) : [],
       prisma.taxFiling.findMany({ where: { tenantId: u.tenantId, cycleId: { in: ids } } }),
     ])
     const mode = filingMode()
