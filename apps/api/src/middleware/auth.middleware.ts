@@ -38,6 +38,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     req.user = payload
     const path = req.originalUrl.split('?')[0]
     if (POLICY_OPEN.some((p) => path.startsWith(p))) return next()
+    if ((payload as any).roleIds?.length === 1 && (payload as any).roleIds[0] === 'alumni') return next() // former employees are not asked to accept company policies
     blockingPolicies({ ...payload, employeeId: payload.employeeId ?? '' } as any)
       .then((open) => (open.length ? next(new AppError(`Please read and accept: ${open.map((p) => p.title).join(', ')}`, 403, 'POLICY_ACCEPTANCE_REQUIRED')) : next()))
       .catch(() => next()) // never lock people out because the check itself failed

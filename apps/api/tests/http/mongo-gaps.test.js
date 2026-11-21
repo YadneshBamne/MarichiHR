@@ -167,7 +167,7 @@ const nextMonday = () => { const d = new Date(); d.setUTCDate(d.getUTCDate() + 7
     // ── scheduled jobs, each run by hand (the system admin runs them for their own company)
     const jobs = await call('GET', '/system/jobs', owner)
     check(jobs.status === 200 || jobs.status === 500 || jobs.status === 503, `the jobs list answers (${jobs.status})`)
-    for (const name of ['events-sweep', 'people-dates', 'leave-sla-escalation', 'absent-marking', 'contracts', 'position-changes', 'document-expiry', 'leave-year-end', 'absence-flags', 'leave-attendance-check', 'carry-forward-expiry', 'declaration-window', 'leave-accrual']) {
+    for (const name of ['events-sweep', 'people-dates', 'leave-sla-escalation', 'absent-marking', 'contracts', 'position-changes', 'document-expiry', 'leave-year-end', 'absence-flags', 'leave-attendance-check', 'carry-forward-expiry', 'declaration-window', 'leave-accrual', 'geomark-purge', 'tracking-purge']) {
       const r = await call('POST', `/system/jobs/${name}/run`, owner)
       check(r.status === 200, `job ${name} runs on MongoDB (${short(r).slice(0, 160)})`)
     }

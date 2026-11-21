@@ -4,7 +4,7 @@ import { soft } from '../../infrastructure/cache/redis'
 import { clientIp } from './clientIp'
 
 // A completed sign-in (not the MFA step in between), with where it came from. Never blocks the sign-in.
-export async function auditSignIn(req: Request, data: any, method: 'password' | 'mfa' | 'google') {
+export async function auditSignIn(req: Request, data: any, method: 'password' | 'mfa' | 'google' | 'sso') {
   if (!data?.accessToken || !data.user?.id || !data.user.tenant?.id) return
   await soft(() => prisma.auditLog.create({
     data: {

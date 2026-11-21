@@ -1,3 +1,4 @@
+import { ssoPublic } from './oidc.sso'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
@@ -130,8 +131,11 @@ async function issueSession(user: LoginUser, tenant: LoginTenant): Promise<AuthT
   }
 }
 
+const isAlumniUser = (u: any) => (u.userRoles ?? []).length > 0 && (u.userRoles ?? []).every((r: any) => (r.role?.name ?? r.roleName) === 'alumni')
+
 export async function completeLogin(user: LoginUser, tenant: LoginTenant): Promise<LoginResult> {
-  if (user.employee && user.employee.employmentStatus === 'terminated') throw new AppError('Account has been deactivated', 401)
+  // a former employee keeps a login only through the alumni portal (role `alumni`, switched on by HR)
+  if (user.employee && user.employee.employmentStatus === 'terminated' && !isAlumniUser(user)) throw new AppError('Account has been deactivated', 401)
   if (user.mfaEnabled) {
     const mfaToken = jwt.sign({ sub: user.id, tenantId: tenant.id, purpose: 'mfa' }, mfaSecretKey(), { expiresIn: '5m' })
     return { mfaRequired: true, mfaToken }
@@ -176,6 +180,8 @@ export const authService = {
     const passwordOk = async (hash: string) => (await bcrypt.compare(dto.password, hash)) || (dto.password !== dto.password.trim() && (await bcrypt.compare(dto.password.trim(), hash)))
     if (!user || !user.passwordHash || !(await passwordOk(user.passwordHash))) return failLogin(guardKey)
     await soft(() => redis.del(guardKey), 0)
+    // A company can require single sign-on; its admins keep their password so a provider outage never locks everyone out
+    if ((await ssoPublic(tenant.id)).enforce && !(user.userRoles ?? []).some((r: any) => ['system_admin', 'hr_admin'].includes(r.role?.name ?? r.roleName))) throw new AppError('Your company requires single sign-on. Use the single sign-on button.', 403, 'SSO_REQUIRED')
     return completeLogin(user, tenant)
   },
 
@@ -194,7 +200,7 @@ export const authService = {
   async workspaceBranding(slug: string) {
     const t: any = await Tenant.findOne({ slug: slug.toLowerCase(), active: true }).select('name logoUrl').lean()
     if (!t) throw new AppError('Organisation not found', 404)
-    return { name: t.name, logoUrl: t.logoUrl ?? null }
+    return { name: t.name, logoUrl: t.logoUrl ?? null, sso: await ssoPublic(t._id) }
   },
 
   async verifyMfaLogin(mfaToken: string, code: string) {
@@ -254,7 +260,7 @@ export const authService = {
     const graceEnd = new Date(Date.now() + ROTATION_GRACE_MS)
     if (stored.expiresAt > graceEnd) await RefreshToken.updateOne({ _id: stored.id }, { expiresAt: graceEnd })
 
-    if (!user.active || user.employee?.employmentStatus === 'terminated') {
+    if (!user.active || (user.employee?.employmentStatus === 'terminated' && !isAlumniUser(user))) {
       await authRepository.revokeAllUserRefreshTokens(user.id)
       throw new AppError('Account has been deactivated', 401)
     }

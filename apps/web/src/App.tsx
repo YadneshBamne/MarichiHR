@@ -62,6 +62,11 @@ const ExitDetailPage = lazy(() => import('./pages/exits/ExitDetailPage'))
 const SalarySetupPage = lazy(() => import('./pages/salary/SalarySetupPage'))
 const SecurityPage = lazy(() => import('./pages/SecurityPage'))
 const HelpdeskPage = lazy(() => import('./pages/workplace/HelpdeskPage'))
+const AlumniPage = lazy(() => import('./pages/workplace/AlumniPage'))
+const SsoPage = lazy(() => import('./pages/settings/SsoPage'))
+const AppraisalsPage = lazy(() => import('./pages/performance/AppraisalsPage'))
+const ClockInChecksPage = lazy(() => import('./pages/attendance/ClockInChecksPage'))
+const FieldTrackingPage = lazy(() => import('./pages/attendance/FieldTrackingPage'))
 const TimesheetsPage = lazy(() => import('./pages/workplace/TimesheetsPage'))
 const ConfirmationPage = lazy(() => import('./pages/employees/ConfirmationPage'))
 const PlanPage = lazy(() => import('./pages/settings/PlanPage'))
@@ -124,6 +129,11 @@ export default function App() {
                     <Route path="community/:id" element={page(<ThreadPage />)} />
                     <Route path="confirmation" element={page(<ConfirmationPage />)} />
                     <Route path="helpdesk" element={page(<HelpdeskPage />)} />
+                    <Route path="alumni" element={page(<AlumniPage />)} />
+                    <Route path="appraisals" element={page(<AppraisalsPage />)} />
+                    <Route path="geomark" element={page(guard(<ClockInChecksPage />, { roles: ['manager', 'hr_admin', 'system_admin'], app: 'attendance' }))} />
+                    <Route path="field-tracking" element={page(guard(<FieldTrackingPage />, { app: 'attendance' }))} />
+                    <Route path="settings/sso" element={page(guard(<SsoPage />, { roles: ['system_admin'] }))} />
                     <Route path="timesheets" element={page(<TimesheetsPage />)} />
                     <Route path="grievances" element={page(<GrievancesPage />)} />
                     <Route path="incentives" element={page(guard(<IncentivesPage />, { app: 'payroll' }))} />

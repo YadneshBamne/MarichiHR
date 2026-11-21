@@ -186,13 +186,13 @@ export const googleSso = {
     const code = String(req.body?.code || '')
     const raw = /^[0-9a-f]{48}$/.test(code) ? await redis.getdel(`sso:${code}`) : null
     if (!raw) throw new AppError('Sign-in link expired. Try again.', 401)
-    const { userId, tenantId } = JSON.parse(raw)
+    const { userId, tenantId, via } = JSON.parse(raw)
     const tenant = await prisma.tenant.findFirst({ where: { id: tenantId, active: true } })
     const u = await prisma.user.findFirst({ where: { id: userId, tenantId, active: true }, select: { email: true } })
     const user = tenant && u ? await authRepository.findUserByEmail(u.email, tenant.id) : null
     if (!tenant || !user) throw new AppError('Sign-in link expired. Try again.', 401)
     const data = await completeLogin(user, tenant)
-    await auditSignIn(req, data, 'google')
+    await auditSignIn(req, data, via === 'oidc' ? 'sso' : 'google')
     res.json({ success: true, data })
   }),
 }

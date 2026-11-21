@@ -1,4 +1,5 @@
 import { Request, Response } from 'express'
+import { AppError } from '../../shared/utils/AppError'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { attendanceService } from './attendance.service'
 import { businessToday } from '../../shared/utils/businessDate'
@@ -6,6 +7,8 @@ import { businessToday } from '../../shared/utils/businessDate'
 export const attendanceController = {
   clockIn: asyncHandler(async (req: Request, res: Response) => {
     const { employeeId, tenantId } = req.user!
+    // When the company requires clock-in with a selfie and location, only that route may clock people in (MongoDB mode)
+    if (process.env.DB_PROVIDER === 'mongo' && (await require('../geomark/geomark.mongo.router').proofRequired(tenantId))) throw new AppError('Your company requires clocking in with a selfie and your location. Use "Clock in with proof".', 400, 'PROOF_REQUIRED')
     const record = await attendanceService.clockIn(employeeId!, tenantId, req.body)
     res.status(201).json({ success: true, data: record })
   }),

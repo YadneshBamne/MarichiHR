@@ -123,6 +123,16 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     description: 'Tax declaration window: tells everyone when it opens and reminds people who have not submitted 3 days before it closes (each once)',
     run: (t) => perTenant(t, (id) => declarationWindowJob(id), 'payroll'),
   },
+  'geomark-purge': {
+    pattern: '20 3 * * *',
+    description: 'Deletes clock-in proof photos older than each company\'s retention period (MongoDB API)',
+    run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/geomark/geomark.mongo.router').purgeGeomark(t) : 0),
+  },
+  'tracking-purge': {
+    pattern: '40 3 * * *',
+    description: 'Deletes GPS points older than each company\'s retention period and closes sessions left open (MongoDB API)',
+    run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/tracking/tracking.mongo.router').purgeTracking(t) : 0),
+  },
   'leave-accrual': {
     pattern: '0 2 * * *',
     description: 'Leave credits due: monthly accrual (once per person, type and month) and yearly lump sums (once per leave year, pro-rated for joiners)',

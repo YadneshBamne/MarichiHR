@@ -19,7 +19,10 @@ export const SSO_ERRORS: Record<string, string> = {
   expired: 'The Google sign-in took too long. Please try again.',
   state_mismatch: 'The Google sign-in could not be verified. Please try again.',
   cancelled: 'Google sign-in was cancelled.',
-  not_configured: 'Google sign-in is not configured.',
+  not_configured: 'Single sign-on is not set up for that organisation.',
+  provider_error: 'Your identity provider could not complete the sign-in. Please try again.',
+  no_email: 'Your identity provider did not share an email address.',
+  domain_not_allowed: 'That email domain is not allowed for this organisation.',
 }
 const LAST_ORG = 'marichihr.org'
 const readOrg = () => { try { return localStorage.getItem(LAST_ORG) || '' } catch { return '' } }
@@ -47,14 +50,16 @@ export default function LoginPage() {
   // The organisation is used only when the person opens that field this time (it is prefilled with the last one),
   // so a slug saved from another company never silently scopes a new sign-in
   const [showOrg, setShowOrg] = useState(false)
-  const [brand, setBrand] = useState<{ name: string; logoUrl: string | null } | null>(null)
+  const [brand, setBrand] = useState<{ name: string; logoUrl: string | null; sso?: { enabled: boolean; label: string; enforce: boolean } } | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
   const from = (location.state as any)?.from || '/dashboard'
 
   useEffect(() => {
     api.get('/auth/providers').then((r) => setGoogle(r.data.data.google ? r.data.data.googleClientId : null)).catch(() => {})
     const e = params.get('sso_error')
-    if (e) setError(SSO_ERRORS[e] || 'Google sign-in failed. Please try again.')
+    const org = params.get('org') // a link such as /login?org=acme opens that company's sign-in
+    if (org && /^[a-z0-9-]{2,60}$/i.test(org)) { setShowOrg(true); setForm((f) => ({ ...f, tenantSlug: org.toLowerCase() })) }
+    if (e) setError(SSO_ERRORS[e] || 'Sign-in failed. Please try again.')
     if (e === 'no_account' && params.get('google')) setSignupCode(params.get('google'))
   }, [params])
 
@@ -191,6 +196,12 @@ export default function LoginPage() {
                     {DEMO_LOGINS.map((d) => <button key={d.label} type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={() => quickLogin(d)}>{d.label}</button>)}
                   </div>
                 </div>
+              )}
+              {brand?.sso?.enabled && (
+                <>
+                  <div data-rise style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', fontSize: 12 }} className="muted"><span style={rule} />or<span style={rule} /></div>
+                  <a data-rise className="btn btn-ghost" style={{ width: '100%', height: 46 }} href={`${API_URL}/sso/${encodeURIComponent(form.tenantSlug.trim().toLowerCase())}/start`}><Icon name="key" size={16} /> {brand.sso.label}</a>
+                </>
               )}
               {google && (
                 <>

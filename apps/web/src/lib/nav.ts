@@ -38,6 +38,8 @@ export const SECTIONS: NavSection[] = [
     key: 'time', label: 'Time & Attendance', icon: 'clock', items: [
       { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out regularisation overtime' },
       { label: 'Leave', selfLabel: 'My leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'time off holiday vacation balance' },
+      { label: 'Field tracking', selfLabel: 'My tracking', path: '/field-tracking', icon: 'pin', app: 'attendance', feature: 'gpsTracking', keywords: 'gps location live map field staff visits' },
+      { label: 'Clock-in checks', path: '/geomark', icon: 'shield', roles: ['manager', 'hr_admin', 'system_admin'], app: 'attendance', feature: 'geomark', keywords: 'geomark visage selfie face photo location proof flagged review' },
       { label: 'Timesheets', path: '/timesheets', icon: 'pie', feature: 'timesheets', keywords: 'hours project task log week billable' },
       { label: 'Holiday calendar', path: '/holidays', icon: 'calendar', keywords: 'public holidays festivals days off calendar' },
       { label: 'Attendance policies', path: '/attendance-policies', icon: 'sliders', roles: ROLE.ADMIN, app: 'attendance', keywords: 'office hours shift grace late penalty regularisation overtime comp off scheme' },
@@ -61,8 +63,10 @@ export const SECTIONS: NavSection[] = [
       { label: 'Org chart', path: '/org-chart', icon: 'compass', keywords: 'organisation hierarchy reporting lines tree managers departments' },
       { label: 'Onboarding & requests', selfLabel: 'My requests', path: '/requests', icon: 'mail', keywords: 'onboarding joining details data request profile update documents new joiner' },
       { label: 'Performance', selfLabel: 'My goals', path: '/performance', icon: 'target', feature: 'pms', keywords: 'appraisal goals kpi targets review rating okr' },
+      { label: 'Appraisals', selfLabel: 'My appraisal', path: '/appraisals', icon: 'chart', feature: 'pmsAdvanced', keywords: 'review cycle 360 feedback calibration nine box 9-box competency rating improvement plan pip' },
       { label: 'Confirmations', path: '/confirmation', icon: 'check', roles: ['hr_admin', 'system_admin', 'manager'], feature: 'confirmation', keywords: 'probation confirm review extend permanent' },
       { label: 'Recruitment', selfLabel: 'Jobs & referrals', path: '/recruitment', icon: 'briefcase', feature: 'recruitment', keywords: 'hiring jobs openings requisition candidates interviews offers referrals careers' },
+      { label: 'Alumni', selfLabel: 'My alumni page', path: '/alumni', icon: 'door', roles: [...ROLE.HR, 'alumni'], feature: 'alumni', keywords: 'former employees ex staff letters experience relieving certificate' },
       { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ['hr_admin', 'payroll_admin'], keywords: 'exits resignation full and final settlement clearance' },
     ],
   },
@@ -86,6 +90,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Plan', path: '/settings/plan', icon: 'key', roles: ROLE.ADMIN, keywords: 'billing add-ons subscription' },
       { label: 'Apps', path: '/settings/apps', icon: 'grid', roles: ROLE.ADMIN, keywords: 'modules install' },
       { label: 'Masters', path: '/settings/masters', icon: 'layers', roles: ROLE.ADMIN, keywords: 'departments positions designations locations grades categories lists setup master data' },
+      { label: 'Single sign-on', path: '/settings/sso', icon: 'lock', roles: ['system_admin'], feature: 'sso', keywords: 'sso saml oidc okta azure entra identity provider login' },
       { label: 'Automation & API', path: '/settings/automation', icon: 'sparkle', roles: ROLE.ADMIN, keywords: 'rules workflows triggers alerts webhooks api keys integrations' },
       { label: 'Settings', path: '/settings', icon: 'settings', roles: [...ROLE.ADMIN, 'payroll_admin'], keywords: 'configuration scheduled jobs' },
     ],
@@ -114,7 +119,11 @@ const englishLabel = (item: NavItem, roleNames: string[]) => {
   return hasTeamScope(roleNames) ? item.label : item.selfLabel
 }
 
+// A former employee sees one page only
+export const isAlumniOnly = (roleNames: string[]) => roleNames.length > 0 && roleNames.every((r) => r === 'alumni')
+
 export function visibleSections(roleNames: string[], apps?: string[], features?: string[]) {
+  if (isAlumniOnly(roleNames)) return [{ key: 'alumni', label: 'Alumni', icon: 'door' as const, items: [{ label: 'My alumni page', path: '/alumni', icon: 'door' as const }] }]
   return SECTIONS.map((s) => ({ ...s, label: tr(s.label), items: s.items.filter((i) => canSee(i, roleNames, apps, features)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
 }
 

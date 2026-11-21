@@ -168,7 +168,16 @@ export const TsProject = model('TsProject', 'ts_projects', {}, [[{ tenantId: 1, 
 export const TsWeek = model('TsWeek', 'ts_weeks', {}, [[{ tenantId: 1, employeeId: 1, weekStart: 1 }, { unique: true }], [{ tenantId: 1, status: 1 }]], false)
 
 export const ConfirmationCase = model('ConfirmationCase', 'confirmation_cases', {}, [[{ tenantId: 1, employeeId: 1, status: 1 }]], false)
-export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract, PayrollCycle, Payslip, PayrollInput, Notification, Counter, HelpdeskCategory, HelpdeskTicket, TsProject, TsWeek, ConfirmationCase]
+// Alumni portal: who keeps a restricted login after leaving, and their letter requests
+export const AlumniAccess = model('AlumniAccess', 'alumni_access', {}, [[{ tenantId: 1, employeeId: 1 }, { unique: true }], [{ userId: 1 }]], false)
+export const AlumniLetter = model('AlumniLetter', 'alumni_letters', {}, [[{ tenantId: 1, status: 1, createdAt: -1 }], [{ tenantId: 1, employeeId: 1 }]], false)
+// Advanced performance management: competencies, review cycles, appraisals, 360 feedback, improvement plans
+export const AppraisalCompetency = model('AppraisalCompetency', 'appraisal_competencies', {}, [[{ tenantId: 1, name: 1 }, { unique: true }]], false)
+export const AppraisalCycle = model('AppraisalCycle', 'appraisal_cycles', {}, [[{ tenantId: 1, name: 1 }, { unique: true }]], false)
+export const Appraisal = model('Appraisal', 'appraisals', {}, [[{ cycleId: 1, employeeId: 1 }, { unique: true }], [{ tenantId: 1, employeeId: 1 }], [{ tenantId: 1, managerEmployeeId: 1 }]], false)
+export const PeerFeedback = model('PeerFeedback', 'appraisal_peer_feedback', {}, [[{ appraisalId: 1, reviewerEmployeeId: 1 }, { unique: true }], [{ tenantId: 1, reviewerEmployeeId: 1 }]], false)
+export const ImprovementPlan = model('ImprovementPlan', 'improvement_plans', {}, [[{ tenantId: 1, employeeId: 1, status: 1 }]], false)
+export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract, PayrollCycle, Payslip, PayrollInput, Notification, Counter, HelpdeskCategory, HelpdeskTicket, TsProject, TsWeek, ConfirmationCase, AlumniAccess, AlumniLetter, AppraisalCompetency, AppraisalCycle, Appraisal, PeerFeedback, ImprovementPlan]
 
 // Create collections and indexes up front (needed before the first transaction writes to them)
 export async function syncMongoIndexes() {

@@ -7,6 +7,7 @@ import { useCountUp, gsap, reduced, pop } from '../../lib/motion'
 import { useToast } from '../ui/Toast'
 import Icon, { type IconName } from '../ui/Icon'
 import { fmtDuration } from '../../lib/format'
+import ProofPunch, { type ProofSettings } from '../attendance/ProofPunch'
 
 // Dashboard widgets shared by the dashboard and the attendance page
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
@@ -25,6 +26,10 @@ export function TimeTracker({ className = '' }: { className?: string }) {
   const toast = useToast()
   const [now, setNow] = useState(Date.now())
   const ring = useRef<SVGCircleElement>(null)
+  // Clock in with a selfie and location, when the company switched it on (the request is refused, and ignored here, on plans without it)
+  const { data: proof } = useQuery({ queryKey: ['geomark-settings'], retry: false, staleTime: 120_000, queryFn: async () => (await api.get('/geomark/settings')).data.data as ProofSettings })
+  const [proofFor, setProofFor] = useState<'in' | 'out' | null>(null)
+  const withProof = !!proof?.enabled
   // Running time comes from the server: closed sessions (workedHours) plus now − openSince, corrected for clock offset
   const running = !!t?.running
   useEffect(() => {
@@ -47,9 +52,11 @@ export function TimeTracker({ className = '' }: { className?: string }) {
     navigator.geolocation.getCurrentPosition((p) => res({ latitude: p.coords.latitude, longitude: p.coords.longitude }), () => res({}), { timeout: 5000 })
   })
   const start = async () => {
+    if (withProof) return setProofFor('in')
     try { await clockIn.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked in. Have a good day!') } catch (e) { toast(errMsg(e), 'error') }
   }
   const stop = async () => {
+    if (withProof) return setProofFor('out')
     try { await clockOut.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked out. Hours saved to attendance.') } catch (e) { toast(errMsg(e), 'error') }
   }
   const status = running ? `Since ${new Date(t!.openSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : t?.clockedOut ? `Done · ${fmtDuration(secs)}` : 'Not clocked in'
@@ -73,6 +80,7 @@ export function TimeTracker({ className = '' }: { className?: string }) {
         <button className="btn btn-ghost btn-icon" aria-label="Clock out" title="Clock out" disabled={!running || clockOut.isPending} onClick={stop}><Icon name="stop" size={14} /></button>
         <span className="dim" style={{ fontSize: 12, marginLeft: 'auto', textAlign: 'right' }}>{status}</span>
       </div>
+      {proofFor && proof && <ProofPunch type={proofFor} settings={proof} onClose={() => setProofFor(null)} />}
     </section>
   )
 }

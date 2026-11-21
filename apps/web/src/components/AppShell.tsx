@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { useCompany } from '../lib/hooks/useCompany'
 import api from '../lib/api'
-import { visibleSections, itemFor, labelFor } from '../lib/nav'
+import { visibleSections, itemFor, labelFor, isAlumniOnly } from '../lib/nav'
 import { gsap, reduced } from '../lib/motion'
 import Logo from './brand/Logo'
 import { CompanyLogo } from './company/CompanyParts'
@@ -17,8 +17,8 @@ import ProductTour from './ProductTour'
 import AssistantPanel from './AssistantPanel'
 import LanguagePicker from './LanguagePicker'
 
-const ROLE_LABEL: Record<string, string> = { system_admin: 'Administrator', hr_admin: 'HR administrator', payroll_admin: 'Payroll & finance', compliance_officer: 'Compliance', manager: 'Manager', employee: 'Employee' }
-export const primaryRole = (roles: string[]) => ['system_admin', 'hr_admin', 'payroll_admin', 'compliance_officer', 'manager', 'employee'].find((r) => roles.includes(r)) ?? 'employee'
+const ROLE_LABEL: Record<string, string> = { system_admin: 'Administrator', hr_admin: 'HR administrator', payroll_admin: 'Payroll & finance', compliance_officer: 'Compliance', manager: 'Manager', employee: 'Employee', alumni: 'Former employee' }
+export const primaryRole = (roles: string[]) => ['system_admin', 'hr_admin', 'payroll_admin', 'compliance_officer', 'manager', 'employee', 'alumni'].find((r) => roles.includes(r)) ?? 'employee'
 const COLLAPSE_KEY = 'marichihr.sidebar.collapsed'
 
 export default function AppShell() {
@@ -60,6 +60,8 @@ export default function AppShell() {
     }
   }, [user?.tourDoneAt]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setDrawer(false); setMenu(false) }, [location.pathname])
+  // A former employee only has the alumni page (and Security for their password)
+  useEffect(() => { if (isAlumniOnly(roles) && !['/alumni', '/security'].includes(location.pathname)) navigate('/alumni', { replace: true }) }, [location.pathname, roles.join()]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const pageTitle = current ? labelFor(current, roles) : location.pathname.startsWith('/employees/') ? 'Employee profile' : ''
   useEffect(() => { document.title = `${pageTitle ? pageTitle + ' · ' : ''}${companyName}` }, [companyName, pageTitle])

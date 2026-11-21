@@ -21,13 +21,14 @@ export const FEATURES: Feature[] = [
   { key: 'confirmation', name: 'Confirmation workflow', blurb: 'Probation review and confirmation with approvals', status: 'live' },
   { key: 'expenses', name: 'Expense management', blurb: 'Claims, per diem, approvals, reimbursement through payroll', status: 'live', app: 'expenses' },
   { key: 'pms', name: 'Performance management', blurb: 'Goals, KPI appraisal, review cycles', status: 'live' },
-  { key: 'geomark', name: 'Face and location check-in', blurb: 'Selfie and location proof when marking attendance', status: 'planned' },
-  { key: 'gpsTracking', name: 'GPS live tracking', blurb: 'Field-staff location during working hours', status: 'planned' },
+  { key: 'pmsAdvanced', name: 'Performance management, advanced', blurb: 'Competencies, self and manager appraisal, 360 feedback, calibration, 9-box and improvement plans', status: 'live' },
+  { key: 'geomark', name: 'Face and location check-in', blurb: 'Selfie and location proof when marking attendance, with review of anything odd', status: 'live' },
+  { key: 'gpsTracking', name: 'GPS live tracking', blurb: 'Field-staff location during working hours, started by the person and visible to their managers', status: 'live' },
   { key: 'timesheets', name: 'Timesheets', blurb: 'Hours by project and task, approval, billing export', status: 'live' },
   { key: 'recruitment', name: 'Recruitment', blurb: 'Openings, candidates and the hiring pipeline', status: 'live' },
-  { key: 'alumni', name: 'Alumni portal', blurb: 'Former staff keep access to letters and records', status: 'planned' },
+  { key: 'alumni', name: 'Alumni portal', blurb: 'Former staff keep access to letters and records', status: 'live' },
   { key: 'api', name: 'API and webhooks', blurb: 'API keys with scopes, signed webhooks, integration endpoints', status: 'live' },
-  { key: 'sso', name: 'Single sign-on', blurb: 'Sign in through the company identity provider', status: 'planned' },
+  { key: 'sso', name: 'Single sign-on', blurb: 'Sign in through the company identity provider (OpenID Connect)', status: 'live' },
   { key: 'multiCompany', name: 'Multi-company', blurb: 'Several legal entities in one workspace', status: 'live' },
   { key: 'assistant', name: 'AI assistant', blurb: 'Ask HR questions and act on them, scoped to your role and company', status: 'live' },
 ]
@@ -36,7 +37,7 @@ const FEATURE_KEYS = FEATURES.map((f) => f.key)
 export type Plan = { key: string; name: string; tagline: string; features: string[] }
 const starter = ['payroll', 'leave', 'selfOnboarding', 'exits', 'helpdesk']
 const growth = [...starter, 'attendance', 'advancedAttendance', 'confirmation']
-const enterprise = [...growth, 'expenses', 'pms', 'geomark', 'api', 'sso', 'multiCompany', 'timesheets', 'assistant']
+const enterprise = [...growth, 'expenses', 'pms', 'pmsAdvanced', 'geomark', 'api', 'sso', 'multiCompany', 'timesheets', 'assistant']
 export const PLANS: Plan[] = [
   { key: 'starter', name: 'Starter', tagline: 'Payroll, leave and the basics', features: starter },
   { key: 'growth', name: 'Growth', tagline: 'Adds attendance, shifts and confirmations', features: growth },
