@@ -5,12 +5,14 @@ export interface ClockInDto {
   method?: 'web' | 'mobile' | 'biometric' | 'qr' | 'nfc'
   notes?: string
   qrToken?: string
+  at?: Date // the moment of the punch when it is not "now" (a biometric terminal sends its own timestamps)
 }
 
 export interface ClockOutDto {
   latitude?: number
   longitude?: number
   method?: 'web' | 'mobile' | 'biometric' | 'qr' | 'nfc'
+  at?: Date
 }
 
 export interface RegularisationDto {

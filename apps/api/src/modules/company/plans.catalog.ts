@@ -23,6 +23,7 @@ export const FEATURES: Feature[] = [
   { key: 'pms', name: 'Performance management', blurb: 'Goals, KPI appraisal, review cycles', status: 'live' },
   { key: 'pmsAdvanced', name: 'Performance management, advanced', blurb: 'Competencies, self and manager appraisal, 360 feedback, calibration, 9-box and improvement plans', status: 'live' },
   { key: 'geomark', name: 'Face and location check-in', blurb: 'Selfie and location proof when marking attendance, with review of anything odd', status: 'live' },
+  { key: 'biometricDevices', name: 'Biometric terminals', blurb: 'Fingerprint, face and card terminals send punches straight into attendance; the templates stay on the device', status: 'live' },
   { key: 'gpsTracking', name: 'GPS live tracking', blurb: 'Field-staff location during working hours, started by the person and visible to their managers', status: 'live' },
   { key: 'timesheets', name: 'Timesheets', blurb: 'Hours by project and task, approval, billing export', status: 'live' },
   { key: 'recruitment', name: 'Recruitment', blurb: 'Openings, candidates and the hiring pipeline', status: 'live' },

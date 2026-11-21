@@ -39,6 +39,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out regularisation overtime' },
       { label: 'Leave', selfLabel: 'My leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'time off holiday vacation balance' },
       { label: 'Field tracking', selfLabel: 'My tracking', path: '/field-tracking', icon: 'pin', app: 'attendance', feature: 'gpsTracking', keywords: 'gps location live map field staff visits' },
+      { label: 'Biometric terminals', path: '/devices', icon: 'clock', roles: ROLE.HR, app: 'attendance', feature: 'biometricDevices', keywords: 'fingerprint face card machine zkteco essl realtime punch device terminal biometric adms' },
       { label: 'My face', path: '/my-face', icon: 'user', app: 'attendance', feature: 'geomark', keywords: 'face register selfie photo biometric clock in check' },
       { label: 'Clock-in checks', path: '/geomark', icon: 'shield', roles: ['manager', 'hr_admin', 'system_admin'], app: 'attendance', feature: 'geomark', keywords: 'geomark visage selfie face photo location proof flagged review' },
       { label: 'Timesheets', path: '/timesheets', icon: 'pie', feature: 'timesheets', keywords: 'hours project task log week billable' },

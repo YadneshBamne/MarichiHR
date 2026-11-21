@@ -6,8 +6,11 @@ import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
 import { attendanceExtras } from './attendance-extras.service'
 import {
-  businessToday, getTenantTimezone, normaliseDateInput, monthRange, zonedTimeToUtc, localTimeString,
+  businessToday, getTenantTimezone, normaliseDateInput, monthRange, zonedTimeToUtc, localTimeString, dateOnly, localDateString,
 } from '../../shared/utils/businessDate'
+
+// The business date a punch belongs to: today for a live punch, the local date of its own timestamp for a terminal's
+const dayOf = async (tenantId: string, at?: Date) => (at ? dateOnly(localDateString(at, await getTenantTimezone(tenantId))) : businessToday(tenantId))
 
 import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
 import { PAYROLL_CONFIG } from '../payroll/payroll.config'
@@ -115,14 +118,16 @@ export const attendanceService = {
   // Several check-in/out pairs a day are fine: clocking in again after clocking out reopens today's record, keeping
   // the first check-in time and the hours already worked (workedHours = closed sessions, openSince = running one)
   async clockIn(employeeId: string, tenantId: string, data: ClockInDto) {
-    const today = await businessToday(tenantId)
+    const at = data.at ?? new Date()
+    const today = await dayOf(tenantId, data.at)
     const [open, existing] = await Promise.all([findOpenRecord(employeeId, today), attendanceRepository.findTodayRecord(employeeId, today)])
     if (open) throw new AppError('You are already clocked in', 400)
     if (existing?.isLocked) throw new AppError('Attendance record is locked and cannot be modified', 400)
     if (data.qrToken) { const loc = await attendanceExtras.locationForQr(tenantId, data.qrToken); data = { ...data, method: 'qr', locationId: loc.id, latitude: undefined, longitude: undefined } }
-    const rules = await dayRules(employeeId, new Date())
+    const rules = await dayRules(employeeId, at)
     if (!rules.policy.allowWeb && (data.method || 'web') === 'web') throw new AppError('Your attendance policy does not allow clocking in from the web', 403)
-    if (rules.policy.requireGeofence && data.method !== 'qr' && !(data.locationId && data.latitude != null && data.longitude != null)) throw new AppError('Your attendance policy needs your location to clock in', 400)
+    // a QR scan or a biometric terminal is itself the proof of place
+    if (rules.policy.requireGeofence && data.method !== 'qr' && data.method !== 'biometric' && !(data.locationId && data.latitude != null && data.longitude != null)) throw new AppError('Your attendance policy needs your location to clock in', 400)
 
     if (data.locationId && data.latitude && data.longitude) {
       const location = await prisma.workLocation.findFirst({ where: { id: data.locationId, tenantId } })
@@ -143,7 +148,7 @@ export const attendanceService = {
       }
     }
 
-    const now = new Date()
+    const now = at
     if (existing?.checkInTime) {
       return prisma.attendanceRecord.update({ where: { id: existing.id }, data: { openSince: now, checkOutTime: null } })
     }
@@ -162,7 +167,7 @@ export const attendanceService = {
   },
 
   async clockOut(employeeId: string, tenantId: string, data: ClockOutDto) {
-    const today = await businessToday(tenantId)
+    const today = await dayOf(tenantId, data.at)
     const record = await findOpenRecord(employeeId, today)
 
     if (!record?.checkInTime) {
@@ -174,7 +179,8 @@ export const attendanceService = {
     }
 
     // The day's total: sessions already closed plus the one ending now
-    const checkOut = new Date()
+    const checkOut = data.at ?? new Date()
+    if (data.at && checkOut < (record.openSince ?? record.checkInTime)) throw new AppError('This punch is earlier than the clock-in already recorded', 400)
     const workedHours = Math.round(((record.workedHours ?? 0) + computeWorkedHours(record.openSince ?? record.checkInTime, checkOut)) * 1e6) / 1e6
 
     const rules = await dayRules(employeeId, record.date)

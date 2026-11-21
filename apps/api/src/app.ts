@@ -48,6 +48,8 @@ export function createApp() {
   app.use(helmet())
   app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true, exposedHeaders: ['Content-Disposition'] }))
   app.use(redactSensitiveResponse)
+  // Biometric terminals (ZKTeco, eSSL and the like) push plain text, so this sits before the JSON and form parsers
+  if (process.env.DB_PROVIDER === 'mongo') app.use('/iclock', require('./modules/devices/adms.router').admsRouter)
   app.use(express.json({ limit: '10mb' }))
   app.use(express.urlencoded({ extended: true }))
 
@@ -66,6 +68,7 @@ export function createApp() {
     app.use('/api/v1/sso', require('./modules/auth/oidc.sso').ssoRouter)
     app.use('/api/v1/geomark', require('./modules/geomark/geomark.mongo.router').geomarkRouter)
     app.use('/api/v1/tracking', require('./modules/tracking/tracking.mongo.router').trackingRouter)
+    app.use('/api/v1/devices', require('./modules/devices/devices.mongo.router').devicesRouter)
     app.use('/api/v1/appraisal', require('./modules/performance/appraisal.mongo.router').appraisalRouter)
     app.use('/api/v1/confirmation', require('./modules/employees/confirmation.mongo.router').confirmationRouter)
     app.use('/api/v1/assistant', require('./modules/assistant/assistant.mongo.router').assistantRouter)

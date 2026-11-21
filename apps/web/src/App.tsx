@@ -68,6 +68,7 @@ const AppraisalsPage = lazy(() => import('./pages/performance/AppraisalsPage'))
 const ClockInChecksPage = lazy(() => import('./pages/attendance/ClockInChecksPage'))
 const FieldTrackingPage = lazy(() => import('./pages/attendance/FieldTrackingPage'))
 const MyFacePage = lazy(() => import('./pages/attendance/MyFacePage'))
+const DevicesPage = lazy(() => import('./pages/attendance/DevicesPage'))
 const TimesheetsPage = lazy(() => import('./pages/workplace/TimesheetsPage'))
 const ConfirmationPage = lazy(() => import('./pages/employees/ConfirmationPage'))
 const PlanPage = lazy(() => import('./pages/settings/PlanPage'))
@@ -133,6 +134,7 @@ export default function App() {
                     <Route path="alumni" element={page(<AlumniPage />)} />
                     <Route path="appraisals" element={page(<AppraisalsPage />)} />
                     <Route path="geomark" element={page(guard(<ClockInChecksPage />, { roles: ['manager', 'hr_admin', 'system_admin'], app: 'attendance' }))} />
+                    <Route path="devices" element={page(guard(<DevicesPage />, { roles: ['hr_admin', 'system_admin'], app: 'attendance' }))} />
                     <Route path="my-face" element={page(guard(<MyFacePage />, { app: 'attendance' }))} />
                     <Route path="field-tracking" element={page(guard(<FieldTrackingPage />, { app: 'attendance' }))} />
                     <Route path="settings/sso" element={page(guard(<SsoPage />, { roles: ['system_admin'] }))} />
