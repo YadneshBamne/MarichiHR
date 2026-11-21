@@ -77,6 +77,11 @@ export function createApp() {
 
   // MongoDB mode only: the few routes that sit inline in the Postgres routers (pay groups, legal entities, flexi check)
   if (process.env.DB_PROVIDER === 'mongo') app.use('/api/v1', require('./mongo-extras.router').mongoExtras)
+  // New apps built on MongoDB only (no Postgres version): helpdesk and timesheets
+  if (process.env.DB_PROVIDER === 'mongo') {
+    app.use('/api/v1/helpdesk', require('./modules/helpdesk/helpdesk.mongo.router').helpdeskRouter)
+    app.use('/api/v1/timesheets', require('./modules/timesheets/timesheets.mongo.router').timesheetsRouter)
+  }
 
   app.use('/api/v1/auth', authRouter)
   app.use('/api/v1/employees', employeeRouter)

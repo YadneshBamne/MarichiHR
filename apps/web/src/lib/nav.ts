@@ -66,6 +66,8 @@ export const SECTIONS: NavSection[] = [
     key: 'workplace', label: 'Workplace', icon: 'book', items: [
       { label: 'Policies', path: '/policies', icon: 'book', keywords: 'handbook rules code of conduct accept' },
       { label: 'Community', path: '/community', icon: 'message', keywords: 'forums discussions threads polls kudos recognition wall thanks' },
+      { label: 'Helpdesk', path: '/helpdesk', icon: 'message', keywords: 'ticket query question hr request support' },
+      { label: 'Timesheets', path: '/timesheets', icon: 'clock', keywords: 'hours project task log week billable' },
       { label: 'Grievances', path: '/grievances', icon: 'flag', keywords: 'complaint concern report confidential anonymous' },
       { label: 'Announcements', path: '/announcements', icon: 'message', keywords: 'news updates notices company communication' },
     ],

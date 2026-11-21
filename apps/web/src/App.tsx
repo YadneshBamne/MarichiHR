@@ -61,6 +61,8 @@ const ExitsPage = lazy(() => import('./pages/exits/ExitsPage'))
 const ExitDetailPage = lazy(() => import('./pages/exits/ExitDetailPage'))
 const SalarySetupPage = lazy(() => import('./pages/salary/SalarySetupPage'))
 const SecurityPage = lazy(() => import('./pages/SecurityPage'))
+const HelpdeskPage = lazy(() => import('./pages/workplace/HelpdeskPage'))
+const TimesheetsPage = lazy(() => import('./pages/workplace/TimesheetsPage'))
 const PlanPage = lazy(() => import('./pages/settings/PlanPage'))
 const MastersPage = lazy(() => import('./pages/settings/MastersPage'))
 const AutomationPage = lazy(() => import('./pages/settings/AutomationPage'))
@@ -119,6 +121,8 @@ export default function App() {
                     <Route path="compensation-review" element={page(guard(<PayReviewPage />, { app: 'payroll', roles: ['payroll_admin', 'manager'] }))} />
                     <Route path="community" element={page(<CommunityPage />)} />
                     <Route path="community/:id" element={page(<ThreadPage />)} />
+                    <Route path="helpdesk" element={page(<HelpdeskPage />)} />
+                    <Route path="timesheets" element={page(<TimesheetsPage />)} />
                     <Route path="grievances" element={page(<GrievancesPage />)} />
                     <Route path="incentives" element={page(guard(<IncentivesPage />, { app: 'payroll' }))} />
                     <Route path="tax" element={page(guard(<TaxPage />, { app: 'payroll' }))} />
