@@ -12,6 +12,7 @@ import { fmtHours } from '../lib/format'
 import Avatar from '../components/ui/Avatar'
 import Badge from '../components/ui/Badge'
 import { greeting as greet } from '../lib/i18n'
+import { useCompany } from '../lib/hooks/useCompany'
 
 // Role-based home. The API decides which sections exist for this person (self / team / company / payroll);
 // this page lays them out on a 12-column grid so every row lines up, whatever the role.
@@ -32,11 +33,15 @@ export default function DashboardPage() {
   const ref = useReveal<HTMLDivElement>(!!d)
   const first = user?.employee?.firstName || user?.fullName?.split(' ')[0]
   const has = (a: string) => d?.apps?.includes(a)
+  const { data: company } = useCompany()
+  const feature = (f: string) => !company?.entitlements || company.entitlements.features.includes(f)
 
   // Quick actions only for things this person can actually do
   const actions: [string, IconName, string][] = [
     ...(d?.self && has('leave') ? [['/leave', 'leaf', 'Apply for leave'] as [string, IconName, string]] : []),
     ...(d?.self && has('expenses') ? [['/expenses', 'receipt', 'New expense claim'] as [string, IconName, string]] : []),
+    ...(d?.self && feature('timesheets') ? [['/timesheets', 'pie', 'Log hours'] as [string, IconName, string]] : []),
+    ...(d?.self && feature('helpdesk') ? [['/helpdesk', 'info', 'Ask HR'] as [string, IconName, string]] : []),
     ...(d?.team?.approvals?.total ? [['/approvals', 'checkCircle', `Review approvals (${d.team.approvals.total})`] as [string, IconName, string]] : []),
     ...(d?.company ? [['/employees', 'plus', 'Add employee'] as [string, IconName, string]] : []),
     ...(d?.payroll?.current && d.payroll.current.status !== 'disbursed' ? [[`/payroll/cycles/${d.payroll.current.id}`, 'wallet', 'Open payroll cycle'] as [string, IconName, string]] : []),
@@ -50,7 +55,7 @@ export default function DashboardPage() {
           <h1 style={{ fontSize: 'clamp(30px, 3.6vw, 44px)', lineHeight: 1.05, marginTop: 2 }}>{greeting()}, {first}</h1>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} data-tour="quick-actions">
-          {actions.slice(0, 3).map(([to, ic, label], i) => <Link key={to} to={to} className={`btn ${i === 0 ? 'btn-primary' : 'btn-ghost'}`}><Icon name={ic} size={15} /> {label}</Link>)}
+          {[...actions].sort((a, b) => Number(b[0] === '/approvals') - Number(a[0] === '/approvals')).slice(0, 4).map(([to, ic, label], i) => <Link key={to} to={to} className={`btn ${i === 0 ? 'btn-primary' : 'btn-ghost'}`}><Icon name={ic} size={15} /> {label}</Link>)}
         </div>
       </header>
 

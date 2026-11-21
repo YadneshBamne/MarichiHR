@@ -11,6 +11,7 @@ export interface NavItem {
   icon: IconName
   roles?: string[] // any of these role names; omitted = everyone
   app?: AppKey // hidden unless the company installed this app
+  feature?: string // hidden unless the plan includes this feature (plans.catalog keys)
   soon?: { phase: string; blurb: string; features: string[] }
   keywords?: string
 }
@@ -30,47 +31,47 @@ export const SECTIONS: NavSection[] = [
       { label: 'Dashboard', path: '/dashboard', icon: 'home', keywords: 'home today overview' },
       { label: 'Approvals', path: '/approvals', icon: 'checkCircle', roles: ROLE.APPROVERS, keywords: 'pending requests inbox leave attendance' },
       { label: 'Tasks', path: '/activities', icon: 'list', keywords: 'activities to do follow ups' },
-    ],
-  },
-  {
-    key: 'employees', label: 'Employees', icon: 'users', items: [
-      { label: 'Employees', selfLabel: 'My team', path: '/employees', icon: 'users', roles: ROLE.DIRECTORY, keywords: 'directory staff people team' },
-      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ['hr_admin', 'payroll_admin'], keywords: 'exits resignation full and final settlement clearance' },
-      { label: 'Onboarding & requests', selfLabel: 'My requests', path: '/requests', icon: 'mail', keywords: 'onboarding joining details data request profile update documents new joiner' },
-      { label: 'Performance', selfLabel: 'My goals', path: '/performance', icon: 'target', keywords: 'appraisal goals kpi targets review rating okr' },
-      { label: 'Confirmations', path: '/confirmation', icon: 'check', roles: ['hr_admin', 'system_admin', 'manager'], keywords: 'probation confirm review extend permanent' },
-      { label: 'Org chart', path: '/org-chart', icon: 'layers', keywords: 'organisation hierarchy reporting lines tree managers departments' },
-      { label: 'Recruitment', selfLabel: 'Jobs & referrals', path: '/recruitment', icon: 'briefcase', keywords: 'hiring jobs openings requisition candidates interviews offers referrals careers' },
+      { label: 'Helpdesk', selfLabel: 'Ask HR', path: '/helpdesk', icon: 'info', feature: 'helpdesk', keywords: 'ticket query question hr request support help' },
     ],
   },
   {
     key: 'time', label: 'Time & Attendance', icon: 'clock', items: [
-      { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out timesheet regularisation overtime' },
+      { label: 'Attendance', selfLabel: 'My attendance', path: '/attendance', icon: 'clock', app: 'attendance', keywords: 'clock in out regularisation overtime' },
       { label: 'Leave', selfLabel: 'My leave', path: '/leave', icon: 'leaf', app: 'leave', keywords: 'time off holiday vacation balance' },
+      { label: 'Timesheets', path: '/timesheets', icon: 'pie', feature: 'timesheets', keywords: 'hours project task log week billable' },
+      { label: 'Holiday calendar', path: '/holidays', icon: 'calendar', keywords: 'public holidays festivals days off calendar' },
       { label: 'Attendance policies', path: '/attendance-policies', icon: 'sliders', roles: ROLE.ADMIN, app: 'attendance', keywords: 'office hours shift grace late penalty regularisation overtime comp off scheme' },
       { label: 'Shifts & rosters', path: '/rosters', icon: 'calendar', roles: ROLE.ADMIN, app: 'attendance', keywords: 'shift roster rota rotation split night schedule' },
       { label: 'Leave policies', path: '/leave-types', icon: 'sliders', roles: ['hr_admin'], app: 'leave', keywords: 'leave types accrual configuration' },
-      { label: 'Holiday calendar', path: '/holidays', icon: 'calendar', keywords: 'public holidays festivals days off calendar' },
     ],
   },
   {
     key: 'payroll', label: 'Payroll & Expenses', icon: 'wallet', items: [
       { label: 'Payroll', selfLabel: 'My payslips', path: '/payroll', icon: 'wallet', app: 'payroll', keywords: 'payslips salary cycles bank file' },
       { label: 'Expenses', selfLabel: 'My expenses', path: '/expenses', icon: 'receipt', app: 'expenses', keywords: 'claims reimbursements per diem' },
-      { label: 'Salary structures', path: '/compensation', icon: 'sliders', roles: ROLE.PAYROLL, app: 'payroll', keywords: 'compensation rules grade bands contracts' },
-      { label: 'Pay review', path: '/compensation-review', icon: 'chart', roles: ['payroll_admin', 'manager'], app: 'payroll', keywords: 'compensation review increments raises budget team cost merit' },
       { label: 'Tax & compliance', selfLabel: 'My tax statement', path: '/tax', icon: 'scale', app: 'payroll', keywords: 'paye napsa nhima tds income tax statutory return filing certificate statement rates' },
       { label: 'Incentives', selfLabel: 'My awards', path: '/incentives', icon: 'gift', app: 'payroll', keywords: 'bonus award reward recognition nominate referral' },
+      { label: 'Pay review', path: '/compensation-review', icon: 'chart', roles: ['payroll_admin', 'manager'], app: 'payroll', keywords: 'compensation review increments raises budget team cost merit' },
+      { label: 'Salary structures', path: '/compensation', icon: 'sliders', roles: ROLE.PAYROLL, app: 'payroll', keywords: 'compensation rules grade bands contracts' },
+    ],
+  },
+  {
+    key: 'employees', label: 'People', icon: 'users', items: [
+      { label: 'Employees', selfLabel: 'My team', path: '/employees', icon: 'users', roles: ROLE.DIRECTORY, keywords: 'directory staff people team' },
+      { label: 'Org chart', path: '/org-chart', icon: 'compass', keywords: 'organisation hierarchy reporting lines tree managers departments' },
+      { label: 'Onboarding & requests', selfLabel: 'My requests', path: '/requests', icon: 'mail', keywords: 'onboarding joining details data request profile update documents new joiner' },
+      { label: 'Performance', selfLabel: 'My goals', path: '/performance', icon: 'target', feature: 'pms', keywords: 'appraisal goals kpi targets review rating okr' },
+      { label: 'Confirmations', path: '/confirmation', icon: 'check', roles: ['hr_admin', 'system_admin', 'manager'], feature: 'confirmation', keywords: 'probation confirm review extend permanent' },
+      { label: 'Recruitment', selfLabel: 'Jobs & referrals', path: '/recruitment', icon: 'briefcase', feature: 'recruitment', keywords: 'hiring jobs openings requisition candidates interviews offers referrals careers' },
+      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ['hr_admin', 'payroll_admin'], keywords: 'exits resignation full and final settlement clearance' },
     ],
   },
   {
     key: 'workplace', label: 'Workplace', icon: 'book', items: [
-      { label: 'Policies', path: '/policies', icon: 'book', keywords: 'handbook rules code of conduct accept' },
+      { label: 'Announcements', path: '/announcements', icon: 'bell', keywords: 'news updates notices company communication' },
       { label: 'Community', path: '/community', icon: 'message', keywords: 'forums discussions threads polls kudos recognition wall thanks' },
-      { label: 'Helpdesk', path: '/helpdesk', icon: 'message', keywords: 'ticket query question hr request support' },
-      { label: 'Timesheets', path: '/timesheets', icon: 'clock', keywords: 'hours project task log week billable' },
+      { label: 'Policies', path: '/policies', icon: 'book', keywords: 'handbook rules code of conduct accept' },
       { label: 'Grievances', path: '/grievances', icon: 'flag', keywords: 'complaint concern report confidential anonymous' },
-      { label: 'Announcements', path: '/announcements', icon: 'message', keywords: 'news updates notices company communication' },
     ],
   },
   {
@@ -81,11 +82,11 @@ export const SECTIONS: NavSection[] = [
   },
   {
     key: 'admin', label: 'Administration', icon: 'settings', items: [
-      { label: 'Masters', path: '/settings/masters', icon: 'layers', roles: ROLE.ADMIN, keywords: 'departments positions designations locations grades categories lists setup master data' },
       { label: 'Company profile', path: '/settings/company', icon: 'briefcase', roles: ROLE.ADMIN, keywords: 'name logo country currency time zone' },
-      { label: 'Automation', path: '/settings/automation', icon: 'sparkle', roles: ROLE.ADMIN, keywords: 'rules workflows triggers alerts webhooks api keys integrations' },
-      { label: 'Plan', path: '/settings/plan', icon: 'layers', roles: ROLE.ADMIN, keywords: 'billing add-ons subscription' },
+      { label: 'Plan', path: '/settings/plan', icon: 'key', roles: ROLE.ADMIN, keywords: 'billing add-ons subscription' },
       { label: 'Apps', path: '/settings/apps', icon: 'grid', roles: ROLE.ADMIN, keywords: 'modules install' },
+      { label: 'Masters', path: '/settings/masters', icon: 'layers', roles: ROLE.ADMIN, keywords: 'departments positions designations locations grades categories lists setup master data' },
+      { label: 'Automation & API', path: '/settings/automation', icon: 'sparkle', roles: ROLE.ADMIN, keywords: 'rules workflows triggers alerts webhooks api keys integrations' },
       { label: 'Settings', path: '/settings', icon: 'settings', roles: [...ROLE.ADMIN, 'payroll_admin'], keywords: 'configuration scheduled jobs' },
     ],
   },
@@ -98,8 +99,9 @@ export const ACCOUNT_ITEMS: NavItem[] = [
 
 export const ALL_ITEMS = SECTIONS.flatMap((s) => s.items.map((i) => ({ ...i, section: s })))
 
-export const canSee = (item: NavItem, roleNames: string[], apps?: string[]) =>
-  (!item.roles || item.roles.some((r) => roleNames.includes(r))) && (!item.app || !apps || apps.includes(item.app))
+// `features` are the plan features; left out (still loading) it hides nothing
+export const canSee = (item: NavItem, roleNames: string[], apps?: string[], features?: string[]) =>
+  (!item.roles || item.roles.some((r) => roleNames.includes(r))) && (!item.app || !apps || apps.includes(item.app)) && (!item.feature || !features || features.includes(item.feature))
 
 // People who only see their own records get "My …" labels
 export const hasTeamScope = (roleNames: string[]) => roleNames.some((r) => ROLE.DIRECTORY.includes(r))
@@ -112,8 +114,8 @@ const englishLabel = (item: NavItem, roleNames: string[]) => {
   return hasTeamScope(roleNames) ? item.label : item.selfLabel
 }
 
-export function visibleSections(roleNames: string[], apps?: string[]) {
-  return SECTIONS.map((s) => ({ ...s, label: tr(s.label), items: s.items.filter((i) => canSee(i, roleNames, apps)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
+export function visibleSections(roleNames: string[], apps?: string[], features?: string[]) {
+  return SECTIONS.map((s) => ({ ...s, label: tr(s.label), items: s.items.filter((i) => canSee(i, roleNames, apps, features)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
 }
 
 // Most specific match wins (/settings/apps before /settings)

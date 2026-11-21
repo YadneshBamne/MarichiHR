@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompany } from '../lib/hooks/useCompany'
 import { ALL_ITEMS, canSee, labelFor } from '../lib/nav'
 import { gsap, reduced } from '../lib/motion'
 import Icon, { type IconName } from './ui/Icon'
@@ -11,13 +12,14 @@ type Cmd = { id: string; label: string; hint: string; icon: IconName; run: () =>
 export default function CommandPalette({ open, onClose, onTour }: { open: boolean; onClose: () => void; onTour: () => void }) {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { data: company } = useCompany()
   const [q, setQ] = useState('')
   const [i, setI] = useState(0)
   const panel = useRef<HTMLDivElement>(null)
   const roles = user?.roles?.map((r) => r.name) ?? []
 
   const cmds: Cmd[] = useMemo(() => [
-    ...ALL_ITEMS.filter((it) => canSee(it, roles, user?.tenant?.modules ?? [])).map((it) => ({
+    ...ALL_ITEMS.filter((it) => canSee(it, roles, user?.tenant?.modules ?? [], company?.entitlements?.features)).map((it) => ({
       id: it.path, label: labelFor(it, roles), hint: it.section.label, icon: it.icon, soon: !!it.soon, keywords: it.keywords,
       run: () => navigate(it.path),
     })),

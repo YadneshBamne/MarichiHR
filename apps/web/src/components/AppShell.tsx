@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompany } from '../lib/hooks/useCompany'
 import api from '../lib/api'
 import { visibleSections, itemFor, labelFor } from '../lib/nav'
 import { gsap, reduced } from '../lib/motion'
@@ -28,7 +29,8 @@ export default function AppShell() {
   const navigate = useNavigate()
   const roles = user?.roles?.map((r) => r.name) ?? []
   const apps = user?.tenant?.modules ?? []
-  const sections = visibleSections(roles, apps)
+  const { data: company } = useCompany()
+  const sections = visibleSections(roles, apps, company?.entitlements?.features)
   const companyName = user?.tenant?.name || 'MarichiHR'
   const current = itemFor(location.pathname)
   const [palette, setPalette] = useState(false)
@@ -147,6 +149,11 @@ function Sidebar({ sections, counts, collapsed, onToggle, mode, companyName, log
   const pill = useRef<HTMLSpanElement>(null)
   const first = useRef(true)
   const activePath = itemFor(pathname)?.path
+  // Groups fold away to keep the list short; the group you are in always stays open. Reports and Administration start folded.
+  const [folded, setFolded] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem('marichi-nav-folded') ?? 'null') ?? { reports: true, admin: true } } catch { return { reports: true, admin: true } } })
+  const toggleGroup = (k: string) => setFolded((f) => { const n = { ...f, [k]: !f[k] }; try { localStorage.setItem('marichi-nav-folded', JSON.stringify(n)) } catch { /* ignore */ } return n })
+  const activeGroup = sections.find((s) => s.items.some((i) => i.path === activePath))?.key
+  const isFolded = (k: string) => !collapsed && k !== 'home' && !!folded[k] && k !== activeGroup
 
   // The dark highlight glides to the active item
   useLayoutEffect(() => {
@@ -165,7 +172,7 @@ function Sidebar({ sections, counts, collapsed, onToggle, mode, companyName, log
     const ro = new ResizeObserver(() => { first.current = true; move() })
     nav.current?.querySelectorAll(':scope > div').forEach((d) => ro.observe(d))
     return () => { clearTimeout(t); ro.disconnect() }
-  }, [activePath, collapsed, sections.length])
+  }, [activePath, collapsed, sections.length, folded])
 
   const badge = (path: string) => (path === '/approvals' ? counts?.approvals : path === '/activities' ? counts?.tasks : path === '/announcements' ? counts?.announcements : path === '/policies' ? counts?.policies : 0) || 0
 
@@ -182,8 +189,14 @@ function Sidebar({ sections, counts, collapsed, onToggle, mode, companyName, log
         <span ref={pill} aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, borderRadius: 14, background: 'var(--night)', opacity: 0, zIndex: 0 }} />
         {sections.map((sec) => (
           <div key={sec.key} style={{ marginBottom: 10 }}>
-            {sec.key !== 'home' && (collapsed ? <div style={{ height: 1, background: 'var(--line)', margin: '8px 10px' }} /> : <div className="muted" style={{ fontSize: 11, fontWeight: 500, letterSpacing: '.04em', padding: '8px 12px 4px' }}>{sec.label}</div>)}
-            {sec.items.map((it) => {
+            {sec.key !== 'home' && (collapsed ? <div style={{ height: 1, background: 'var(--line)', margin: '8px 10px' }} /> : (
+              <button type="button" onClick={() => toggleGroup(sec.key)} aria-expanded={!isFolded(sec.key)} className="muted"
+                style={{ display: 'flex', alignItems: 'center', width: '100%', border: 0, background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 500, letterSpacing: '.04em', padding: '8px 12px 4px', textAlign: 'left' }}>
+                <span style={{ flex: 1 }}>{sec.label}</span>
+                <Icon name={isFolded(sec.key) ? 'chevronRight' : 'chevronDown'} size={12} />
+              </button>
+            ))}
+            {!isFolded(sec.key) && sec.items.map((it) => {
               const on = it.path === activePath
               const n = badge(it.path)
               return (
