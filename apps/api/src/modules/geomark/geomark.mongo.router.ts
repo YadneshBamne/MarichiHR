@@ -12,14 +12,18 @@ import { getReportingSubtreeIds } from '../../shared/utils/access'
 import { storage, storageConfigured } from '../../infrastructure/storage/storage'
 import { Employee, AuditLog, Notification } from '../../infrastructure/mongo/mongo'
 import { attendanceService } from '../attendance/attendance.service'
+import { THRESHOLD, MAX_SAMPLES, Strictness, parseEmbedding, parseEmbeddings, seal, open, bestScore } from './face.match'
 
 // GeoMark+ and Visage: clock in with proof. The person takes a selfie and shares their location at the moment they punch; the API checks
 // the location against the office geo-fences, keeps the selfie in private storage and flags anything odd (outside the fence, a vague
 // location) for a manager or HR to look at. HR can require this for everyone (then the plain clock-in is refused).
-// Face matching: people enrol a reference photo that HR approves; every proof is shown next to it for review. Automatic matching needs a
-// face-recognition service, which is not bundled: GEOMARK_FACE_PROVIDER is the hook (none today), so reviewers decide.
-// Privacy: a face photo is biometric data. Enrolling needs explicit consent, people can erase their photo at any time, and proofs are
-// deleted after the retention period (default 90 days) by the geomark-purge job.
+// Face matching: people enrol a reference photo (HR approves it) plus a few face "embeddings" read in the browser by a free open-source
+// library (see face.match.ts); every clock-in sends a fresh one and the closest match decides. It only FLAGS a punch (never blocks it):
+// the numbers come from the browser, so a person on the review list makes the call. Works from any device with a camera; laptops have no
+// GPS, so HR chooses whether the office-area check applies to computers (locationRule). A virtual camera and a failed head-turn challenge are flagged too.
+// Privacy: a face photo and its embeddings are biometric data. Enrolling needs explicit consent, people can erase them at any time,
+// embeddings are stored encrypted, proofs are deleted after the retention period (default 90 days) and enrolments of people who have
+// left are deleted, both by the geomark-purge job.
 // MongoDB mode only.
 export const geomarkRouter = Router()
 geomarkRouter.use(authenticate, requireFeature('geomark'), requireModule('attendance'))
@@ -38,8 +42,8 @@ const accept = (mw: RequestHandler): RequestHandler => (req, res, next) => mw(re
   next(new AppError(err.code === 'LIMIT_FILE_SIZE' ? 'The photo can be up to 2 MB' : 'The photo could not be read', 400))
 })
 
-type Settings = { tenantId: string; enabled: boolean; requireProof: boolean; requireSelfie: boolean; requireLocation: boolean; maxAccuracyMeters: number; retentionDays: number }
-const DEFAULTS = { enabled: false, requireProof: false, requireSelfie: true, requireLocation: true, maxAccuracyMeters: 100, retentionDays: 90 }
+type Settings = { tenantId: string; enabled: boolean; requireProof: boolean; requireSelfie: boolean; requireLocation: boolean; maxAccuracyMeters: number; retentionDays: number; faceMatching: boolean; faceStrictness: Strictness; livenessChallenge: boolean; locationRule: 'all' | 'mobile_only' }
+const DEFAULTS = { enabled: false, requireProof: false, requireSelfie: true, requireLocation: true, maxAccuracyMeters: 100, retentionDays: 90, faceMatching: true, faceStrictness: 'normal' as Strictness, livenessChallenge: true, locationRule: 'mobile_only' as const }
 export async function geomarkSettings(tenantId: string): Promise<Settings> {
   const s: any = await col('geomark_settings').findOne({ _id: tenantId } as any)
   return { tenantId, ...DEFAULTS, ...(s ?? {}) }
@@ -52,9 +56,6 @@ function metres(lat1: number, lon1: number, lat2: number, lon2: number) {
   const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
-// ponytail: the hook for an outside face-recognition service. null = no automatic score; reviewers compare the two photos.
-async function faceScore(_reference: Buffer, _selfie: Buffer): Promise<number | null> { return null }
-
 async function putPhoto(tenantId: string, employeeId: string, kind: 'ref' | 'proof', file: { buffer: Buffer; mimetype: string } | undefined) {
   if (!storageConfigured()) throw new AppError('Photo storage is not set up yet. Ask your administrator.', 503)
   if (!file) throw new AppError('Take a photo first', 400)
@@ -77,9 +78,9 @@ geomarkRouter.get('/settings', asyncHandler(async (req, res) => {
   const { tenantId, employeeId } = req.user!
   const s = await geomarkSettings(tenantId)
   const enrol: any = employeeId ? await col('geomark_enrolments').findOne({ tenantId, employeeId } as any) : null
-  ok(res, { enabled: s.enabled, requireProof: s.requireProof, requireSelfie: s.requireSelfie, requireLocation: s.requireLocation, maxAccuracyMeters: s.maxAccuracyMeters, retentionDays: s.retentionDays, enrolment: enrol ? { status: enrol.status, note: enrol.note ?? null } : null, storageReady: storageConfigured() })
+  ok(res, { enabled: s.enabled, requireProof: s.requireProof, requireSelfie: s.requireSelfie, requireLocation: s.requireLocation, maxAccuracyMeters: s.maxAccuracyMeters, retentionDays: s.retentionDays, faceMatching: s.faceMatching, faceStrictness: s.faceStrictness, livenessChallenge: s.livenessChallenge, locationRule: s.locationRule, enrolment: enrol ? { status: enrol.status, note: enrol.note ?? null, samples: enrol.samples?.length ?? 0 } : null, storageReady: storageConfigured() })
 }))
-geomarkRouter.put('/settings', validate(z.object({ body: z.object({ enabled: z.boolean(), requireProof: z.boolean(), requireSelfie: z.boolean(), requireLocation: z.boolean(), maxAccuracyMeters: z.number().int().min(10).max(2000), retentionDays: z.number().int().min(7).max(730) }).strict() })), asyncHandler(async (req, res) => {
+geomarkRouter.put('/settings', validate(z.object({ body: z.object({ enabled: z.boolean(), requireProof: z.boolean(), requireSelfie: z.boolean(), requireLocation: z.boolean(), maxAccuracyMeters: z.number().int().min(10).max(2000), retentionDays: z.number().int().min(7).max(730), faceMatching: z.boolean().optional(), faceStrictness: z.enum(['relaxed', 'normal', 'strict']).optional(), livenessChallenge: z.boolean().optional(), locationRule: z.enum(['all', 'mobile_only']).optional() }).strict() })), asyncHandler(async (req, res) => {
   if (!isHR(req.user!.roleIds)) throw new AppError('Only HR can change this', 403)
   const b = req.body
   await col('geomark_settings').updateOne({ _id: req.user!.tenantId } as any, { $set: { ...b, updatedBy: req.user!.userId, updatedAt: new Date() } }, { upsert: true })
@@ -94,11 +95,26 @@ geomarkRouter.post('/enrol', accept(memory.single('selfie')), asyncHandler(async
   if (req.body?.consent !== 'true') throw new AppError('Your photo is biometric data: you must agree to its use before it is saved', 400)
   const key = await putPhoto(tenantId, employeeId, 'ref', (req as any).file)
   const old: any = await col('geomark_enrolments').findOne({ tenantId, employeeId } as any)
-  await col('geomark_enrolments').updateOne({ tenantId, employeeId } as any, { $set: { tenantId, employeeId, photoKey: key, status: 'pending', consentAt: new Date(), note: null, updatedAt: new Date() }, $setOnInsert: { _id: uuid() } }, { upsert: true })
+  const samples = parseEmbeddings(req.body?.embeddings, 3).map(seal)
+  await col('geomark_enrolments').updateOne({ tenantId, employeeId } as any, { $set: { tenantId, employeeId, photoKey: key, samples, status: 'pending', consentAt: new Date(), note: null, updatedAt: new Date() }, $setOnInsert: { _id: uuid() } }, { upsert: true })
   if (old?.photoKey) await storage().remove(old.photoKey).catch(() => undefined)
   const hr: any[] = await mongoose.connection.collection('users').find({ tenantId, active: true, 'userRoles.roleName': 'hr_admin' } as any).project({ _id: 1 }).toArray()
   if (hr.length) await Notification.insertMany(hr.map((u) => ({ _id: uuid(), tenantId, userId: u._id, type: 'geomark.enrolment', title: 'A face photo needs your approval', body: 'Check that it is the right person.', link: '/geomark', read: false })) as any)
   ok(res, { status: 'pending' }, 201)
+}))
+// Add this device (a laptop webcam, say) to an approved face profile. The new reading must match the profile already approved, so no
+// second approval is needed; if it cannot, the person registers again from this device and HR approves that.
+geomarkRouter.post('/enrol/sample', validate(z.object({ body: z.object({ embeddings: z.array(z.array(z.number()).min(64).max(2048)).min(1).max(2) }).strict() })), asyncHandler(async (req, res) => {
+  const employeeId = needEmployee(req)
+  const { tenantId } = req.user!
+  const e: any = await col('geomark_enrolments').findOne({ tenantId, employeeId, status: 'approved' } as any)
+  const known = open(e?.samples)
+  if (!known.length) throw new AppError('Register your face first and wait for HR to approve it', 400)
+  const need = THRESHOLD[(await geomarkSettings(tenantId)).faceStrictness]
+  const fresh = req.body.embeddings.map((x: unknown) => parseEmbedding(x)).filter((x: number[] | null): x is number[] => !!x)
+  if (!fresh.length || fresh.some((x: number[]) => bestScore(known, x) < need)) throw new AppError('This device could not be matched with your registered face. Register again from this device and HR will approve it.', 400)
+  await col('geomark_enrolments').updateOne({ _id: e._id } as any, { $push: { samples: { $each: fresh.map(seal), $slice: -MAX_SAMPLES } }, $set: { updatedAt: new Date() } } as any)
+  ok(res, { samples: Math.min(MAX_SAMPLES, known.length + fresh.length) }, 201)
 }))
 // Erase my own photo (and with it the ability to be matched)
 geomarkRouter.delete('/enrol', asyncHandler(async (req, res) => {
@@ -126,7 +142,10 @@ geomarkRouter.post('/enrolments/:id/decision', validate(z.object({ params: idp, 
 }))
 
 // ─── Clock in or out with proof ───
-const Punch = z.object({ type: z.enum(['in', 'out']), latitude: z.coerce.number().min(-90).max(90).optional(), longitude: z.coerce.number().min(-180).max(180).optional(), accuracy: z.coerce.number().min(0).max(100000).optional() })
+const Punch = z.object({
+  type: z.enum(['in', 'out']), latitude: z.coerce.number().min(-90).max(90).optional(), longitude: z.coerce.number().min(-180).max(180).optional(), accuracy: z.coerce.number().min(0).max(100000).optional(),
+  device: z.enum(['mobile', 'desktop']).default('mobile'), liveness: z.enum(['passed', 'failed', 'skipped']).default('skipped'), virtualCamera: z.enum(['true', 'false']).optional(), embedding: z.string().max(60000).optional(),
+})
 geomarkRouter.post('/punch', accept(memory.single('selfie')), asyncHandler(async (req, res) => {
   const employeeId = needEmployee(req)
   const { tenantId } = req.user!
@@ -135,12 +154,14 @@ geomarkRouter.post('/punch', accept(memory.single('selfie')), asyncHandler(async
   const b = Punch.parse(req.body)
   const file = (req as any).file
   const hasLoc = b.latitude != null && b.longitude != null
-  if (s.requireLocation && !hasLoc) throw new AppError('Share your location to clock in', 400)
+  // Computers have no GPS (the browser guesses from Wi-Fi or IP), so HR can leave the office-area check to phones only
+  const skipPlace = b.device === 'desktop' && s.locationRule === 'mobile_only'
+  if (s.requireLocation && !hasLoc && !skipPlace) throw new AppError('Share your location to clock in', 400)
   if (s.requireSelfie && !file) throw new AppError('Take a selfie to clock in', 400)
   const flags: string[] = []
   // Location: against the office fences (the person's own location first)
   let locationId: string | undefined, distance: number | null = null, within: boolean | null = null
-  if (hasLoc) {
+  if (hasLoc && !skipPlace) {
     const emp: any = await Employee.findOne({ _id: employeeId, tenantId }).select('workLocationId').lean()
     const fenced: any[] = await col('work_locations').find({ tenantId, active: { $ne: false }, latitude: { $ne: null }, longitude: { $ne: null }, geoFenceRadiusMeters: { $gt: 0 } } as any).toArray()
     if (fenced.length) {
@@ -151,25 +172,33 @@ geomarkRouter.post('/punch', accept(memory.single('selfie')), asyncHandler(async
     }
     if (b.accuracy != null && b.accuracy > s.maxAccuracyMeters) flags.push('low_accuracy')
   }
-  // Face: against the approved reference, when an outside service is plugged in
-  let faceMatch: number | null = null
-  const enrol: any = await col('geomark_enrolments').findOne({ tenantId, employeeId, status: 'approved' } as any)
-  if (file && enrol?.photoKey && process.env.GEOMARK_FACE_PROVIDER) { faceMatch = await faceScore(Buffer.alloc(0), file.buffer); if (faceMatch != null && faceMatch < 0.8) flags.push('face_mismatch') }
+  // Face: the reading sent with the punch against the person's approved readings; the closest one counts. Only ever flags.
+  let faceMatch: number | null = null, faceStatus = 'skipped'
+  if (s.faceMatching) {
+    const enrol: any = await col('geomark_enrolments').findOne({ tenantId, employeeId, status: 'approved' } as any)
+    const known = open(enrol?.samples)
+    const probe = parseEmbedding(b.embedding)
+    if (!known.length) faceStatus = 'no_reference'
+    else if (!probe) { faceStatus = 'not_checked'; flags.push('face_not_checked') }
+    else { faceMatch = bestScore(known, probe); faceStatus = faceMatch < THRESHOLD[s.faceStrictness] ? 'mismatch' : 'matched'; if (faceStatus === 'mismatch') flags.push('face_mismatch') }
+    if (s.livenessChallenge && b.liveness === 'failed') flags.push('liveness_failed')
+  }
+  if (b.virtualCamera === 'true') flags.push('virtual_camera')
   const photoKey = file ? await putPhoto(tenantId, employeeId, 'proof', file) : null
   // The clock-in itself: the same rules as the plain button (policy, locks, double punches)
   const data: any = { latitude: b.latitude, longitude: b.longitude, method: 'mobile', ...(locationId && { locationId }) }
   let record: any
   try { record = b.type === 'in' ? await attendanceService.clockIn(employeeId, tenantId, data) : await attendanceService.clockOut(employeeId, tenantId, data) } catch (e) { if (photoKey) await storage().remove(photoKey).catch(() => undefined); throw e }
-  const check = { _id: uuid(), tenantId, employeeId, kind: b.type, photoKey, latitude: b.latitude ?? null, longitude: b.longitude ?? null, accuracy: b.accuracy ?? null, locationId: locationId ?? null, distance, withinFence: within, faceMatch, flags, status: flags.length ? 'flagged' : 'verified', at: new Date(), attendanceRecordId: record?.id ?? null }
+  const check = { _id: uuid(), tenantId, employeeId, kind: b.type, photoKey, latitude: b.latitude ?? null, longitude: b.longitude ?? null, accuracy: b.accuracy ?? null, locationId: locationId ?? null, distance, withinFence: within, faceMatch, faceStatus, device: b.device, liveness: b.liveness, flags, status: flags.length ? 'flagged' : 'verified', at: new Date(), attendanceRecordId: record?.id ?? null }
   await col('geomark_checks').insertOne(check as any)
   if (flags.length) {
     const emp: any = await Employee.findOne({ _id: employeeId, tenantId }).select('managerId firstName lastName').lean()
     const mgr: any = emp?.managerId ? await Employee.findOne({ _id: emp.managerId, tenantId }).select('userId').lean() : null
     if (mgr?.userId) await Notification.create({ _id: uuid(), tenantId, userId: mgr.userId, type: 'geomark.flagged', title: `${emp.firstName} ${emp.lastName}'s clock-in needs a look`, body: flags.map(label).join(', '), link: '/geomark', read: false } as any)
   }
-  ok(res, { status: check.status, flags, distance, withinFence: within, record }, 201)
+  ok(res, { status: check.status, flags, distance, withinFence: within, faceStatus, record }, 201)
 }))
-const label = (f: string) => ({ outside_fence: 'outside the office area', low_accuracy: 'location not precise', face_mismatch: 'face did not match' } as any)[f] ?? f
+const label = (f: string) => ({ outside_fence: 'outside the office area', low_accuracy: 'location not precise', face_mismatch: 'face did not match', face_not_checked: 'face could not be checked', liveness_failed: 'head-turn check failed', virtual_camera: 'virtual camera used' } as any)[f] ?? f
 
 // ─── Review: flagged proofs first, any recent proof for a spot check ───
 async function teamIds(req: any): Promise<string[] | null> {
@@ -184,7 +213,7 @@ geomarkRouter.get('/checks', validate(z.object({ query: z.object({ status: z.enu
   const nm = new Map(((await Employee.find({ _id: { $in: rows.map((r) => r.employeeId) } }).select('firstName lastName employeeCode').lean()) as any[]).map((e) => [e._id, `${e.firstName} ${e.lastName} (${e.employeeCode})`]))
   const refs: any[] = await col('geomark_enrolments').find({ tenantId: req.user!.tenantId, employeeId: { $in: rows.map((r) => r.employeeId) }, status: 'approved' } as any).toArray()
   const refBy = new Map(refs.map((r) => [r.employeeId, r.photoKey]))
-  ok(res, await Promise.all(rows.map(async (r) => ({ id: r._id, employee: nm.get(r.employeeId) ?? null, kind: r.kind, at: r.at, status: r.status, flags: r.flags, distance: r.distance, withinFence: r.withinFence, accuracy: r.accuracy, latitude: r.latitude, longitude: r.longitude, note: r.note ?? null, photoUrl: await link(r.photoKey), referenceUrl: await link(refBy.get(r.employeeId)) }))))
+  ok(res, await Promise.all(rows.map(async (r) => ({ id: r._id, employee: nm.get(r.employeeId) ?? null, kind: r.kind, at: r.at, status: r.status, flags: r.flags, faceMatch: r.faceMatch ?? null, faceStatus: r.faceStatus ?? null, device: r.device ?? null, distance: r.distance, withinFence: r.withinFence, accuracy: r.accuracy, latitude: r.latitude, longitude: r.longitude, note: r.note ?? null, photoUrl: await link(r.photoKey), referenceUrl: await link(refBy.get(r.employeeId)) }))))
 }))
 geomarkRouter.post('/checks/:id/decision', validate(z.object({ params: idp, body: z.object({ approve: z.boolean(), note: z.string().trim().max(300).optional() }).strict() })), asyncHandler(async (req, res) => {
   const team = await teamIds(req)
@@ -206,6 +235,12 @@ export async function purgeGeomark(only?: string) {
     const cutoff = new Date(Date.now() - (s.retentionDays ?? DEFAULTS.retentionDays) * 86400000)
     const old: any[] = await col('geomark_checks').find({ tenantId: s._id, at: { $lt: cutoff }, photoKey: { $ne: null } } as any).limit(2000).toArray()
     for (const c of old) { await storage().remove(c.photoKey).catch(() => undefined); await col('geomark_checks').updateOne({ _id: c._id } as any, { $set: { photoKey: null, photoDeletedAt: new Date() } }); removed++ }
+    // A face profile is not kept once the person has left the company
+    const gone = ((await Employee.find({ tenantId: s._id, employmentStatus: 'terminated' }).select('_id').lean()) as any[]).map((e) => e._id)
+    for (const e of (gone.length ? await col('geomark_enrolments').find({ tenantId: s._id, employeeId: { $in: gone } } as any).toArray() : []) as any[]) {
+      if (e.photoKey) await storage().remove(e.photoKey).catch(() => undefined)
+      await col('geomark_enrolments').deleteOne({ _id: e._id } as any)
+    }
   }
   return removed
 }

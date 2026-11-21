@@ -7,7 +7,7 @@ import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
-const FLAG: Record<string, string> = { outside_fence: 'Outside the office area', low_accuracy: 'Location not precise', face_mismatch: 'Face did not match' }
+const FLAG: Record<string, string> = { outside_fence: 'Outside the office area', low_accuracy: 'Location not precise', face_mismatch: 'Face did not match', face_not_checked: 'Face could not be checked', liveness_failed: 'Head-turn check failed', virtual_camera: 'Virtual camera used' }
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 // Clock-in with proof: managers and HR look at flagged selfies and locations; HR sets the rules and approves reference photos.
@@ -48,6 +48,9 @@ function Review() {
             {c.photoUrl ? <figure style={{ margin: 0 }}><img src={c.photoUrl} alt="Selfie at clock-in" width={140} style={{ borderRadius: 14, display: 'block' }} /><figcaption className="dim" style={{ fontSize: 12 }}>At clock-in</figcaption></figure> : <span className="dim">Photo deleted after the retention period.</span>}
             {c.referenceUrl && <figure style={{ margin: 0 }}><img src={c.referenceUrl} alt="Approved reference photo" width={140} style={{ borderRadius: 14, display: 'block' }} /><figcaption className="dim" style={{ fontSize: 12 }}>Reference</figcaption></figure>}
             <div className="dim" style={{ fontSize: 13 }}>
+              {c.faceMatch != null && <div>Face similarity {Math.round(c.faceMatch * 100)}%{c.faceStatus === 'matched' ? ' (matched)' : ' (below the bar)'}</div>}
+              {c.faceStatus === 'no_reference' && <div>No approved face to compare with</div>}
+              {c.device && <div>{c.device === 'desktop' ? 'From a computer' : 'From a phone or tablet'}</div>}
               {c.distance != null && <div>{c.distance} m from the office{c.withinFence ? '' : ' (outside)'}</div>}
               {c.accuracy != null && <div>Location accurate to about {Math.round(c.accuracy)} m</div>}
               {c.latitude != null && <a href={`https://www.openstreetmap.org/?mlat=${c.latitude}&mlon=${c.longitude}#map=17/${c.latitude}/${c.longitude}`} target="_blank" rel="noopener noreferrer">Open on a map</a>}
@@ -94,10 +97,10 @@ function Rules() {
   const toast = useToast()
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['geomark-settings'], queryFn: async () => (await api.get('/geomark/settings')).data.data as any })
-  const [f, setF] = useState({ enabled: false, requireProof: false, requireSelfie: true, requireLocation: true, maxAccuracyMeters: 100, retentionDays: 90 })
-  useEffect(() => { if (q.data) setF({ enabled: q.data.enabled, requireProof: q.data.requireProof, requireSelfie: q.data.requireSelfie, requireLocation: q.data.requireLocation, maxAccuracyMeters: q.data.maxAccuracyMeters, retentionDays: q.data.retentionDays }) }, [q.data])
+  const [f, setF] = useState({ enabled: false, requireProof: false, requireSelfie: true, requireLocation: true, maxAccuracyMeters: 100, retentionDays: 90, faceMatching: true, faceStrictness: 'normal', livenessChallenge: true, locationRule: 'mobile_only' })
+  useEffect(() => { if (q.data) setF({ enabled: q.data.enabled, requireProof: q.data.requireProof, requireSelfie: q.data.requireSelfie, requireLocation: q.data.requireLocation, maxAccuracyMeters: q.data.maxAccuracyMeters, retentionDays: q.data.retentionDays, faceMatching: q.data.faceMatching, faceStrictness: q.data.faceStrictness, livenessChallenge: q.data.livenessChallenge, locationRule: q.data.locationRule }) }, [q.data])
   const save = useMutation({ mutationFn: async () => (await api.put('/geomark/settings', f)).data.data, onSuccess: () => { toast('Saved'); qc.invalidateQueries({ queryKey: ['geomark-settings'] }) }, onError: (e) => toast(errMsg(e), 'error') })
-  const box = (k: 'enabled' | 'requireProof' | 'requireSelfie' | 'requireLocation', label: string, hint?: string) => (
+  const box = (k: 'enabled' | 'requireProof' | 'requireSelfie' | 'requireLocation' | 'faceMatching' | 'livenessChallenge', label: string, hint?: string) => (
     <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}><input type="checkbox" checked={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.checked })} style={{ marginTop: 4 }} /><span>{label}{hint && <span className="dim" style={{ display: 'block', fontSize: 13 }}>{hint}</span>}</span></label>)
   return (
     <div className="card" style={{ padding: 20, display: 'grid', gap: 14 }}>
@@ -105,9 +108,24 @@ function Rules() {
       {box('requireProof', 'Require it for everyone', 'The plain clock-in button stops working, so nobody can skip the proof.')}
       {box('requireSelfie', 'A selfie is required')}
       {box('requireLocation', 'A location is required', 'It is compared with your office geo-fences (set on Work locations).')}
+      <div className="field"><label htmlFor="gm-loc">Office-area check on computers</label>
+        <select id="gm-loc" className="input" value={f.locationRule} onChange={(e) => setF({ ...f, locationRule: e.target.value })}>
+          <option value="mobile_only">Phones and tablets only (computers are checked by face)</option>
+          <option value="all">Every device (computers have no GPS, so this flags many)</option>
+        </select></div>
+      {box('faceMatching', 'Match faces automatically', 'People register their face once, from any device with a camera. Each clock-in is compared with it. A mismatch only flags the punch for review; it never blocks it.')}
+      {f.faceMatching && (<>
+        <div className="field"><label htmlFor="gm-str">How strict the match is</label>
+          <select id="gm-str" className="input" value={f.faceStrictness} onChange={(e) => setF({ ...f, faceStrictness: e.target.value })}>
+            <option value="relaxed">Relaxed (fewer flags, easier to fool)</option>
+            <option value="normal">Normal</option>
+            <option value="strict">Strict (more flags in poor light)</option>
+          </select></div>
+        {box('livenessChallenge', 'Ask people to turn their head first', 'Stops a flat photo held up to the camera. Only asked of people whose face is approved.')}
+      </>)}
       <div className="field"><label htmlFor="gm-acc">Flag locations vaguer than (metres)</label><input id="gm-acc" className="input" inputMode="numeric" value={f.maxAccuracyMeters} onChange={(e) => setF({ ...f, maxAccuracyMeters: Number(e.target.value) || 100 })} /></div>
       <div className="field"><label htmlFor="gm-ret">Delete selfies after (days)</label><input id="gm-ret" className="input" inputMode="numeric" value={f.retentionDays} onChange={(e) => setF({ ...f, retentionDays: Number(e.target.value) || 90 })} /></div>
-      <p className="dim" style={{ margin: 0, fontSize: 13 }}>Selfies and face photos are biometric data. They are kept privately, shown only to managers and HR, and deleted after the period above. People can erase their own reference photo at any time. Automatic face matching needs an outside face-recognition service: until one is connected, reviewers compare photos by eye.</p>
+      <p className="dim" style={{ margin: 0, fontSize: 13 }}>Selfies and face photos are biometric data. They are kept privately, shown only to managers and HR, and deleted after the period above. The face readings used for matching are stored encrypted and are deleted when a person erases their face, or leaves the company. Matching runs on free open-source software inside our own app and is a first check, not proof: it works best in good light, and the people reviewing flags make the final call. Offer people another way to clock in if they do not agree to a face reading.</p>
       <div><button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save'}</button></div>
     </div>
   )
