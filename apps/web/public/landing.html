@@ -684,7 +684,7 @@ if (matchMedia('(prefers-reduced-motion: no-preference)').matches && CSS.support
       <ul class="nav-links">
         <li><a class="m-link" href="#languages">Apps</a></li>
         <li><a class="m-link" href="#levels">Steps</a></li>
-        <li><a class="m-link" href="#prices">Ways in</a></li>
+        <li><a class="m-link" href="#prices">Plans</a></li>
         <li><a class="m-link" href="#faq">Questions</a></li>
         <li><a class="m-link" href="/login">Sign in</a></li>
       </ul>
@@ -703,7 +703,7 @@ if (matchMedia('(prefers-reduced-motion: no-preference)').matches && CSS.support
     <ul class="nav-overlay__links">
       <li><a class="m-link" href="#languages">Apps</a></li>
       <li><a class="m-link" href="#levels">Steps</a></li>
-      <li><a class="m-link" href="#prices">Ways in</a></li>
+      <li><a class="m-link" href="#prices">Plans</a></li>
       <li><a class="m-link" href="#faq">Questions</a></li>
       <li><a class="m-link" href="/login">Sign in</a></li>
     </ul>
@@ -865,31 +865,31 @@ if (matchMedia('(prefers-reduced-motion: no-preference)').matches && CSS.support
   </div>
 </section>
 
-<!-- prices (ways in): three rows, each with a shape, a name, a line, an app count and a button -->
+<!-- prices (plans): three rows, each with a shape, a plan name, what it includes, a feature count and a Talk to us button; no prices shown. Mirrors apps/api/src/modules/company/plans.catalog.ts -->
 <section id="prices" data-8b-section="prices" aria-labelledby="prices-title">
   <div class="wrap">
     <div class="pr-head" data-8b-motion="rise" data-8b-enter="90%">
-      <h2 class="m-text-3" id="prices-title">Three ways in</h2>
-      <p class="m-text">Apps can be switched on or off at any time, so your first choice is not a commitment.</p>
+      <h2 class="m-text-3" id="prices-title">Three plans, one shared core</h2>
+      <p class="m-text">Every plan runs on the same people, approvals, tasks and notifications. Tell us about your company and we will fit the plan; features can be added on top of any plan.</p>
     </div>
     <ul class="pr-list" data-8b-items=":scope > .pr-row">
       <li class="pr-row" data-8b-motion="rise" data-8b-enter="90%">
         <span class="pr-cap" aria-hidden="true"><span class="m-shape-2" data-8b-motion="pop" data-8b-enter="92%"></span></span>
-        <div class="pr-what"><h3 class="m-text-6">Payroll first</h3><p class="m-text-7">Payroll on the shared core of people, approvals, tasks and notifications.</p></div>
-        <p class="pr-price"><span class="m-text-3 pr-amount">1 app</span><span class="m-text-7">to start</span></p>
-        <a class="m-btn-2" href="/signup">Start with payroll</a>
+        <div class="pr-what"><h3 class="m-text-6">Starter</h3><p class="m-text-7">Payroll, leave, exits, the helpdesk and employee self-onboarding.</p></div>
+        <p class="pr-price"><span class="m-text-3 pr-amount">5 features</span><span class="m-text-7">included</span></p>
+        <a class="m-btn-2" href="mailto:hello@marichisolutions.com?subject=MarichiHR%20plans">Talk to us about Starter</a>
       </li>
       <li class="pr-row" data-8b-motion="rise" data-8b-enter="90%">
         <span class="pr-cap" aria-hidden="true"><span class="pr-pop" data-8b-motion="pop" data-8b-enter="92%"><svg class="m-shape-3" viewBox="0 0 100 100"><use href="#shape-scallop"/></svg></span></span>
-        <div class="pr-what"><h3 class="m-text-6">People and time</h3><p class="m-text-7">Attendance and leave on the shared core, payroll later.</p></div>
-        <p class="pr-price"><span class="m-text-3 pr-amount">2 apps</span><span class="m-text-7">to start</span></p>
-        <a class="m-btn" href="/signup"><span class="m-btn__label">Start with time</span><svg class="m-btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a>
+        <div class="pr-what"><h3 class="m-text-6">Growth</h3><p class="m-text-7">Everything in Starter plus attendance, shifts, overtime and probation confirmation. New workspaces start here.</p></div>
+        <p class="pr-price"><span class="m-text-3 pr-amount">8 features</span><span class="m-text-7">included</span></p>
+        <a class="m-btn" href="mailto:hello@marichisolutions.com?subject=MarichiHR%20plans"><span class="m-btn__label">Talk to us about Growth</span><svg class="m-btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a>
       </li>
       <li class="pr-row" data-8b-motion="rise" data-8b-enter="90%">
         <span class="pr-cap" aria-hidden="true"><span class="m-shape-4" data-8b-motion="pop" data-8b-enter="92%"></span></span>
-        <div class="pr-what"><h3 class="m-text-6">Everything</h3><p class="m-text-7">Attendance, leave, payroll, expenses and exits from day one.</p></div>
-        <p class="pr-price"><span class="m-text-3 pr-amount">5 apps</span><span class="m-text-7">from day one</span></p>
-        <a class="m-btn-2" href="/signup">Start with all five</a>
+        <div class="pr-what"><h3 class="m-text-6">Enterprise</h3><p class="m-text-7">Everything in Growth plus expenses, performance, timesheets, API and webhooks, several companies in one workspace and the AI assistant.</p></div>
+        <p class="pr-price"><span class="m-text-3 pr-amount">14 features</span><span class="m-text-7">included</span></p>
+        <a class="m-btn-2" href="mailto:hello@marichisolutions.com?subject=MarichiHR%20plans">Talk to us about Enterprise</a>
       </li>
     </ul>
   </div>
@@ -1005,7 +1005,7 @@ if (matchMedia('(prefers-reduced-motion: no-preference)').matches && CSS.support
       </ul>
       <a class="foot-logo" href="#languages" aria-label="MarichiHR, back to the top"><span class="foot-logo__mark" aria-hidden="true" data-8b-motion="pop" data-8b-enter="92%"><svg viewBox="0 0 32 32"><use href="#brand-mark"/></svg></span><span class="foot-logo__word">MarichiHR</span></a>
       <ul class="foot-links foot-links--end">
-        <li><a class="m-link" href="#prices">Ways in</a></li>
+        <li><a class="m-link" href="#prices">Plans</a></li>
         <li><a class="m-link" href="/login">Sign in</a></li>
       </ul>
     </div>

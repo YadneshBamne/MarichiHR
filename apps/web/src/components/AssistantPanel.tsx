@@ -4,6 +4,7 @@ import api from '../lib/api'
 import { useCompany } from '../lib/hooks/useCompany'
 import { useToast } from './ui/Toast'
 import Icon from './ui/Icon'
+import { Mark } from './brand/Logo'
 
 type Proposal = { type: 'helpdesk_ticket'; categoryId: string; categoryName: string; subject: string; description: string; priority: string; sent?: string }
 type Msg = { role: 'user' | 'assistant'; content: string; proposals?: Proposal[] }
@@ -44,8 +45,8 @@ export default function AssistantPanel() {
   return (
     <>
       <button type="button" aria-label="Open the assistant" aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 40, width: 56, height: 56, borderRadius: '50%', border: 0, background: 'var(--honey)', color: 'var(--ink)', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: 'none' }}>
-        <Icon name={open ? 'x' : 'sparkle'} size={22} />
+        style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 40, width: 56, height: 56, borderRadius: '50%', border: '1.5px solid var(--line-2)', background: '#fff', color: 'var(--ink)', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: 'none' }}>
+        {open ? <Icon name="x" size={22} /> : <Mark size={34} />}
       </button>
       {open && (
         <div role="dialog" aria-label="Assistant" style={{ position: 'fixed', right: 20, bottom: 88, zIndex: 40, width: 'min(400px, calc(100vw - 32px))', height: 'min(560px, calc(100vh - 120px))', display: 'flex', flexDirection: 'column', background: '#fff', border: '1.5px solid var(--line-2)', borderRadius: 28, overflow: 'hidden' }}>
