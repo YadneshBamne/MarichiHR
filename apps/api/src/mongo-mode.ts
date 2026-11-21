@@ -26,7 +26,6 @@ const SWAPS: Record<string, string> = {
   'modules/salary/salary.service': 'modules/salary/salary.mongo',
   'modules/salary/starter.service': 'modules/salary/starter.service.shim',
   'modules/payroll/payroll.service': 'modules/payroll/payroll.mongo',
-  'modules/policies/policies.service': 'modules/policies/policies.service.shim',
   'modules/dashboard/dashboard.router': 'modules/dashboard/dashboard.router.mongo',
   'modules/notifications/notifications.router': 'modules/notifications/notifications.router.shim',
   'infrastructure/notifications/notify': 'infrastructure/notifications/notify.shim',

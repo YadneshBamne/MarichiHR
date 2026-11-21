@@ -34,7 +34,7 @@ export const ENABLED = new Set<string>([
   'leaveType', 'leaveBalance', 'leaveRequest', 'leaveApproval', 'leaveAllocation', 'leaveAllocationRequest', 'leaveBlackout', 'leaveYearEndRun',
   'attendanceRecord', 'attendanceRegularisation', 'attendanceAdjustment', 'attendancePolicy', 'overtimeRequest', 'rosterDay', 'shiftTemplate', 'employeeShift',
   'holiday', 'holidayCalendar', 'workLocation',
-  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi', 'webhook', 'webhookDelivery', 'automationRule', 'automationRun', 'apiKey',
+  'employee', 'orgUnit', 'tenant', 'auditLog', 'notification', 'domainEvent', 'employeeDocument', 'employeeContract', 'activity', 'activityType', 'payrollCycle', 'user', 'approvalChain', 'approvalStep', 'approvalDelegation', 'pushSubscription', 'chatterMessage', 'reimbursementClaim', 'expenseRequest', 'expenseCategory', 'perDiemRate', 'fxRate', 'employeeExit', 'exitClearance', 'payslip', 'payrollInputType', 'masterValue', 'contractStateTransition', 'refreshToken', 'candidate', 'interview', 'jobOpening', 'jobPosition', 'performanceGoal', 'performanceCycle', 'performanceKpi', 'webhook', 'webhookDelivery', 'automationRule', 'automationRun', 'apiKey', 'announcement', 'announcementRead', 'policy', 'policyVersion', 'policyAcceptance', 'policyQuery', 'policyException', 'grievance', 'grievanceMessage', 'privacyRequest', 'customFieldDefinition', 'employeeAddress', 'employeeIdentity', 'employeeEducation', 'employeeFamilyMember', 'employeeEmergencyContact', 'employeePreviousEmployment', 'legalEntity',
 ])
 
 const col = (m: M) => mongoose.connection.collection(m.coll)
@@ -419,7 +419,13 @@ function delegate(m: M, delegateName: string, tx?: any) {
     upsert: (args: any) => op(async (s) => {
       const filter = await buildWhere(m, args.where, s)
       const found = await col(m).findOne(filter, { session: s })
-      if (found) return (await shape(m, [await col(m).findOneAndUpdate({ _id: found._id }, updateOps(m, args.update), { returnDocument: 'after', session: s }) as any], args, s))[0]
+      if (found) {
+        const nested = await splitNested(m, args.update ?? {}, s)
+        const u = updateOps(m, nested.rest)
+        const d = Object.keys(u).length ? await col(m).findOneAndUpdate({ _id: found._id }, u, { returnDocument: 'after', session: s }) : found // an empty update changes nothing
+        await nested.run(found._id as any)
+        return (await shape(m, [d as any], args, s))[0]
+      }
       const after: Array<(id: string) => Promise<void>> = []
       const doc = await toDoc(m, args.create, s, after)
       await col(m).insertOne(doc, { session: s }).catch((e) => { throw dupError(m, e) })
