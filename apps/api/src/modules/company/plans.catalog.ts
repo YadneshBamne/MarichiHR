@@ -18,7 +18,7 @@ export const FEATURES: Feature[] = [
   { key: 'helpdesk', name: 'Helpdesk', blurb: 'Employees raise HR queries; tickets with owners and a response target', status: 'live' },
   { key: 'attendance', name: 'Attendance and shifts', blurb: 'Clock-in, shifts, rosters, regularisation, period lock', status: 'live', app: 'attendance' },
   { key: 'advancedAttendance', name: 'Overtime, permissions and geo-fencing', blurb: 'Overtime rules, short permissions, location fences', status: 'live' },
-  { key: 'confirmation', name: 'Confirmation workflow', blurb: 'Probation review and confirmation with approvals', status: 'planned' },
+  { key: 'confirmation', name: 'Confirmation workflow', blurb: 'Probation review and confirmation with approvals', status: 'live' },
   { key: 'expenses', name: 'Expense management', blurb: 'Claims, per diem, approvals, reimbursement through payroll', status: 'live', app: 'expenses' },
   { key: 'pms', name: 'Performance management', blurb: 'Goals, KPI appraisal, review cycles', status: 'live' },
   { key: 'geomark', name: 'Face and location check-in', blurb: 'Selfie and location proof when marking attendance', status: 'planned' },

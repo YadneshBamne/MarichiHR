@@ -38,6 +38,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ['hr_admin', 'payroll_admin'], keywords: 'exits resignation full and final settlement clearance' },
       { label: 'Onboarding & requests', selfLabel: 'My requests', path: '/requests', icon: 'mail', keywords: 'onboarding joining details data request profile update documents new joiner' },
       { label: 'Performance', selfLabel: 'My goals', path: '/performance', icon: 'target', keywords: 'appraisal goals kpi targets review rating okr' },
+      { label: 'Confirmations', path: '/confirmation', icon: 'check', roles: ['hr_admin', 'system_admin', 'manager'], keywords: 'probation confirm review extend permanent' },
       { label: 'Org chart', path: '/org-chart', icon: 'layers', keywords: 'organisation hierarchy reporting lines tree managers departments' },
       { label: 'Recruitment', selfLabel: 'Jobs & referrals', path: '/recruitment', icon: 'briefcase', keywords: 'hiring jobs openings requisition candidates interviews offers referrals careers' },
     ],

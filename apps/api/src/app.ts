@@ -80,6 +80,7 @@ export function createApp() {
   // New apps built on MongoDB only (no Postgres version): helpdesk and timesheets
   if (process.env.DB_PROVIDER === 'mongo') {
     app.use('/api/v1/helpdesk', require('./modules/helpdesk/helpdesk.mongo.router').helpdeskRouter)
+    app.use('/api/v1/confirmation', require('./modules/employees/confirmation.mongo.router').confirmationRouter)
     app.use('/api/v1/timesheets', require('./modules/timesheets/timesheets.mongo.router').timesheetsRouter)
   }
 

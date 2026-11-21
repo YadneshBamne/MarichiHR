@@ -167,7 +167,8 @@ export const HelpdeskTicket = model('HelpdeskTicket', 'helpdesk_tickets', {}, [[
 export const TsProject = model('TsProject', 'ts_projects', {}, [[{ tenantId: 1, code: 1 }, { unique: true }]], false)
 export const TsWeek = model('TsWeek', 'ts_weeks', {}, [[{ tenantId: 1, employeeId: 1, weekStart: 1 }, { unique: true }], [{ tenantId: 1, status: 1 }]], false)
 
-export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract, PayrollCycle, Payslip, PayrollInput, Notification, Counter, HelpdeskCategory, HelpdeskTicket, TsProject, TsWeek]
+export const ConfirmationCase = model('ConfirmationCase', 'confirmation_cases', {}, [[{ tenantId: 1, employeeId: 1, status: 1 }]], false)
+export const ALL_MODELS = [Tenant, Role, User, OrgUnit, Employee, RefreshToken, LeaveType, ActivityType, ExpenseCategory, PayrollInputType, ShiftTemplate, ResourceCalendar, LeaveBalance, JobPosition, AuditLog, WorkLocation, LegalEntity, PayGroup, DomainEvent, PositionHistory, SalaryRuleCategory, StatutoryTable, SalaryStructureType, SalaryStructure, GradeBand, EmployeeContract, PayrollCycle, Payslip, PayrollInput, Notification, Counter, HelpdeskCategory, HelpdeskTicket, TsProject, TsWeek, ConfirmationCase]
 
 // Create collections and indexes up front (needed before the first transaction writes to them)
 export async function syncMongoIndexes() {
