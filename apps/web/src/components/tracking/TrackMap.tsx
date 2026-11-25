@@ -2,28 +2,36 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { Map as MapboxMap } from 'mapbox-gl'
 import api from '../../lib/api'
+import { snapPiece, cumulative, alongLine, pointAt, type LL } from '../../lib/roadSnap'
 
-// A Mapbox map with 3D buildings that draws the route a person travelled (a line from the first point of the day to the last, with the
-// start, the last known place and every reported point), plus a replay slider to see where they were at any time.
-// The Mapbox public token comes from the API (GET /tracking/map-config), so it is set once on the host and not at build time.
+// A Mapbox map with 3D buildings that draws the route a person travelled. The phone sends a point every minute or so, so the points are
+// snapped to the road network (Mapbox Map Matching) and the line follows the streets, like a delivery app. A Replay slider moves a marker
+// smoothly along the road. The Mapbox public token comes from the API (GET /tracking/map-config), so it is set once on the host.
 export type TrackPoint = { latitude: number; longitude: number; accuracy?: number | null; at: string; sessionId?: string }
 type Props = { points: TrackPoint[]; current?: { latitude: number; longitude: number; at: string } | null; name?: string; height?: number; viewKey: string }
+type Route = { pts: TrackPoint[]; line: LL[]; cum: number[]; dist: number[]; snapped: LL[] }
 
 const GAP_MS = 15 * 60_000 // a pause this long breaks the line (phone locked, tracking stopped and started again)
-const MAX_ACCURACY = 200 // metres: vaguer points would make the line jump around
+const MAX_ACCURACY = 200 // metres: vaguer points would make the route jump around
 const css = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 const at = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-type LL = [number, number]
 const fc = (features: any[]) => ({ type: 'FeatureCollection' as const, features })
 const pt = (c: LL, props: Record<string, unknown> = {}) => ({ type: 'Feature' as const, properties: props, geometry: { type: 'Point' as const, coordinates: c } })
+const build = (pts: TrackPoint[], line: LL[], snapped: LL[]): Route => { const cum = cumulative(line); return { pts, line, cum, snapped, dist: alongLine(line, cum, snapped) } }
+const rawRoute = (pts: TrackPoint[]) => { const l = pts.map((p) => [p.longitude, p.latitude] as LL); return build(pts, l, l) }
 
 export default function TrackMap({ points, current, name, height = 380, viewKey }: Props) {
   const holder = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapboxMap | null>(null)
   const fitted = useRef('')
+  const routesFor = useRef('')
+  const posRef = useRef(0)
   const [ready, setReady] = useState(false)
   const [problem, setProblem] = useState('')
-  const [idx, setIdx] = useState(0)
+  const [routes, setRoutes] = useState<Route[]>([])
+  const [snapping, setSnapping] = useState(false)
+  const [showPoints, setShowPoints] = useState(false)
+  const [pos, setPos] = useState(0)
   const [playing, setPlaying] = useState(false)
   const cfg = useQuery({ queryKey: ['map-config'], staleTime: Infinity, retry: false, queryFn: async () => (await api.get('/tracking/map-config')).data.data as { token: string | null } })
   const token = cfg.data?.token ?? null
@@ -31,15 +39,34 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
   // the usable points, and the route split into pieces wherever tracking paused
   const good = useMemo(() => points.filter((p) => p.accuracy == null || p.accuracy <= MAX_ACCURACY), [points])
   const pieces = useMemo(() => {
-    const out: LL[][] = []
-    let cur: LL[] = [], prev: TrackPoint | null = null
+    const out: TrackPoint[][] = []
+    let cur: TrackPoint[] = [], prev: TrackPoint | null = null
     for (const p of good) {
       if (prev && (p.sessionId !== prev.sessionId || +new Date(p.at) - +new Date(prev.at) > GAP_MS)) { if (cur.length) out.push(cur); cur = [] }
-      cur.push([p.longitude, p.latitude]); prev = p
+      cur.push(p); prev = p
     }
     if (cur.length) out.push(cur)
     return out
   }, [good])
+  const total = good.length
+
+  // the straight-line route straight away, then the road-following one when Mapbox has matched it (an old route stays on screen meanwhile)
+  useEffect(() => {
+    if (!token) return
+    const ac = new AbortController()
+    if (routesFor.current !== viewKey) { routesFor.current = viewKey; setRoutes(pieces.map(rawRoute)) }
+    setSnapping(pieces.some((p) => p.length > 1))
+    ;(async () => {
+      const out: Route[] = []
+      for (const pts of pieces) {
+        if (pts.length < 2) { out.push(rawRoute(pts)); continue }
+        const s = await snapPiece(pts, token, ac.signal)
+        out.push(build(pts, s.line, s.snapped))
+      }
+      if (!ac.signal.aborted) { setRoutes(out); setSnapping(false) }
+    })().catch(() => { if (!ac.signal.aborted) setSnapping(false) })
+    return () => ac.abort()
+  }, [pieces, token, viewKey])
 
   // one map for the life of the component
   useEffect(() => {
@@ -67,14 +94,14 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
         m.addSource('points', { type: 'geojson', data: fc([]) })
         m.addSource('ends', { type: 'geojson', data: fc([]) })
         m.addSource('cursor', { type: 'geojson', data: fc([]) })
-        m.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ink, 'line-width': 8, 'line-opacity': 0.85 } })
+        m.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ink, 'line-width': 9, 'line-opacity': 0.9 } })
         // the colour runs from pale to strong along the route, so the direction of travel can be read
-        m.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': 4.5, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, soft, 1, honey] } })
+        m.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': 5.5, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, soft, 1, honey] } })
         m.addLayer({ id: 'trail-points', type: 'circle', source: 'points', paint: { 'circle-radius': 3.5, 'circle-color': honey, 'circle-stroke-color': ink, 'circle-stroke-width': 1.2 } })
         m.addLayer({ id: 'ends', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['match', ['get', 'kind'], 'start', ok, bad], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } })
         m.addLayer({ id: 'cursor', type: 'circle', source: 'cursor', paint: { 'circle-radius': 10, 'circle-color': honey, 'circle-stroke-color': ink, 'circle-stroke-width': 3 } })
         const pop = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 10 })
-        m.on('mousemove', 'trail-points', (e) => { const f: any = e.features?.[0]; if (!f) return; m.getCanvas().style.cursor = 'pointer'; pop.setLngLat((f.geometry as any).coordinates).setText(String(f.properties?.label)).addTo(m) })
+        m.on('mousemove', 'trail-points', (e) => { const f: any = e.features?.[0]; if (!f) return; m.getCanvas().style.cursor = 'pointer'; pop.setLngLat(f.geometry.coordinates).setText(String(f.properties?.label)).addTo(m) })
         m.on('mouseleave', 'trail-points', () => { m.getCanvas().style.cursor = ''; pop.remove() })
         setReady(true)
       })
@@ -84,21 +111,22 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
     return () => { dead = true; watch.disconnect(); setReady(false); mapRef.current = null; map?.remove() }
   }, [token])
 
-  // draw the route whenever the points change; fit the view only when a different person or day is opened
+  // draw the route whenever it changes; fit the view only when a different person or day is opened
   useEffect(() => {
     const m = mapRef.current
     if (!ready || !m) return
-    const lines = pieces.filter((p) => p.length > 1).map((c) => ({ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: c } }))
+    const lines = routes.filter((r) => r.line.length > 1).map((r) => ({ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: r.line } }))
     ;(m.getSource('trail') as any)?.setData(fc(lines))
-    ;(m.getSource('points') as any)?.setData(fc(good.map((p) => pt([p.longitude, p.latitude], { label: `${at(p.at)}${p.accuracy != null ? ` · about ${Math.round(p.accuracy)} m accuracy` : ''}` }))))
-    const first = good[0], last = good[good.length - 1]
+    ;(m.getSource('points') as any)?.setData(fc(showPoints ? good.map((p) => pt([p.longitude, p.latitude], { label: `${at(p.at)}${p.accuracy != null ? ` · about ${Math.round(p.accuracy)} m accuracy` : ''}` })) : []))
+    const first = routes[0]?.snapped[0]
+    const lastRoute = routes[routes.length - 1]
+    const last = lastRoute ? lastRoute.snapped[lastRoute.snapped.length - 1] : current ? ([current.longitude, current.latitude] as LL) : null
     const ends: any[] = []
-    if (first) ends.push(pt([first.longitude, first.latitude], { kind: 'start' }))
-    const now = current ?? (last ? { latitude: last.latitude, longitude: last.longitude } : null)
-    if (now) ends.push(pt([now.longitude, now.latitude], { kind: 'last' }))
+    if (first) ends.push(pt(first, { kind: 'start' }))
+    if (last) ends.push(pt(last, { kind: 'last' }))
     ;(m.getSource('ends') as any)?.setData(fc(ends))
     if (fitted.current !== viewKey) {
-      const all: LL[] = [...good.map((p) => [p.longitude, p.latitude] as LL), ...(current ? [[current.longitude, current.latitude] as LL] : [])]
+      const all = routes.flatMap((r) => r.line)
       if (all.length === 1) m.jumpTo({ center: all[0], zoom: 16 })
       else if (all.length > 1) {
         const lons = all.map((c) => c[0]), lats = all.map((c) => c[1])
@@ -107,22 +135,45 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
       }
       if (all.length) fitted.current = viewKey
     }
-  }, [ready, good, pieces, current, viewKey])
+  }, [ready, routes, good, showPoints, current, viewKey])
 
-  // the replay slider moves a marker along the route
-  useEffect(() => { setIdx(Math.max(0, good.length - 1)); setPlaying(false) }, [viewKey, good.length])
+  // where the replay marker is: pos is a (fractional) index into the points, turned into a place along the road
+  const cursorAt = (p: number): LL | null => {
+    if (!routes.length) return null
+    let off = 0
+    for (const r of routes) {
+      if (p <= off + r.pts.length - 1 || r === routes[routes.length - 1]) {
+        const local = Math.max(0, Math.min(r.pts.length - 1, p - off)), i = Math.floor(local), f = local - i
+        const d = i + 1 < r.dist.length ? r.dist[i] + f * (r.dist[i + 1] - r.dist[i]) : r.dist[i]
+        return r.line.length ? pointAt(r.line, r.cum, d) : null
+      }
+      off += r.pts.length
+    }
+    return null
+  }
+  useEffect(() => { posRef.current = Math.max(0, total - 1); setPos(posRef.current); setPlaying(false) }, [viewKey, total])
   useEffect(() => {
-    const m = mapRef.current, p = good[idx]
+    const m = mapRef.current, c = cursorAt(pos)
     if (!ready || !m) return
-    ;(m.getSource('cursor') as any)?.setData(fc(p ? [pt([p.longitude, p.latitude])] : []))
-    // while the replay plays, the camera follows the marker at street level, where the buildings stand out
-    if (playing && p) m.easeTo({ center: [p.longitude, p.latitude], zoom: Math.max(m.getZoom(), 16.2), pitch: 60, duration: 160, essential: true })
-  }, [ready, good, idx, playing])
+    ;(m.getSource('cursor') as any)?.setData(fc(c ? [pt(c)] : []))
+    if (playing && c) m.setCenter(c) // the camera follows the marker while the replay plays
+  }, [ready, routes, pos, playing]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const m = mapRef.current
+    if (playing && m) m.easeTo({ zoom: Math.max(m.getZoom(), 16.2), pitch: 60, duration: 800 }) // street level, where the buildings stand out
+  }, [playing])
   useEffect(() => {
     if (!playing) return
-    const t = setInterval(() => setIdx((i) => { if (i >= good.length - 1) { setPlaying(false); return i } return i + 1 }), 150)
-    return () => clearInterval(t)
-  }, [playing, good.length])
+    let raf = 0, prev = performance.now()
+    const speed = Math.max(2.5, total / 25) // points a second: a day's route replays in about 25 seconds
+    const tick = (now: number) => {
+      const next = Math.min(total - 1, posRef.current + ((now - prev) / 1000) * speed)
+      prev = now; posRef.current = next; setPos(next)
+      if (next >= total - 1) setPlaying(false); else raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [playing, total])
 
   if (cfg.isLoading) return <div className="skeleton" style={{ height, borderRadius: 18 }} />
   if (!token) {
@@ -135,24 +186,26 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
       </div>
     )
   }
-  const p = good[idx]
+  const shown = good[Math.round(pos)]
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ position: 'relative' }}>
         <div ref={holder} role="img" aria-label={`Map of ${name ?? 'the'} route`} style={{ width: '100%', height, borderRadius: 18, overflow: 'hidden' }} />
         {problem && <div role="alert" className="pill danger" style={{ position: 'absolute', left: 10, top: 10, whiteSpace: 'normal', textTransform: 'none' }}>{problem}</div>}
+        {snapping && !problem && <div className="pill mute" style={{ position: 'absolute', left: 10, top: 10, textTransform: 'none' }}>Following the roads…</div>}
       </div>
-      {good.length > 1 && (
+      {total > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (!playing && idx >= good.length - 1) setIdx(0); setPlaying(!playing) }}>{playing ? 'Pause' : 'Replay'}</button>
-          <input type="range" aria-label="Replay the route" min={0} max={good.length - 1} value={idx} onChange={(e) => { setPlaying(false); setIdx(Number(e.target.value)) }} style={{ flex: '1 1 160px' }} />
-          <span className="dim num" style={{ fontSize: 13, minWidth: 70, textAlign: 'right' }}>{p ? at(p.at) : ''}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { if (!playing && posRef.current >= total - 1) { posRef.current = 0; setPos(0) } setPlaying(!playing) }}>{playing ? 'Pause' : 'Replay'}</button>
+          <input type="range" aria-label="Replay the route" min={0} max={total - 1} value={Math.round(pos)} onChange={(e) => { setPlaying(false); posRef.current = Number(e.target.value); setPos(posRef.current) }} style={{ flex: '1 1 160px' }} />
+          <span className="dim num" style={{ fontSize: 13, minWidth: 70, textAlign: 'right' }}>{shown ? at(shown.at) : ''}</span>
         </div>
       )}
-      <span className="dim" style={{ fontSize: 12 }}>
-        <span className="pill ok" style={{ marginRight: 6 }}>Start</span><span className="pill danger" style={{ marginRight: 6 }}>Last position</span>
-        The line gets stronger towards the end of the route; hover a dot for its time. The map is loaded from Mapbox, which receives the location to draw it.
-      </span>
+      <div className="dim" style={{ fontSize: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span className="pill ok">Start</span><span className="pill danger">Last position</span>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={showPoints} onChange={(e) => setShowPoints(e.target.checked)} /> Show the GPS points</label>
+        <span>The route follows the roads where Mapbox could match the points; a stretch it could not match stays a straight line. The map is loaded from Mapbox, which receives the location to draw it.</span>
+      </div>
     </div>
   )
 }
