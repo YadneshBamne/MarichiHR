@@ -11,6 +11,7 @@ export type TrackPoint = { latitude: number; longitude: number; accuracy?: numbe
 type Props = { points: TrackPoint[]; current?: { latitude: number; longitude: number; at: string } | null; name?: string; height?: number; viewKey: string }
 type Route = { pts: TrackPoint[]; line: LL[]; cum: number[]; dist: number[]; snapped: LL[] }
 
+const ROUTE_BLUE = '#2f6df6' // the route colour of delivery-app tracking
 const GAP_MS = 15 * 60_000 // a pause this long breaks the line (phone locked, tracking stopped and started again)
 const MAX_ACCURACY = 200 // metres: vaguer points would make the route jump around
 const css = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
@@ -89,17 +90,19 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
           paint: { 'fill-extrusion-color': '#c9c3b3', 'fill-extrusion-opacity': 0.8,
             'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['get', 'height']],
             'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['get', 'min_height']] } }, label)
-        const ink = css('--ink', '#252523'), honey = css('--honey', '#f6c343'), soft = css('--honey-soft', '#fbe7a6'), ok = css('--ok', '#2e7d4f'), bad = css('--danger', '#c0392b')
-        m.addSource('trail', { type: 'geojson', lineMetrics: true, data: fc([]) })
+        // the look of a delivery app's tracking: one solid blue road line with a pale edge, a black pin where the person is, a blue dot for the replay
+        const ink = css('--ink', '#252523'), ok = css('--ok', '#2e7d4f')
+        m.addSource('trail', { type: 'geojson', data: fc([]) })
         m.addSource('points', { type: 'geojson', data: fc([]) })
         m.addSource('ends', { type: 'geojson', data: fc([]) })
         m.addSource('cursor', { type: 'geojson', data: fc([]) })
-        m.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ink, 'line-width': 9, 'line-opacity': 0.9 } })
-        // the colour runs from pale to strong along the route, so the direction of travel can be read
-        m.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-width': 5.5, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, soft, 1, honey] } })
-        m.addLayer({ id: 'trail-points', type: 'circle', source: 'points', paint: { 'circle-radius': 3.5, 'circle-color': honey, 'circle-stroke-color': ink, 'circle-stroke-width': 1.2 } })
-        m.addLayer({ id: 'ends', type: 'circle', source: 'ends', paint: { 'circle-radius': 8, 'circle-color': ['match', ['get', 'kind'], 'start', ok, bad], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } })
-        m.addLayer({ id: 'cursor', type: 'circle', source: 'cursor', paint: { 'circle-radius': 10, 'circle-color': honey, 'circle-stroke-color': ink, 'circle-stroke-width': 3 } })
+        m.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.95 } })
+        m.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ROUTE_BLUE, 'line-width': 5.5 } })
+        m.addLayer({ id: 'trail-points', type: 'circle', source: 'points', paint: { 'circle-radius': 3.5, 'circle-color': '#ffffff', 'circle-stroke-color': ROUTE_BLUE, 'circle-stroke-width': 1.6 } })
+        m.addLayer({ id: 'ends', type: 'circle', source: 'ends', paint: { 'circle-radius': ['match', ['get', 'kind'], 'start', 6, 10], 'circle-color': ['match', ['get', 'kind'], 'start', ok, ink], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 } })
+        m.addLayer({ id: 'ends-centre', type: 'circle', source: 'ends', filter: ['==', ['get', 'kind'], 'last'], paint: { 'circle-radius': 3.4, 'circle-color': '#ffffff' } })
+        m.addLayer({ id: 'cursor-halo', type: 'circle', source: 'cursor', paint: { 'circle-radius': 20, 'circle-color': ROUTE_BLUE, 'circle-opacity': 0.2 } })
+        m.addLayer({ id: 'cursor', type: 'circle', source: 'cursor', paint: { 'circle-radius': 9, 'circle-color': ROUTE_BLUE, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3.5 } })
         const pop = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 10 })
         m.on('mousemove', 'trail-points', (e) => { const f: any = e.features?.[0]; if (!f) return; m.getCanvas().style.cursor = 'pointer'; pop.setLngLat(f.geometry.coordinates).setText(String(f.properties?.label)).addTo(m) })
         m.on('mouseleave', 'trail-points', () => { m.getCanvas().style.cursor = ''; pop.remove() })
@@ -155,9 +158,10 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
   useEffect(() => {
     const m = mapRef.current, c = cursorAt(pos)
     if (!ready || !m) return
-    ;(m.getSource('cursor') as any)?.setData(fc(c ? [pt(c)] : []))
+    // the blue replay dot shows only while replaying or scrubbing; at the end of the route the black pin is the person's place
+    ;(m.getSource('cursor') as any)?.setData(fc(c && (playing || pos < total - 1 - 0.01) ? [pt(c)] : []))
     if (playing && c) m.setCenter(c) // the camera follows the marker while the replay plays
-  }, [ready, routes, pos, playing]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, routes, pos, playing, total]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const m = mapRef.current
     if (playing && m) m.easeTo({ zoom: Math.max(m.getZoom(), 16.2), pitch: 60, duration: 800 }) // street level, where the buildings stand out
@@ -202,9 +206,9 @@ export default function TrackMap({ points, current, name, height = 380, viewKey 
         </div>
       )}
       <div className="dim" style={{ fontSize: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span className="pill ok">Start</span><span className="pill danger">Last position</span>
+        <span className="pill ok">Start</span><span className="pill night">Last position</span>
         <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={showPoints} onChange={(e) => setShowPoints(e.target.checked)} /> Show the GPS points</label>
-        <span>The route follows the roads where Mapbox could match the points; a stretch it could not match stays a straight line. The map is loaded from Mapbox, which receives the location to draw it.</span>
+        <span>The route follows the roads. Where the phone's GPS was too vague to place it on a road, that stretch stays a straight line. The map is loaded from Mapbox, which receives the location to draw it.</span>
       </div>
     </div>
   )
