@@ -5,6 +5,7 @@ import { ensureDefaults } from '../masters/masters.service'
 import { employeeService } from './employees.service'
 import { contractService } from './contracts.service'
 import { parseDate } from './import.service'
+import { hrScope } from '../../shared/utils/access'
 
 // Spreadsheet imports for data that belongs to people already in the company, matched by employee ID (or work email).
 // Same contract as the employee import: a dry run reports every row; the real run is all or nothing.
@@ -23,7 +24,9 @@ const num = (v: string | undefined) => (v && /^-?\d+(\.\d+)?$/.test(v.replace(/,
 
 export async function importData(actor: Actor, type: DataImportType, input: { rows: Row[]; dryRun: boolean }) {
   const t = actor.tenantId
-  const people = await prisma.employee.findMany({ where: { tenantId: t, active: true }, select: { id: true, employeeCode: true, workEmail: true, firstName: true, lastName: true } })
+  const people = await prisma.employee.findMany({ where: { tenantId: t, active: true }, select: { id: true, employeeCode: true, workEmail: true, firstName: true, lastName: true, orgUnitId: true } })
+  // An HR Business Partner may import only for people in their own departments (the route passes the full signed-in user)
+  const scope = (actor as any).roleIds ? await hrScope(actor as any) : null
   const byRef = new Map<string, (typeof people)[number]>()
   people.forEach((p) => { byRef.set(key(p.employeeCode), p); if (p.workEmail) byRef.set(key(p.workEmail), p) })
 
@@ -43,6 +46,7 @@ export async function importData(actor: Actor, type: DataImportType, input: { ro
     const errors: string[] = []
     const person = byRef.get(key(r.employee_id ?? ''))
     if (!person) errors.push(`no active employee with ID or email "${r.employee_id ?? ''}"`)
+    else if (scope && !scope.has(person.orgUnitId)) errors.push('this person is outside the departments you look after')
     let data: any = {}
     let dupKey = person?.id ?? `row${n}`
 

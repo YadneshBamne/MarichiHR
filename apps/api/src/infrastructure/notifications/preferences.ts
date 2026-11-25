@@ -3,7 +3,7 @@
 export const CATEGORIES = [
   { key: 'approvals', label: 'Approvals and requests', hint: 'Leave, attendance, expenses and pre-approvals waiting for you or decided', prefixes: ['approval.', 'leave.', 'attendance.', 'expense', 'pre_approval.', 'overtime'], mandatory: false },
   { key: 'pay', label: 'Pay', hint: 'Payslips, salary revisions, awards and final settlements', prefixes: ['payslip.', 'salary.', 'payroll.', 'incentive.', 'fnf.', 'tax.'], mandatory: true },
-  { key: 'performance', label: 'Goals and reviews', hint: 'Goals to accept, reviews and acknowledgements', prefixes: ['performance.'], mandatory: false },
+  { key: 'performance', label: 'Goals and reviews', hint: 'Goals to accept, appraisals, probation reviews and acknowledgements', prefixes: ['performance.', 'appraisal.', 'confirmation.'], mandatory: false },
   { key: 'people', label: 'People and records', hint: 'Profile requests, documents, contracts, hiring and exits', prefixes: ['profile.', 'document.', 'contract.', 'recruitment.', 'exit.'], mandatory: false },
   { key: 'policies', label: 'Policies', hint: 'New policies to read and acknowledge', prefixes: ['policy.'], mandatory: true },
   { key: 'workplace', label: 'Workplace', hint: 'Announcements, grievances, helpdesk tickets, timesheets, field tracking, forums and recognition', prefixes: ['announcement', 'grievance.', 'helpdesk.', 'forum.', 'kudos.', 'timesheet.', 'tracking.'], mandatory: false },

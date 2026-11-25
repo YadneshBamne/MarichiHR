@@ -1,6 +1,12 @@
 import { Request, Response } from 'express'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { employeeService, orgUnitService, jobPositionService, workLocationService } from './employees.service'
+import { assertInHrScope, hrScope } from '../../shared/utils/access'
+import { AppError } from '../../shared/utils/AppError'
+
+// An HR Business Partner (an HR admin limited to some departments) changes records only inside those departments; a person may always edit their own skills and resume
+const inScope = (req: Request, id: string) => assertInHrScope(req.user!, id)
+const ownOrScope = (req: Request, id: string) => (req.user!.employeeId === id ? Promise.resolve() : assertInHrScope(req.user!, id))
 
 // ─── ORG UNITS ────────────────────────────────────────────────
 
@@ -97,42 +103,56 @@ export const employeeController = {
 
   create: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!
+    const units = await hrScope(req.user!)
+    if (units && !units.has(req.body.orgUnitId)) throw new AppError('You look after other departments. Choose a department you manage.', 403)
     const result = await employeeService.create(tenantId, req.body, userId)
     res.status(201).json({ success: true, data: result })
   }),
 
   update: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!
+    await inScope(req, req.params['id'] as string)
     const employee = await employeeService.update(req.params['id'] as string, tenantId, req.body, userId)
     res.json({ success: true, data: employee })
   }),
 
   updateBank: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!
+    await inScope(req, req.params['id'] as string)
     const employee = await employeeService.updateBank(req.params['id'] as string, tenantId, userId, req.body)
     res.json({ success: true, data: employee })
   }),
 
   verifyBank: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!
+    await inScope(req, req.params['id'] as string)
     const employee = await employeeService.verifyBank(req.params['id'] as string, tenantId, userId)
     res.json({ success: true, data: employee })
   }),
 
   archive: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId, userId } = req.user!
-    await employeeService.archive(req.params['id'] as string, tenantId, userId, req.body.reason)
+    await inScope(req, req.params['id'] as string)
+    await employeeService.archive(req.params['id'] as string, tenantId, userId, req.body.reason, { newManagerId: req.body.newManagerId, lastWorkingDay: req.body.lastWorkingDay })
     res.json({ success: true, message: 'Employee archived successfully' })
+  }),
+
+  reinstate: asyncHandler(async (req: Request, res: Response) => {
+    const { tenantId, userId } = req.user!
+    await inScope(req, req.params['id'] as string)
+    res.json({ success: true, data: await employeeService.reinstate(req.params['id'] as string, tenantId, userId) })
   }),
 
   addSkill: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!
+    await ownOrScope(req, req.params['id'] as string)
     const skill = await employeeService.addSkill(req.params['id'] as string, tenantId, req.body)
     res.status(201).json({ success: true, data: skill })
   }),
 
   removeSkill: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!
+    await ownOrScope(req, req.params['id'] as string)
     await employeeService.removeSkill(req.params['skillId'] as string, req.params['id'] as string, tenantId)
     res.json({ success: true, message: 'Skill removed' })
   }),
@@ -145,18 +165,21 @@ export const employeeController = {
 
   addResumeLine: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!
+    await ownOrScope(req, req.params['id'] as string)
     const line = await employeeService.addResumeLine(req.params['id'] as string, tenantId, req.body)
     res.status(201).json({ success: true, data: line })
   }),
 
   updateResumeLine: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!
+    await ownOrScope(req, req.params['id'] as string)
     await employeeService.updateResumeLine(req.params['lineId'] as string, req.params['id'] as string, tenantId, req.body)
     res.json({ success: true, message: 'Resume line updated' })
   }),
 
   removeResumeLine: asyncHandler(async (req: Request, res: Response) => {
     const { tenantId } = req.user!
+    await ownOrScope(req, req.params['id'] as string)
     await employeeService.removeResumeLine(req.params['lineId'] as string, req.params['id'] as string, tenantId)
     res.json({ success: true, message: 'Resume line removed' })
   }),

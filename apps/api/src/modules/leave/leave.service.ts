@@ -135,6 +135,9 @@ export const leaveService = {
     const endDate = normaliseDateInput(data.endDate)
 
     if (startDate > endDate) throw new AppError('Start date cannot be after end date', 400)
+    // A person on their way out cannot take leave after their last working day
+    const leaving = await prisma.employee.findUnique({ where: { id: employeeId }, select: { exitDate: true } })
+    if (leaving?.exitDate && endDate.getTime() > leaving.exitDate.getTime()) throw new AppError(`Your last working day is ${leaving.exitDate.toISOString().slice(0, 10)}, so leave cannot run past it.`, 400, 'LEAVE_AFTER_EXIT')
     if (opts.limitBackdating && startDate.getTime() < (await businessToday(tenantId)).getTime() - BACKDATE_DAYS * 86_400_000) {
       throw new AppError(`Leave can be applied for up to ${BACKDATE_DAYS} days back. For an earlier date, ask HR to add it.`, 400, 'LEAVE_TOO_OLD')
     }

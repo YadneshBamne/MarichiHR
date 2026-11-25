@@ -1,6 +1,7 @@
 import mongoose from 'mongoose'
 import { AppError } from '../../shared/utils/AppError'
 import { assertRefsInTenant } from './employees.mongo'
+import { checkResumeDates } from './employees.rules'
 import { CreateOrgUnitDto, CreateJobPositionDto, CreateWorkLocationDto, AddSkillDto, AddResumeLineDto } from './employees.types'
 // the Prisma-compatible MongoDB client (a .mongo file would otherwise be handed the real Prisma client)
 import { prisma } from '../../infrastructure/database/prisma.stub'
@@ -21,6 +22,12 @@ async function positionsByUnit(tenantId: string) {
   const m = new Map<string, any[]>()
   for (const r of rows) m.set(r.orgUnitId, [...(m.get(r.orgUnitId) ?? []), { id: r._id, title: r.title, code: r.code }])
   return m
+}
+
+// Two units with the same name under the same parent would break imports and reports, so the second is refused
+async function assertUnitNameFree(tenantId: string, name: string, parentId: string | undefined | null, exceptId?: string) {
+  const dup = await OrgUnit.findOne({ tenantId, active: true, name: name.trim(), parentId: parentId || { $in: [null, undefined] }, ...(exceptId && { _id: { $ne: exceptId } }) }).collation(CI).select('_id').lean()
+  if (dup) throw new AppError(`There is already a unit called "${name.trim()}" here. Use another name, or rename or archive the other one first.`, 409)
 }
 
 export const orgUnitService = {
@@ -45,7 +52,8 @@ export const orgUnitService = {
 
   async create(tenantId: string, data: CreateOrgUnitDto) {
     await assertRefsInTenant(tenantId, { parentOrgUnitId: data.parentId })
-    return ser((await OrgUnit.create({ ...data, tenantId, active: true })).toObject())
+    await assertUnitNameFree(tenantId, data.name, data.parentId)
+    return ser((await OrgUnit.create({ ...data, name: data.name.trim(), tenantId, active: true })).toObject())
   },
 
   async update(id: string, tenantId: string, data: Partial<CreateOrgUnitDto>, _updatedBy: string) {
@@ -53,6 +61,7 @@ export const orgUnitService = {
     if (!unit) throw new AppError('Org unit not found', 404)
     if (data.parentId === id) throw new AppError('An org unit cannot be its own parent', 400)
     await assertRefsInTenant(tenantId, { parentOrgUnitId: data.parentId })
+    if (data.name !== undefined || data.parentId !== undefined) await assertUnitNameFree(tenantId, data.name ?? unit.name, data.parentId !== undefined ? data.parentId : unit.parentId, id)
     if (data.parentId) {
       const all: any[] = await OrgUnit.find({ tenantId }).select('parentId').lean()
       const parentOf = new Map<string, string | undefined>(all.map((u) => [u._id, u.parentId]))
@@ -135,7 +144,11 @@ export async function mastersOverview(tenantId: string) {
 }
 
 // Skills and resume lines go through the Prisma-compatible client, the same calls as the Postgres version
-const inTenant = async (employeeId: string, tenantId: string) => { if (!(await Employee.exists({ _id: employeeId, tenantId }))) throw new AppError('Employee not found', 404) }
+const inTenant = async (employeeId: string, tenantId: string) => {
+  const e: any = await Employee.findOne({ _id: employeeId, tenantId }).select('active').lean()
+  if (!e) throw new AppError('Employee not found', 404)
+  if (!e.active) throw new AppError('This person is archived. Reinstate them before changing their record.', 400)
+}
 export const employeeExtras = {
   async addSkill(employeeId: string, tenantId: string, d: AddSkillDto) {
     await inTenant(employeeId, tenantId)
@@ -146,13 +159,19 @@ export const employeeExtras = {
   async removeSkill(skillId: string, employeeId: string, tenantId: string) { await inTenant(employeeId, tenantId); await prisma.employeeSkill.deleteMany({ where: { id: skillId, employeeId } }) },
   async addResumeLine(employeeId: string, tenantId: string, d: AddResumeLineDto) {
     await inTenant(employeeId, tenantId)
-    return prisma.resumeLine.create({ data: { employeeId, lineType: d.lineType, name: d.name, description: d.description, dateStart: d.dateStart ? new Date(d.dateStart) : undefined, dateEnd: d.dateEnd ? new Date(d.dateEnd) : undefined, organisation: d.organisation } })
+    const { start, end } = checkResumeDates(d.dateStart, d.dateEnd)
+    return prisma.resumeLine.create({ data: { employeeId, lineType: d.lineType, name: d.name, description: d.description, dateStart: start ? new Date(start) : undefined, dateEnd: end ? new Date(end) : undefined, organisation: d.organisation } })
   },
   async updateResumeLine(id: string, employeeId: string, tenantId: string, d: Partial<AddResumeLineDto>) {
     await inTenant(employeeId, tenantId)
+    const row = await prisma.resumeLine.findFirst({ where: { id, employeeId } })
+    if (!row) throw new AppError('Resume line not found', 404)
+    // the end must not come before the start, counting the date that stays as it is
+    const iso = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : undefined)
+    const { start, end } = checkResumeDates(d.dateStart ?? iso(row.dateStart), d.dateEnd ?? iso(row.dateEnd))
     const data: any = { ...d }
-    if (d.dateStart) data.dateStart = new Date(d.dateStart)
-    if (d.dateEnd) data.dateEnd = new Date(d.dateEnd)
+    if (d.dateStart) data.dateStart = new Date(start!)
+    if (d.dateEnd) data.dateEnd = new Date(end!)
     return prisma.resumeLine.updateMany({ where: { id, employeeId }, data })
   },
   async removeResumeLine(id: string, employeeId: string, tenantId: string) { await inTenant(employeeId, tenantId); await prisma.resumeLine.deleteMany({ where: { id, employeeId } }) },

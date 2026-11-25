@@ -6,17 +6,25 @@ import { useReveal, useRowsIn } from '../../lib/motion'
 import PageHeader, { SearchField, EmptyState } from '../../components/ui/PageHeader'
 import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
+import Modal from '../../components/ui/Modal'
+import MasterSelect from '../../components/ui/MasterSelect'
 import { usePageLabel } from '../../lib/hooks/usePageLabel'
 import CreateEmployeeModal from './CreateEmployeeModal'
 import { downloadCredentials } from './ImportEmployeesPage'
+import { downloadCsv } from '../../lib/hooks/usePayroll'
 import api from '../../lib/api'
 import { useToast } from '../../components/ui/Toast'
 
 const STATUS_PILL: Record<string, string> = { active: 'ok', probation: 'honey', notice: 'warn', on_leave: 'info', terminated: 'mute', resigned: 'mute' }
 const since = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
+type Status = 'active' | 'archived' | 'all'
+const SORTS: [string, string, 'name' | 'hireDate' | 'department', 'asc' | 'desc'][] = [
+  ['name-asc', 'Name A to Z', 'name', 'asc'], ['name-desc', 'Name Z to A', 'name', 'desc'],
+  ['hire-desc', 'Newest joiners first', 'hireDate', 'desc'], ['hire-asc', 'Longest serving first', 'hireDate', 'asc'], ['dept-asc', 'Department', 'department', 'asc'],
+]
 
-function flatten(nodes: any[] = [], out: any[] = []): any[] {
-  for (const n of nodes) { out.push(n); flatten(n.children, out) }
+function flatten(nodes: any[] = [], depth = 0, out: any[] = []): any[] {
+  for (const n of nodes) { out.push({ ...n, depth }); flatten(n.children, depth + 1, out) }
   return out
 }
 
@@ -27,26 +35,34 @@ export default function EmployeeListPage() {
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
   const [unit, setUnit] = useState<string>('')
-  const [archived, setArchived] = useState(false)
+  const [subUnits, setSubUnits] = useState(true)
+  const [type, setType] = useState('')
+  const [status, setStatus] = useState<Status>('active')
+  const [sortKey, setSortKey] = useState('name-asc')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
   const [showCreate, setShowCreate] = useState(false)
+  const [confirmIssue, setConfirmIssue] = useState(false)
 
   // Search as you type, without a request per keystroke
   useEffect(() => { const t = setTimeout(() => { setSearch(q.trim()); setPage(1) }, 300); return () => clearTimeout(t) }, [q])
 
-  const { data, isLoading } = useEmployees({ page, limit: 25, search: search || undefined, orgUnitId: unit || undefined, showArchived: archived || undefined })
+  const [, , sort, dir] = SORTS.find((s) => s[0] === sortKey) ?? SORTS[0]
+  const filters = { search: search || undefined, orgUnitId: unit || undefined, subUnits: unit && !subUnits ? ('0' as const) : undefined, employmentType: type || undefined, status, sort, dir }
+  const { data, isLoading } = useEmployees({ page, limit: 25, ...filters })
   const { data: tree } = useOrgTree()
   const units = useMemo(() => flatten(Array.isArray(tree) ? tree : tree ? [tree] : []), [tree])
   const employees: any[] = data?.data || []
   const meta = data?.meta
   const page$ = useReveal<HTMLDivElement>()
-  const rows = useRowsIn<HTMLTableSectionElement>(`${search}|${unit}|${page}|${archived}|${employees.length}`)
+  const rows = useRowsIn<HTMLTableSectionElement>(`${search}|${unit}|${subUnits}|${type}|${status}|${sortKey}|${page}|${employees.length}`)
   const toast = useToast()
   const [issuing, setIssuing] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const filtered = !!(search || unit || type || status !== 'active')
   // Temporary passwords for the selected people, downloaded once as a credentials sheet
   const issueLogins = async () => {
-    if (!confirm(`Give ${selected.length} ${selected.length === 1 ? 'person' : 'people'} a new temporary password? Any current password stops working.`)) return
+    setConfirmIssue(false)
     setIssuing(true)
     try {
       const list = (await api.post('/employees/access/bulk', { employeeIds: selected })).data.data
@@ -55,30 +71,42 @@ export default function EmployeeListPage() {
       setSelected([])
     } catch (e: any) { toast(e?.response?.data?.message || 'Could not issue logins', 'error') } finally { setIssuing(false) }
   }
+  const exportCsv = async () => {
+    setExporting(true)
+    try { await downloadCsv('/employees/export', Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined)) as Record<string, string>) } finally { setExporting(false) }
+  }
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+  const reset = () => { setQ(''); setUnit(''); setType(''); setStatus('active'); setSubUnits(true); setPage(1) }
 
   return (
     <div ref={page$}>
       <PageHeader
         title={pageTitle}
-        sub={meta ? `${meta.total} ${archived ? 'including archived' : 'active'} ${meta.total === 1 ? 'person' : 'people'}` : ' '}
+        sub={meta ? `${meta.total} ${status === 'archived' ? 'archived' : status === 'all' ? 'in total' : 'active'} ${meta.total === 1 ? 'person' : 'people'}` : ' '}
         actions={<>
-          <SearchField value={q} onChange={setQ} placeholder="Search by name, email or code" width={280} />
+          <SearchField value={q} onChange={setQ} placeholder="Search name, email, code or phone" width={300} />
+          <button className="btn btn-ghost" disabled={exporting} onClick={exportCsv}><Icon name="download" size={16} /> Export CSV</button>
           {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/import')}><Icon name="download" size={16} /> Import</button>}
           {isHR && <button className="btn btn-ghost" onClick={() => navigate('/employees/documents')}><Icon name="file" size={16} /> Documents</button>}
           {isHR && <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add employee</button>}
         </>}
       >
-        <div className="chips">
-          <button className={`chip${!unit ? ' is-on' : ''}`} onClick={() => { setUnit(''); setPage(1) }}>All {!unit && meta && <span className="n">{meta.total}</span>}</button>
-          {units.map((u) => (
-            <button key={u.id} className={`chip${unit === u.id ? ' is-on' : ''}`} onClick={() => { setUnit(u.id); setPage(1) }}>
-              {u.name} {unit === u.id && meta && <span className="n">{meta.total}</span>}
-            </button>
-          ))}
-          <button className={`chip${archived ? ' is-on' : ''}`} onClick={() => { setArchived(!archived); setPage(1) }} style={{ marginLeft: 'auto' }}>
-            <Icon name="door" size={13} /> Show archived
-          </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 4 }}>
+          <label className="field" style={{ minWidth: 190 }}><span>Department</span>
+            <select className="input select" value={unit} onChange={(e) => { setUnit(e.target.value); setPage(1) }}>
+              <option value="">All departments</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{'· '.repeat(u.depth)}{u.name}</option>)}
+            </select></label>
+          <label className="field" style={{ minWidth: 150 }}><span>Employment type</span>
+            <MasterSelect list="employment_type" value={type} onChange={(v) => { setType(v); setPage(1) }} placeholder="All types" /></label>
+          <label className="field" style={{ minWidth: 130 }}><span>Show</span>
+            <select className="input select" value={status} onChange={(e) => { setStatus(e.target.value as Status); setPage(1) }}>
+              <option value="active">Active people</option><option value="archived">Archived only</option><option value="all">Everyone</option>
+            </select></label>
+          <label className="field" style={{ minWidth: 170 }}><span>Sort by</span>
+            <select className="input select" value={sortKey} onChange={(e) => { setSortKey(e.target.value); setPage(1) }}>{SORTS.map((s) => <option key={s[0]} value={s[0]}>{s[1]}</option>)}</select></label>
+          {unit && <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, height: 42 }}><input type="checkbox" checked={subUnits} onChange={(e) => { setSubUnits(e.target.checked); setPage(1) }} /> Include sub-departments</label>}
+          {filtered && <button className="btn btn-ghost btn-sm" onClick={reset}>Clear filters</button>}
         </div>
       </PageHeader>
 
@@ -86,8 +114,8 @@ export default function EmployeeListPage() {
         {isLoading ? (
           <div style={{ padding: 14 }}>{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton" style={{ height: 38, marginBottom: 10 }} />)}</div>
         ) : employees.length === 0 ? (
-          <EmptyState icon={<Icon name="users" size={24} />} title={search || unit ? 'No one matches' : 'No people yet'} body={search || unit ? 'Try a different search or team.' : 'Add your first team member to get started.'}
-            action={isHR && !search && !unit ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add employee</button> : undefined} />
+          <EmptyState icon={<Icon name="users" size={24} />} title={filtered ? 'No one matches' : 'No people yet'} body={filtered ? 'Try a different search or clear the filters.' : 'Add your first team member to get started.'}
+            action={isHR && !filtered ? <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={16} /> Add employee</button> : undefined} />
         ) : (
           <table className="tbl" style={{ minWidth: 860 }}>
             <thead>
@@ -101,7 +129,7 @@ export default function EmployeeListPage() {
                 const sel = selected.includes(e.id)
                 const name = `${e.firstName} ${e.lastName}`
                 return (
-                  <tr key={e.id} data-row className={sel ? 'is-sel' : ''} onClick={() => navigate(`/employees/${e.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr key={e.id} data-row className={sel ? 'is-sel' : ''} onClick={() => navigate(`/employees/${e.id}`)} style={{ cursor: 'pointer', opacity: e.active === false ? 0.65 : 1 }}>
                     <td onClick={(ev) => ev.stopPropagation()} style={{ width: 36 }}>
                       <input type="checkbox" checked={sel} onChange={() => toggle(e.id)} aria-label={`Select ${name}`} />
                     </td>
@@ -118,7 +146,7 @@ export default function EmployeeListPage() {
                     <td>{e.orgUnit?.name || '—'}</td>
                     <td>{e.workLocation?.city || e.workLocation?.name || <span className="muted">—</span>}</td>
                     <td className="num">{since(e.hireDate)}</td>
-                    <td><span className={`pill ${sel ? 'night' : STATUS_PILL[e.employmentStatus] || 'mute'}`}>{(e.employmentStatus || '').replace(/_/g, ' ')}</span></td>
+                    <td><span className={`pill ${sel ? 'night' : e.active === false ? 'mute' : STATUS_PILL[e.employmentStatus] || 'mute'}`}>{e.active === false ? 'archived' : (e.employmentStatus || '').replace(/_/g, ' ')}</span></td>
                   </tr>
                 )
               })}
@@ -130,7 +158,7 @@ export default function EmployeeListPage() {
       {(selected.length > 0 || (meta && meta.totalPages > 1)) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
           {selected.length > 0 && <span className="pill night" style={{ height: 30, padding: '0 14px' }}>{selected.length} selected <button className="link" style={{ color: 'var(--honey)' }} onClick={() => setSelected([])}>Clear</button></span>}
-          {isHR && selected.length > 0 && <button className="btn btn-honey btn-sm" disabled={issuing} onClick={issueLogins}><Icon name="key" size={14} /> Issue logins</button>}
+          {isHR && selected.length > 0 && <button className="btn btn-honey btn-sm" disabled={issuing} onClick={() => setConfirmIssue(true)}><Icon name="key" size={14} /> Issue logins</button>}
           {meta && meta.totalPages > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
               <button className="btn btn-ghost btn-sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}><Icon name="chevronLeft" size={14} /> Prev</button>
@@ -141,6 +169,14 @@ export default function EmployeeListPage() {
         </div>
       )}
 
+      {confirmIssue && (
+        <Modal open onClose={() => setConfirmIssue(false)} title="Issue new logins?" width={440}>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <p style={{ margin: 0 }}>Give <strong>{selected.length} {selected.length === 1 ? 'person' : 'people'}</strong> a new temporary password? Any password they have now stops working, and they sign in again with the new one. You get one sheet with all of them to download.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="btn btn-ghost" onClick={() => setConfirmIssue(false)}>Cancel</button><button className="btn btn-primary" onClick={issueLogins}>Issue logins</button></div>
+          </div>
+        </Modal>
+      )}
       <CreateEmployeeModal open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   )

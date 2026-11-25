@@ -9,7 +9,9 @@ import { buildMeta, getPagination } from '../../shared/utils/pagination'
 import { encryptField, decryptField, last4 } from '../../shared/utils/crypto'
 import { AccessUser } from '../../shared/utils/access'
 import { sendWelcomeEmail } from '../auth/password-reset.mongo'
-import { assertProfileAccess, getReportingSubtreeIds, hrScope, clearHrScope } from '../../shared/utils/access.mongo'
+import { assertProfileAccess, getReportingSubtreeIds, hrScope, clearHrScope, isReportingChainOf } from '../../shared/utils/access.mongo'
+import { assertMasters } from '../masters/masters.service'
+import { cleanPersonInput, ymdOrThrow } from './employees.rules'
 import {
   connectMongo, syncMongoIndexes, Tenant, Role, User, OrgUnit, Employee, RefreshToken, JobPosition, AuditLog, WorkLocation, LegalEntity,
   PayGroup, DomainEvent, PositionHistory, LeaveType, LeaveBalance, ResourceCalendar,
@@ -17,8 +19,8 @@ import {
 
 // MongoDB version of the core of employees.service.ts / employees.repository.ts: directory, profile, create, update,
 // bank details, archive, login access and the org chart. Same rules and response shapes.
-// Not ported: masters validation (assertMasters), the mandatory-field check, and publishing events to the queue (events are recorded
-// in domain_events and delivered by the in-process pump).
+// Input rules (masters lists, dates, phone numbers, required fields, reporting loops) match the Postgres service. Events are recorded
+// in domain_events and delivered by the in-process pump.
 // ponytail: employee code collisions are caught by the unique index and retried, as in the SQL version.
 
 const ser = (d: any) => { if (!d) return d; const { _id, ...rest } = d; return { id: _id, ...rest } }
@@ -69,19 +71,51 @@ async function related(emps: any[], full = false) {
   }
 }
 
+// Every word typed must match something on the person: name, email, employee code or a phone number (digits match through spaces and dashes)
+function searchFilter(search?: string) {
+  const words = (search ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6)
+  if (!words.length) return null
+  return {
+    $and: words.map((w) => {
+      const re = new RegExp(esc(w), 'i')
+      const digits = w.replace(/\D/g, '')
+      const phone = digits.length >= 4 ? new RegExp(digits.split('').join('[^0-9]*')) : re
+      return { $or: [{ firstName: re }, { lastName: re }, { workEmail: re }, { employeeCode: re }, { mobilePersonal: phone }, { mobileWork: phone }] }
+    }),
+  }
+}
+// A department and everything under it
+async function unitWithChildren(tenantId: string, unitId: string) {
+  const all: any[] = await OrgUnit.find({ tenantId }).select('parentId').lean()
+  const out = new Set<string>([unitId])
+  for (let grew = true; grew;) { grew = false; for (const u of all) if (u.parentId && out.has(u.parentId) && !out.has(u._id)) { out.add(u._id); grew = true } }
+  return [...out]
+}
+
 export const employeeRepository = {
-  async list(tenantId: string, o: { page?: number; limit?: number; search?: string; orgUnitId?: string; employmentType?: string; employmentStatus?: string; showArchived?: boolean; ids?: string[] }) {
+  // status: active (default), archived, or all. sort: name (default), hireDate, department, code.
+  async list(tenantId: string, o: { page?: number; limit?: number; search?: string; orgUnitId?: string; orgUnitIds?: string[]; employmentType?: string; employmentStatus?: string; showArchived?: boolean; status?: string; sort?: string; dir?: string; ids?: string[] }) {
     const { skip, take, page, limit } = getPagination(o)
-    const re = o.search && new RegExp(esc(o.search), 'i')
+    const status = o.status ?? (o.showArchived ? 'all' : 'active')
+    const found = searchFilter(o.search)
     const where: any = {
-      tenantId, ...(o.ids && { _id: { $in: o.ids } }), ...(!o.showArchived && { active: true }),
-      ...(o.orgUnitId && { orgUnitId: o.orgUnitId }), ...(o.employmentType && { employmentType: o.employmentType }), ...(o.employmentStatus && { employmentStatus: o.employmentStatus }),
-      ...(re && { $or: [{ firstName: re }, { lastName: re }, { workEmail: re }, { employeeCode: re }] }),
+      tenantId, ...(o.ids && { _id: { $in: o.ids } }), ...(status === 'active' && { active: true }), ...(status === 'archived' && { active: false }),
+      ...(o.orgUnitIds ? { orgUnitId: { $in: o.orgUnitIds } } : o.orgUnitId ? { orgUnitId: o.orgUnitId } : {}), ...(o.employmentType && { employmentType: o.employmentType }), ...(o.employmentStatus && { employmentStatus: o.employmentStatus }),
+      ...(found ?? {}),
     }
-    const [rows, total] = await Promise.all([
-      Employee.find(where).collation(CI).sort({ firstName: 1, lastName: 1 }).skip(skip).limit(take).lean() as Promise<any[]>,
-      Employee.countDocuments(where),
-    ])
+    const dir = o.dir === 'desc' ? -1 : 1
+    let rows: any[]
+    if (o.sort === 'department') {
+      rows = await Employee.aggregate([
+        { $match: where }, { $lookup: { from: 'org_units', localField: 'orgUnitId', foreignField: '_id', as: '_ou' } },
+        { $addFields: { _dept: { $ifNull: [{ $arrayElemAt: ['$_ou.name', 0] }, ''] } } },
+        { $sort: { _dept: dir, firstName: 1, lastName: 1 } }, { $skip: skip }, { $limit: take }, { $project: { _ou: 0, _dept: 0 } },
+      ]).collation(CI)
+    } else {
+      const sort: any = o.sort === 'hireDate' ? { hireDate: dir, firstName: 1 } : o.sort === 'code' ? { employeeCode: dir } : { firstName: dir, lastName: dir }
+      rows = (await Employee.find(where).collation(CI).sort(sort).skip(skip).limit(take).lean()) as any[]
+    }
+    const total = await Employee.countDocuments(where)
     const build = await related(rows)
     return { employees: rows.map(build), total, page, limit }
   },
@@ -148,7 +182,7 @@ const UPDATABLE_FIELDS = new Set(Object.keys(UpdateEmployeeSchema.shape.body.sha
 function shapeEmployeeForViewer(employee: Record<string, any>, user: AccessUser) {
   const self = !!user.employeeId && user.employeeId === employee.id
   const canCompensation = self || hasAnyRole(user, 'payroll_admin', 'compliance_officer')
-  const canBank = self || hasAnyRole(user, 'hr_admin', 'payroll_admin')
+  const canBank = self || hasAnyRole(user, 'hr_admin', 'payroll_admin', 'system_admin')
   const safe: Record<string, any> = toSafeEmployee(employee)
   if (!canCompensation) delete safe.contracts
   if (!canBank) for (const key of ['bankAccountLast4', 'bankName', 'bankIfscSwift', 'bankVerified', 'bankVerifiedBy', 'bankVerifiedAt']) delete safe[key]
@@ -156,6 +190,13 @@ function shapeEmployeeForViewer(employee: Record<string, any>, user: AccessUser)
 }
 
 const dateOnly = (v?: string | null) => (v ? new Date(v.slice(0, 10) + 'T00:00:00.000Z') : undefined)
+// A phone number may belong to one active person only
+async function assertMobilesFree(tenantId: string, nums: (string | undefined)[], exceptId?: string) {
+  const vals = [...new Set(nums.filter(Boolean) as string[])]
+  if (!vals.length) return
+  const other: any = await Employee.findOne({ tenantId, active: true, ...(exceptId && { _id: { $ne: exceptId } }), $or: [{ mobilePersonal: { $in: vals } }, { mobileWork: { $in: vals } }] }).select('employeeCode').lean()
+  if (other) throw new AppError(`That phone number already belongs to ${other.employeeCode}`, 409)
+}
 const PLACEMENT = ['orgUnitId', 'jobPositionId', 'managerId', 'workLocationId', 'employmentType']
 const history = (employeeId: string, tenantId: string, by: string, fields: Record<string, unknown>, from: Date, reason: string) =>
   ({ _id: crypto.randomUUID(), employeeId, tenantId, changedBy: by, effectiveFrom: from, reason, appliedAt: new Date(), createdAt: new Date(), ...Object.fromEntries(PLACEMENT.filter((k) => fields[k] != null).map((k) => [k, fields[k]])) })
@@ -173,9 +214,12 @@ export const employeeService = {
       const inUnits: any[] = await Employee.find({ tenantId, orgUnitId: { $in: [...units] } }).select('_id').lean()
       idList = [...new Set([...inUnits.map((e) => e._id as string), ...(user.employeeId ? [user.employeeId] : [])])]
     }
+    // a department filter includes its sub-departments unless asked not to (subUnits=0)
+    const orgUnitIds = query.orgUnitId && query.subUnits !== '0' ? await unitWithChildren(tenantId, query.orgUnitId) : undefined
     const result = await employeeRepository.list(tenantId, {
-      page: parseInt(query.page) || 1, limit: parseInt(query.limit) || 25, search: query.search, orgUnitId: query.orgUnitId,
-      employmentType: query.employmentType, employmentStatus: query.employmentStatus, showArchived: query.showArchived === 'true', ids: idList,
+      page: parseInt(query.page) || 1, limit: parseInt(query.limit) || 25, search: query.search, orgUnitId: query.orgUnitId, orgUnitIds,
+      employmentType: query.employmentType, employmentStatus: query.employmentStatus, showArchived: query.showArchived === 'true',
+      status: ['active', 'archived', 'all'].includes(query.status) ? query.status : undefined, sort: query.sort, dir: query.dir, ids: idList,
     })
     return { data: result.employees.map((e: any) => shapeEmployeeForViewer(e, user)), meta: buildMeta(result.total, result.page, result.limit) }
   },
@@ -187,7 +231,15 @@ export const employeeService = {
     return shapeEmployeeForViewer(employee, user)
   },
 
-  async create(tenantId: string, data: CreateEmployeeDto, createdBy: string) {
+  async create(tenantId: string, input: CreateEmployeeDto, createdBy: string) {
+    // names, dates and phone numbers checked first, so a bad value is a clear 400 and never a 500
+    const data = cleanPersonInput(input as any) as CreateEmployeeDto
+    const { assertCreateMandatory } = await import('./record.service')
+    await Promise.all([
+      assertMasters(tenantId, { employment_type: data.employmentType ?? 'full_time', gender: data.gender, nationality: data.nationality, relationship: data.emergencyContactRelation }),
+      assertCreateMandatory(tenantId, data as any),
+      assertMobilesFree(tenantId, [data.mobilePersonal, data.mobileWork]),
+    ])
     const [existing, , [generated], employeeRole, leaveTypes, defaultCalendar]: any[] = await Promise.all([
       User.exists({ tenantId, email: data.workEmail }).collation(CI),
       assertRefsInTenant(tenantId, { orgUnitId: data.orgUnitId, jobPositionId: data.jobPositionId, managerId: data.managerId, workLocationId: data.workLocationId, legalEntityId: (data as any).legalEntityId, payGroupId: (data as any).payGroupId, resourceCalendarId: data.resourceCalendarId }),
@@ -241,8 +293,21 @@ export const employeeService = {
   async update(id: string, tenantId: string, data: UpdateEmployeeDto, updatedBy: string) {
     const employee: any = await Employee.findOne({ _id: id, tenantId }).lean()
     if (!employee) throw new AppError('Employee not found', 404)
-    const safe = Object.fromEntries(Object.entries(data).filter(([k]) => UPDATABLE_FIELDS.has(k))) as any
+    if (!employee.active) throw new AppError('This person is archived. Reinstate them before changing their record.', 400)
+    const safe = Object.fromEntries(Object.entries(cleanPersonInput(data as any)).filter(([k]) => UPDATABLE_FIELDS.has(k))) as any
     if (safe.managerId === id) throw new AppError('An employee cannot be their own manager', 400)
+    // a manager who reports (at any level) to this person would close a loop; a manager who has left cannot be chosen
+    if (safe.managerId && safe.managerId !== employee.managerId) {
+      if (await isReportingChainOf(id, safe.managerId)) throw new AppError('That person reports to this employee, so it would make a reporting loop', 400)
+      if (!(await Employee.exists({ _id: safe.managerId, tenantId, active: true }))) throw new AppError('That manager has left the company. Choose someone who is here.', 400)
+    }
+    await assertMasters(tenantId, {
+      employment_type: safe.employmentType !== undefined && safe.employmentType !== employee.employmentType ? safe.employmentType : undefined,
+      gender: safe.gender !== undefined && safe.gender !== employee.gender ? safe.gender : undefined,
+      nationality: safe.nationality !== undefined && safe.nationality !== employee.nationality ? safe.nationality : undefined,
+      relationship: safe.emergencyContactRelation !== undefined && safe.emergencyContactRelation !== employee.emergencyContactRelation ? safe.emergencyContactRelation : undefined,
+    })
+    await assertMobilesFree(tenantId, [safe.mobilePersonal !== employee.mobilePersonal ? safe.mobilePersonal : undefined, safe.mobileWork !== employee.mobileWork ? safe.mobileWork : undefined], id)
     await assertRefsInTenant(tenantId, { orgUnitId: safe.orgUnitId, jobPositionId: safe.jobPositionId, managerId: safe.managerId, workLocationId: safe.workLocationId, resourceCalendarId: safe.resourceCalendarId, legalEntityId: safe.legalEntityId, payGroupId: safe.payGroupId })
     const set: any = { ...safe }
     for (const k of ['dateOfBirth', 'probationEndDate', 'confirmationDate']) if (safe[k]) set[k] = new Date(safe[k])
@@ -263,6 +328,9 @@ export const employeeService = {
   },
 
   async updateBank(id: string, tenantId: string, userId: string, dto: { bankName: string; bankAccountNo: string; bankIfscSwift?: string }) {
+    await assertMasters(tenantId, { bank: dto.bankName }) // the bank must be one on the company's Bank list
+    const current: any = await Employee.findOne({ _id: id, tenantId }).select('active').lean()
+    if (current && !current.active) throw new AppError('This person is archived. Reinstate them before changing bank details.', 400)
     const updated: any = await Employee.findOneAndUpdate({ _id: id, tenantId },
       { $set: { bankName: dto.bankName, bankAccountNo: encryptField(dto.bankAccountNo), bankIfscSwift: dto.bankIfscSwift ?? null, bankVerified: false, bankVerifiedBy: null, bankVerifiedAt: null } }, { returnDocument: 'after' }).lean()
     if (!updated) throw new AppError('Employee not found', 404)
@@ -282,15 +350,49 @@ export const employeeService = {
     return toSafeEmployee(ser(updated))
   },
 
-  async archive(id: string, tenantId: string, archivedBy: string, reason: string) {
+  // Terminate without the Exits app: last working day and reason, and a new manager for anyone who reports to this person.
+  // Not yourself, not the last administrator. The login is switched off (and stays off if the person is reinstated).
+  async archive(id: string, tenantId: string, archivedBy: string, reason: string, opts: { newManagerId?: string; lastWorkingDay?: string } = {}) {
     const employee: any = await Employee.findOne({ _id: id, tenantId }).lean()
     if (!employee) throw new AppError('Employee not found', 404)
     if (!employee.active) throw new AppError('Employee is already archived', 400)
-    const archived: any = await Employee.findOneAndUpdate({ _id: id, tenantId }, { $set: { active: false, archivedAt: new Date(), archivedBy, archiveReason: reason, employmentStatus: 'terminated' } }, { returnDocument: 'after' }).lean()
+    if (employee.userId === archivedBy) throw new AppError('You cannot archive yourself', 400)
+    const target: any = await User.findById(employee.userId).select('userRoles').lean()
+    if ((target?.userRoles ?? []).some((r: any) => ['hr_admin', 'system_admin'].includes(r.roleName))) {
+      const others: any[] = await User.find({ tenantId, active: true, _id: { $ne: employee.userId }, 'userRoles.roleName': { $in: ['hr_admin', 'system_admin'] } }).select('_id').lean()
+      const alive = others.length ? await Employee.countDocuments({ tenantId, active: true, userId: { $in: others.map((o) => o._id) } }) : 0
+      if (!alive) throw new AppError('You cannot archive the last administrator. Make someone else an HR admin or system admin first.', 400)
+    }
+    const reports: any[] = await Employee.find({ tenantId, managerId: id, active: true }).select('_id').lean()
+    if (reports.length) {
+      if (!opts.newManagerId) throw new AppError(`${reports.length} ${reports.length === 1 ? 'person reports' : 'people report'} to ${employee.firstName} ${employee.lastName}. Choose a new manager for them first.`, 400, 'REASSIGN_REPORTS')
+      if (opts.newManagerId === id) throw new AppError('The new manager must be someone else', 400)
+      if (!(await Employee.exists({ _id: opts.newManagerId, tenantId, active: true }))) throw new AppError('The new manager was not found or has left', 404)
+      if (await isReportingChainOf(id, opts.newManagerId)) throw new AppError('The new manager reports to this person, so it would make a reporting loop', 400)
+    }
+    const lastDay = opts.lastWorkingDay ? dateOnly(ymdOrThrow(opts.lastWorkingDay, 'Last working day')) : dateOnly(new Date().toISOString().slice(0, 10))
+    const today = dateOnly(new Date().toISOString().slice(0, 10))!
+    if (reports.length) {
+      await Employee.updateMany({ tenantId, _id: { $in: reports.map((r) => r._id) } }, { $set: { managerId: opts.newManagerId } })
+      await PositionHistory.insertMany(reports.map((r) => history(r._id, tenantId, archivedBy, { managerId: opts.newManagerId }, today, 'Manager left the company')))
+    }
+    const archived: any = await Employee.findOneAndUpdate({ _id: id, tenantId }, { $set: { active: false, archivedAt: new Date(), archivedBy, archiveReason: reason, employmentStatus: 'terminated', exitDate: lastDay, exitReason: reason } }, { returnDocument: 'after' }).lean()
     await RefreshToken.updateMany({ userId: employee.userId, revokedAt: null }, { revokedAt: new Date() })
-    await audit({ tenantId, userId: archivedBy, action: 'EMPLOYEE_ARCHIVED', entityType: 'employee', entityId: id, newValue: { reason } })
+    await User.updateOne({ _id: employee.userId }, { $set: { active: false } })
+    await audit({ tenantId, userId: archivedBy, action: 'EMPLOYEE_ARCHIVED', entityType: 'employee', entityId: id, newValue: { reason, lastWorkingDay: lastDay?.toISOString().slice(0, 10), reportsMovedTo: reports.length ? opts.newManagerId : null, reportsMoved: reports.length } })
     await DomainEvent.create(event(tenantId, 'employee.archived', { employeeId: id, archivedBy, reason }))
     return toSafeEmployee(ser(archived))
+  },
+
+  // Bring an archived person back. Their login is NOT switched back on: HR does that under Login & access.
+  async reinstate(id: string, tenantId: string, by: string) {
+    const employee: any = await Employee.findOne({ _id: id, tenantId }).lean()
+    if (!employee) throw new AppError('Employee not found', 404)
+    if (employee.active) throw new AppError('This person is not archived', 400)
+    const back: any = await Employee.findOneAndUpdate({ _id: id, tenantId }, { $set: { active: true, employmentStatus: 'active' }, $unset: { archivedAt: '', archivedBy: '', archiveReason: '', exitDate: '', exitReason: '' } }, { returnDocument: 'after' }).lean()
+    await audit({ tenantId, userId: by, action: 'EMPLOYEE_REINSTATED', entityType: 'employee', entityId: id, oldValue: { archiveReason: employee.archiveReason ?? null } })
+    await DomainEvent.create(event(tenantId, 'employee.reinstated', { employeeId: id, by }))
+    return { ...toSafeEmployee(ser(back)), loginEnabled: false, message: 'Reinstated. Their login is still off: turn it on under Login & access. Add a new contract if they are paid through payroll.' }
   },
 }
 
@@ -303,19 +405,21 @@ const randomPassword = () => {
 
 export const accessService = {
   async get(employeeId: string, tenantId: string) {
-    const emp: any = await Employee.findOne({ _id: employeeId, tenantId }).select('userId').lean()
+    const emp: any = await Employee.findOne({ _id: employeeId, tenantId }).select('userId active').lean()
     if (!emp) throw new AppError('Employee not found', 404)
     const u: any = await User.findById(emp.userId).lean()
     return {
-      email: u.email, loginEnabled: u.active && (!!u.passwordHash || !!u.googleSub), active: u.active, hasPassword: !!u.passwordHash,
+      // an archived person cannot sign in, whatever the login switch says
+      email: u.email, archived: !emp.active, loginEnabled: !!emp.active && u.active && (!!u.passwordHash || !!u.googleSub), active: u.active, hasPassword: !!u.passwordHash,
       googleLinked: !!u.googleSub, mfaEnabled: u.mfaEnabled, mustChangePassword: u.mustChangePassword, lastLoginAt: u.lastLoginAt,
       roles: (u.userRoles || []).map((r: any) => r.roleName), hrScopeUnitIds: u.hrScopeUnitIds ?? [],
     }
   },
 
   async set(employeeId: string, actor: { tenantId: string; userId: string; roleIds: string[] }, body: { roles?: string[]; loginEnabled?: boolean; password?: 'generate' | string; hrScopeUnitIds?: string[] }) {
-    const emp: any = await Employee.findOne({ _id: employeeId, tenantId: actor.tenantId }).select('userId employmentStatus').lean()
+    const emp: any = await Employee.findOne({ _id: employeeId, tenantId: actor.tenantId }).select('userId employmentStatus active').lean()
     if (!emp) throw new AppError('Employee not found', 404)
+    if (!emp.active) throw new AppError('This person is archived. Reinstate them before changing their login.', 400)
     const [target, catalogue]: any[] = await Promise.all([User.findById(emp.userId).lean(), Role.find({ tenantId: actor.tenantId }).select('name').lean()])
     const isSys = actor.roleIds.includes('system_admin')
     const self = emp.userId === actor.userId
@@ -324,8 +428,9 @@ export const accessService = {
     let roles = body.roles
     if (roles) {
       roles = [...new Set(['employee', ...roles])]
-      const touched = ['system_admin', 'compliance_officer'].filter((r) => roles!.includes(r) !== currentNames.includes(r))
-      if (touched.length && !isSys) throw new AppError('Only a system administrator can change system or compliance roles', 403)
+      // payroll_admin joins the roles only a system administrator can hand out: an HR admin must not be able to give themselves pay access
+      const touched = ['system_admin', 'compliance_officer', 'payroll_admin'].filter((r) => roles!.includes(r) !== currentNames.includes(r))
+      if (touched.length && !isSys) throw new AppError('Only a system administrator can change system, compliance or payroll roles', 403)
       if (self && currentNames.some((r) => ['hr_admin', 'system_admin'].includes(r) && !roles!.includes(r))) throw new AppError('You cannot remove your own admin access', 400)
     }
     if (body.loginEnabled === false && self) throw new AppError('You cannot disable your own login', 400)
@@ -398,8 +503,21 @@ export const orgChartService = {
       while (stack.length) { const id = stack.pop()!; if (!below.has(id)) { below.add(id); stack.push(...(kids.get(id) ?? [])) } }
     }
     const isHR = user.roleIds.some((r) => ['hr_admin', 'system_admin', 'payroll_admin'].includes(r))
+    // Department head (derived, not stored): in the department with their manager outside it (or none); the one with most direct reports in it wins
+    const deptOf = new Map<string, string>(rows.map((r: any) => [r._id, r.orgUnitId]))
+    const directIn = new Map<string, number>()
+    for (const r of rows) { const m = managerOf.get(r._id); if (m && deptOf.get(m) === r.orgUnitId) directIn.set(m, (directIn.get(m) ?? 0) + 1) }
+    const head = new Map<string, string>()
+    for (const r of rows) {
+      const m = managerOf.get(r._id)
+      if (m && deptOf.get(m) === r.orgUnitId) continue
+      const cur = head.get(r.orgUnitId)
+      if (!cur || (directIn.get(r._id) ?? 0) > (directIn.get(cur) ?? 0)) head.set(r.orgUnitId, r._id)
+    }
     return {
       people: rows.map((r: any) => ({
+        // managerMissing: they had a manager who has left, so the chart groups them under "Unassigned" instead of showing them as a top boss
+        managerMissing: !!r.managerId && !present.has(r.managerId), isHead: head.get(r.orgUnitId) === r._id && !!O.get(r.orgUnitId),
         id: r._id, name: `${r.firstName} ${r.lastName === '-' ? '' : r.lastName}`.trim(), title: J.get(r.jobPositionId)?.title ?? null,
         department: O.get(r.orgUnitId)?.name ?? null, departmentId: r.orgUnitId, location: L.get(r.workLocationId)?.name ?? null,
         avatarUrl: U.get(r.userId)?.avatarUrl ?? null, managerId: managerOf.get(r._id) ?? null, isMe: r._id === user.employeeId,

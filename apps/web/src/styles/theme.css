@@ -181,9 +181,9 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .row-link:hover, .row-link:focus-visible { background: var(--well); }
 
 /* Org chart: a top-down tree drawn with nested lists; connector lines are pseudo-elements on each <li> */
-.oc-canvas { overflow: auto; padding: 28px 16px 36px; min-height: 420px; max-height: calc(100vh - 230px); cursor: grab; touch-action: pan-x pan-y; }
+.oc-canvas { overflow: hidden; position: relative; padding: 0; height: 75vh; min-height: 560px; cursor: grab; touch-action: none; user-select: none; }
 .oc-canvas:active { cursor: grabbing; }
-.oc-tree { width: max-content; min-width: 100%; }
+.oc-tree { width: max-content; transform-origin: 0 0; padding: 28px 16px 36px; }
 .oc-tree ul { display: flex; justify-content: center; padding: 22px 0 0; margin: 0; position: relative; }
 .oc-tree > ul { padding-top: 0; }
 .oc-tree li { list-style: none; position: relative; padding: 22px 8px 0; display: flex; flex-direction: column; align-items: center; }
@@ -204,7 +204,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 button.oc-name { cursor: pointer; }
 .oc-sub { font-size: 12px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .oc-toggle { align-self: center; display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 11px; font-weight: 600; cursor: pointer; }
-@media (max-width: 640px) { .oc-canvas { padding: 18px 8px 24px; max-height: calc(100vh - 260px); } .oc-card { width: 200px; } .oc-name, .oc-sub { max-width: 120px; } }
+@media (max-width: 640px) { .oc-canvas { height: 70vh; min-height: 480px; } .oc-card { width: 200px; } .oc-name, .oc-sub { max-width: 120px; } }
 
 @keyframes stripes { to { background-position: 22px 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }

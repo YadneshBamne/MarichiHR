@@ -60,6 +60,10 @@ export async function inHrScope(user: AccessUser, employeeId: string) {
   const e: any = await Employee.findOne({ _id: employeeId, tenantId: user.tenantId }).select('orgUnitId').lean()
   return !!e && units.has(e.orgUnitId)
 }
+// An HR Business Partner may change records only inside their departments; outside, the person is simply not found (as reads already behave)
+export async function assertInHrScope(user: AccessUser, employeeId: string) {
+  if (!(await inHrScope(user, employeeId))) throw new AppError('Employee not found', 404)
+}
 
 export async function hrAdminsFor(tenantId: string, employeeId: string): Promise<string[]> {
   const [hrs, emp]: any[] = await Promise.all([
@@ -95,7 +99,7 @@ export async function canAccessCompensation(user: AccessUser, targetEmployeeId: 
 
 export async function canSeeBankLast4(user: AccessUser, targetEmployeeId: string): Promise<boolean> {
   if (!(await targetInTenant(user, targetEmployeeId))) return false
-  return isSelf(user, targetEmployeeId) || hasRole(user, 'payroll_admin') || (hasRole(user, 'hr_admin') && (await inHrScope(user, targetEmployeeId)))
+  return isSelf(user, targetEmployeeId) || hasRole(user, 'payroll_admin', 'system_admin') || (hasRole(user, 'hr_admin') && (await inHrScope(user, targetEmployeeId)))
 }
 
 export async function assertProfileAccess(user: AccessUser, targetEmployeeId: string) {

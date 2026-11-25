@@ -44,6 +44,8 @@ const PolicyPage = lazy(() => import('./pages/workplace/PoliciesPage').then((m) 
 const SignupPage = lazy(() => import('./pages/public/SignupPage'))
 const ChangePasswordPage = lazy(() => import('./pages/public/ChangePasswordPage'))
 const ResetPasswordPage = lazy(() => import('./pages/public/ResetPasswordPage'))
+const CareersList = lazy(() => import('./pages/public/careers/CareersList'))
+const CareersJob = lazy(() => import('./pages/public/careers/CareersJob'))
 const SsoCallbackPage = lazy(() => import('./pages/SsoCallbackPage'))
 const OnboardingPage = lazy(() => import('./pages/onboarding/OnboardingPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -106,6 +108,8 @@ export default function App() {
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignupPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="/careers/:slug" element={<CareersList />} />
+                  <Route path="/careers/:slug/:openingId" element={<CareersJob />} />
                   <Route path="/auth/sso" element={<SsoCallbackPage />} />
                   <Route path="/change-password" element={<ProtectedRoute stage="password"><ChangePasswordPage /></ProtectedRoute>} />
                   <Route path="/onboarding" element={<ProtectedRoute stage="onboarding"><OnboardingPage /></ProtectedRoute>} />

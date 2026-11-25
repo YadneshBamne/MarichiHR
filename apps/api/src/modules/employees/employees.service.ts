@@ -411,7 +411,12 @@ export const employeeService = {
     return toSafeEmployee(updated)
   },
 
-  async archive(id: string, tenantId: string, archivedBy: string, reason: string) {
+  // Reinstating people (and moving reports on archive) is built on the MongoDB API only
+  async reinstate(_id: string, _tenantId: string, _by: string): Promise<any> {
+    throw new AppError('Reinstating people is available on the new database only', 501)
+  },
+
+  async archive(id: string, tenantId: string, archivedBy: string, reason: string, _opts: { newManagerId?: string; lastWorkingDay?: string } = {}) {
     const employee = await employeeRepository.findById(id, tenantId)
     if (!employee) throw new AppError('Employee not found', 404)
     if (!employee.active) throw new AppError('Employee is already archived', 400)

@@ -8,6 +8,10 @@ export function useEmployees(params?: {
   orgUnitId?: string
   employmentType?: string
   showArchived?: boolean
+  status?: 'active' | 'archived' | 'all'
+  sort?: 'name' | 'hireDate' | 'department' | 'code'
+  dir?: 'asc' | 'desc'
+  subUnits?: '0' | '1'
 }) {
   return useQuery({
     queryKey: ['employees', params],
@@ -99,8 +103,8 @@ export function useUpdateEmployee(id: string) {
 export function useArchiveEmployee() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const res = await api.post(`/employees/${id}/archive`, { reason })
+    mutationFn: async ({ id, reason, newManagerId, lastWorkingDay }: { id: string; reason: string; newManagerId?: string; lastWorkingDay?: string }) => {
+      const res = await api.post(`/employees/${id}/archive`, { reason, ...(newManagerId && { newManagerId }), ...(lastWorkingDay && { lastWorkingDay }) })
       return res.data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
@@ -153,5 +157,21 @@ export function useVerifyBank(id: string) {
   return useMutation({
     mutationFn: async () => (await api.post(`/employees/${id}/bank/verify`)).data.data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['employee', id] }),
+  })
+}
+
+export function useReinstateEmployee() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => (await api.post(`/employees/${id}/reinstate`)).data.data,
+    onSuccess: (_d, id) => { qc.invalidateQueries({ queryKey: ['employees'] }); qc.invalidateQueries({ queryKey: ['employee', id] }); qc.invalidateQueries({ queryKey: ['employee-access', id] }) },
+  })
+}
+
+export function useRemoveResumeLine(employeeId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (lineId: string) => { await api.delete(`/employees/${employeeId}/resume/${lineId}`) },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['employee', employeeId] }),
   })
 }

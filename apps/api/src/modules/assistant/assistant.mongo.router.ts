@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { authenticate } from '../../middleware/auth.middleware'
-import { requireFeature, tenantModules } from '../../middleware/module.middleware'
+import { requireFeature, tenantModules } from '../../middleware/module.middleware.mongo'
 import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'

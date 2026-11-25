@@ -13,8 +13,8 @@ export const requestsRouter = Router()
 requestsRouter.use(authenticate)
 const p = (req: any, k = 'id') => String(req.params[k])
 
-requestsRouter.get('/', validate(z.object({ query: z.object({ status: z.enum(['open', 'completed', 'cancelled']).optional(), mine: z.enum(['1']).optional(), employeeId: id.optional() }) })), asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await requestService.list(req.user!, { status: req.query.status as string | undefined, mine: req.query.mine === '1', employeeId: req.query.employeeId as string | undefined }) })
+requestsRouter.get('/', validate(z.object({ query: z.object({ status: z.enum(['open', 'completed', 'cancelled']).optional(), mine: z.enum(['1']).optional(), employeeId: id.optional(), q: z.string().trim().max(60).optional() }) })), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await requestService.list(req.user!, { status: req.query.status as string | undefined, mine: req.query.mine === '1', employeeId: req.query.employeeId as string | undefined, q: req.query.q as string | undefined }) })
 }))
 requestsRouter.post('/', requireRoles('hr_admin', 'system_admin'), validate(z.object({ body: z.object({
   employeeIds: z.array(id).min(1).max(500), sections: z.array(section).min(1), kind: z.enum(['onboarding', 'update']),

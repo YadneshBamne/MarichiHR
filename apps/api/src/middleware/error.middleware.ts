@@ -13,6 +13,7 @@ export function errorMiddleware(
       success: false,
       code: err.code,
       message: err.message,
+      ...(err.details !== undefined && { details: err.details }),
     })
   }
 

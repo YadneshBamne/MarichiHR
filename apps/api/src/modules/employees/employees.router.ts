@@ -11,7 +11,8 @@ import {
 } from './employees.controller'
 import { requireRoles } from '../../middleware/rbac.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
-import { accessService, orgChartService, archiveJobPosition, archiveWorkLocation, mastersOverview } from './employees.service'
+import { accessService, orgChartService, archiveJobPosition, archiveWorkLocation, mastersOverview, employeeService } from './employees.service'
+import { assertInHrScope } from '../../shared/utils/access'
 import { profile360 } from './profile360.service'
 import { recordRouter } from './record.router'
 import { documentsRouter } from './documents.router'
@@ -28,6 +29,7 @@ import {
   AddResumeLineSchema,
   ArchiveSchema,
   ListQuerySchema,
+  ReinstateSchema,
   BankDetailsSchema,
   UpdateOrgUnitSchema,
   UpdateJobPositionSchema,
@@ -70,7 +72,10 @@ employeeRouter.post('/work-locations/:id/archive', requirePermission('employees:
 }))
 
 // ─── SKILL TYPES ──────────────────────────────────────────────
-employeeRouter.get('/skill-types', requirePermission('employees:read'), employeeController.getSkillTypes)
+employeeRouter.get('/skill-types', employeeController.getSkillTypes) // the catalogue is not sensitive: people pick from it for their own profile
+
+// A person edits their own skills and resume; everyone else needs employees:write (HR; Business Partners only inside their departments, checked in the controller)
+const selfOrWrite = (req: any, res: any, next: any) => (req.user?.employeeId && req.user.employeeId === req.params.id ? next() : requirePermission('employees:write')(req, res, next))
 
 // ─── EMPLOYEES ────────────────────────────────────────────────
 // Everyone in the company may see the org chart (public fields only); declared before /:id
@@ -97,6 +102,28 @@ employeeRouter.post('/import/:type', validate(DataImportSchema), (req, res, next
 employeeRouter.post('/access/bulk', requireRoles('hr_admin', 'system_admin'), validate(z.object({ body: z.object({ employeeIds: z.array(z.string().uuid()).min(1).max(500) }).strict() })), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await issueCredentials(req.user!, req.body.employeeIds) })
 }))
+// CSV of the directory as the caller sees it (same filters and access scope as the list). Never pay, bank or ID numbers; phone numbers only for HR and payroll.
+const csvCell = (v: unknown, raw = false) => {
+  const t = v == null ? '' : String(v)
+  const safe = !raw && /^[=+@-]/.test(t) ? `'${t}` : t // a leading = + - @ would run as a spreadsheet formula
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
+}
+employeeRouter.get('/export', requirePermission('employees:read'), validate(ListQuerySchema), asyncHandler(async (req, res) => {
+  const u = req.user!
+  const seesPhones = u.roleIds.some((r) => ['hr_admin', 'system_admin', 'payroll_admin'].includes(r))
+  const rows: any[] = []
+  for (let page = 1; page <= 50; page++) {
+    const r: any = await employeeService.list(u.tenantId, { ...req.query, page: String(page), limit: '100' }, u)
+    rows.push(...r.data)
+    if (!r.meta?.hasNext) break
+  }
+  const head = ['Employee ID', 'First name', 'Last name', 'Work email', 'Department', 'Job title', 'Manager', 'Location', 'Employment type', 'Status', 'Joining date', ...(seesPhones ? ['Work mobile'] : [])]
+  const day = (d: unknown) => (d ? new Date(d as any).toISOString().slice(0, 10) : '')
+  const lines = [head.join(','), ...rows.map((e) => [e.employeeCode, e.firstName, e.lastName, e.workEmail, e.orgUnit?.name, e.jobPosition?.title, e.manager?.user?.fullName, e.workLocation?.name, e.employmentType, e.active === false ? 'archived' : e.employmentStatus, day(e.hireDate)].map((c) => csvCell(c)).concat(seesPhones ? [csvCell(e.mobileWork, true)] : []).join(','))]
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="people-${new Date().toISOString().slice(0, 10)}.csv"`)
+  res.send(String.fromCharCode(0xFEFF) + lines.join(String.fromCharCode(13, 10)))
+}))
 employeeRouter.get('/', requirePermission('employees:read'), validate(ListQuerySchema), employeeController.list)
 employeeRouter.post('/', requirePermission('employees:write'), validate(CreateEmployeeSchema), employeeController.create)
 employeeRouter.get('/:id', requirePermission('employees:read'), employeeController.getById)
@@ -109,18 +136,21 @@ employeeRouter.post('/:id/bank/verify', requirePermission('payroll:disburse'), e
 // Login access: HR and system admins decide who can sign in and with which roles
 const accessAdmins = requireRoles('hr_admin', 'system_admin')
 employeeRouter.get('/:id/access', accessAdmins, asyncHandler(async (req, res) => {
+  await assertInHrScope(req.user!, String(req.params.id))
   res.json({ success: true, data: await accessService.get(String(req.params.id), req.user!.tenantId) })
 }))
 employeeRouter.put('/:id/access', accessAdmins, validate(AccessSchema), asyncHandler(async (req, res) => {
+  await assertInHrScope(req.user!, String(req.params.id))
   res.json({ success: true, data: await accessService.set(String(req.params.id), req.user!, req.body) })
 }))
 employeeRouter.post('/:id/archive', requirePermission('employees:write'), validate(ArchiveSchema), employeeController.archive)
+employeeRouter.post('/:id/reinstate', requirePermission('employees:write'), validate(ReinstateSchema), employeeController.reinstate)
 
 // ─── SKILLS ───────────────────────────────────────────────────
-employeeRouter.post('/:id/skills', requirePermission('employees:write'), validate(AddSkillSchema), employeeController.addSkill)
-employeeRouter.delete('/:id/skills/:skillId', requirePermission('employees:write'), employeeController.removeSkill)
+employeeRouter.post('/:id/skills', selfOrWrite, validate(AddSkillSchema), employeeController.addSkill)
+employeeRouter.delete('/:id/skills/:skillId', selfOrWrite, employeeController.removeSkill)
 
 // ─── RESUME ───────────────────────────────────────────────────
-employeeRouter.post('/:id/resume', requirePermission('employees:write'), validate(AddResumeLineSchema), employeeController.addResumeLine)
-employeeRouter.patch('/:id/resume/:lineId', requirePermission('employees:write'), validate(UpdateResumeLineSchema), employeeController.updateResumeLine)
-employeeRouter.delete('/:id/resume/:lineId', requirePermission('employees:write'), employeeController.removeResumeLine)
+employeeRouter.post('/:id/resume', selfOrWrite, validate(AddResumeLineSchema), employeeController.addResumeLine)
+employeeRouter.patch('/:id/resume/:lineId', selfOrWrite, validate(UpdateResumeLineSchema), employeeController.updateResumeLine)
+employeeRouter.delete('/:id/resume/:lineId', selfOrWrite, employeeController.removeResumeLine)

@@ -4,7 +4,8 @@ import api from '../../lib/api'
 import Modal from '../../components/ui/Modal'
 import Icon from '../../components/ui/Icon'
 import { useAuth } from '../../contexts/AuthContext'
-import { useCreateEmployee, useOrgTree, useJobPositions, useWorkLocations, useEmployees } from '../../lib/hooks/useEmployees'
+import { useCreateEmployee, useOrgTree, useJobPositions, useWorkLocations } from '../../lib/hooks/useEmployees'
+import PersonPicker from '../../components/ui/PersonPicker'
 import { TemporaryPassword } from '../../components/company/AccessCard'
 import { COUNTRIES } from '../../components/company/CompanyParts'
 import MasterSelect from '../../components/ui/MasterSelect'
@@ -23,12 +24,11 @@ const today = () => new Date().toISOString().slice(0, 10)
 // Add a person, place them in the hierarchy (unit + manager), and optionally create their login straight away
 export default function CreateEmployeeModal({ open, onClose }: Props) {
   const qc = useQueryClient()
-  const { user } = useAuth()
+  const { user, hasRole } = useAuth()
   const createEmployee = useCreateEmployee()
   const { data: orgTree = [] } = useOrgTree()
   const { data: positions = [] } = useJobPositions()
   const { data: locations = [] } = useWorkLocations()
-  const { data: people } = useEmployees({ limit: 100 })
   const flatOrg = ((function flat(units: any[], depth = 0): any[] { return units.flatMap((u: any) => [{ ...u, depth }, ...flat(u.children || [], depth + 1)]) })(Array.isArray(orgTree) ? orgTree : []))
   const initial = () => ({
     firstName: '', lastName: '', workEmail: '', orgUnitId: '', jobPositionId: '', workLocationId: '', managerId: user?.employee?.id ?? '',
@@ -95,7 +95,6 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
     )
   }
 
-  const managers = (people?.data ?? []).filter((p: any) => p.id)
   return (
     <Modal open={open} onClose={close} title="Add a person" width={640}>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -104,7 +103,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
           <div className="field"><label htmlFor="ce-ln">Last name</label><input id="ce-ln" className="input" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required /></div>
         </div>
         <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-          <div className="field"><label htmlFor="ce-dob">Date of birth</label><input id="ce-dob" className="input" type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} /></div>
+          <div className="field"><label htmlFor="ce-dob">Date of birth</label><input id="ce-dob" className="input" type="date" min="1930-01-01" max={new Date(Date.now() - 14 * 365.25 * 86400000).toISOString().slice(0, 10)} value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} /></div>
           <div className="field"><label htmlFor="ce-gender">Gender</label><MasterSelect id="ce-gender" list="gender" value={form.gender} onChange={(v) => set('gender', v)} placeholder="—" /></div>
           <div className="field"><label htmlFor="ce-nat">Nationality</label><MasterSelect id="ce-nat" list="nationality" value={form.nationality} onChange={(v) => set('nationality', v)} placeholder="—" /></div>
         </div>
@@ -122,10 +121,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
               {flatOrg.map((u: any) => <option key={u.id} value={u.id}>{'· '.repeat(u.depth)}{u.name}</option>)}
             </select></div>
           <div className="field"><label htmlFor="ce-mgr">Reports to</label>
-            <select id="ce-mgr" className="input select" value={form.managerId} onChange={(e) => set('managerId', e.target.value)}>
-              <option value="">No manager</option>
-              {managers.map((p: any) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.jobPosition?.title ? ` · ${p.jobPosition.title}` : ''}</option>)}
-            </select></div>
+            <PersonPicker id="ce-mgr" value={form.managerId} onChange={(id) => set('managerId', id)} initialName={form.managerId && form.managerId === user?.employee?.id ? user?.fullName : undefined} placeholder="No manager (search to choose)" /></div>
           <div className="field"><label htmlFor="ce-pos">Job position</label>
             <select id="ce-pos" className="input select" value={form.jobPositionId} onChange={(e) => set('jobPositionId', e.target.value)}>
               <option value="">None</option>{positions.map((p: any) => <option key={p.id} value={p.id}>{p.title}</option>)}
@@ -136,7 +132,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
             </select></div>
           <div className="field"><label htmlFor="ce-type">Employment type</label>
             <MasterSelect id="ce-type" list="employment_type" value={form.employmentType} onChange={(v) => set('employmentType', v)} /></div>
-          <div className="field"><label htmlFor="ce-hire">Start date</label><input id="ce-hire" className="input" type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></div>
+          <div className="field"><label htmlFor="ce-hire">Start date</label><input id="ce-hire" className="input" type="date" min="1950-01-01" max={new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10)} value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></div>
           <div className="field"><label htmlFor="ce-tax">Tax country</label>
             <select id="ce-tax" className="input select" value={form.taxJurisdiction} onChange={(e) => set('taxJurisdiction', e.target.value)}>
               <option value="">Not set</option>{COUNTRIES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
@@ -146,7 +142,7 @@ export default function CreateEmployeeModal({ open, onClose }: Props) {
         <fieldset className="well" style={{ border: 'none', padding: 16 }}>
           <legend style={{ fontWeight: 500, fontSize: 14, padding: 0, float: 'left', width: '100%', marginBottom: 10 }}>Login & role</legend>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, clear: 'both' }}>
-            {ROLES.map((r) => (
+            {ROLES.filter((r) => r.v !== 'payroll_admin' || hasRole('system_admin')).map((r) => (
               <label key={r.v} className="card" style={{ padding: 10, cursor: 'pointer', border: form.role === r.v ? '1.5px solid var(--night)' : '1px solid var(--hair)' }}>
                 <input type="radio" name="ce-role" value={r.v} checked={form.role === r.v} onChange={() => set('role', r.v)} style={{ marginRight: 6 }} />
                 <strong style={{ fontWeight: 500, fontSize: 13 }}>{r.l}</strong><div className="dim" style={{ fontSize: 11, marginTop: 2 }}>{r.h}</div>

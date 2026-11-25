@@ -35,9 +35,9 @@ export const CreateWorkLocationSchema = z.object({
 
 export const CreateEmployeeSchema = z.object({
   body: z.object({
-    firstName: z.string().min(1),
-    lastName: z.string().min(1),
-    workEmail: z.string().email(),
+    firstName: z.string().trim().min(1).max(80),
+    lastName: z.string().trim().min(1).max(80),
+    workEmail: z.string().trim().email().max(200),
     orgUnitId: z.string().uuid(),
     jobPositionId: z.string().uuid().optional(),
     managerId: z.string().uuid().optional(),
@@ -45,18 +45,18 @@ export const CreateEmployeeSchema = z.object({
     workLocationId: z.string().uuid().optional(),
     legalEntityId: z.string().uuid().optional(),
     payGroupId: z.string().uuid().optional(),
-    hireDate: z.string().min(1),
+    hireDate: z.string().min(1).max(30), // checked as a real date in the service (a bad one is a clear 400)
     employmentType: z.string().trim().min(1).max(40), // a code from the employment_type master
     taxJurisdiction: z.string().length(2).optional(),
-    dateOfBirth: z.string().optional(),
-    gender: z.string().optional(),
-    nationality: z.string().optional(),
-    personalEmail: z.string().email().optional(),
-    mobilePersonal: z.string().optional(),
-    mobileWork: z.string().optional(),
-    emergencyContactName: z.string().optional(),
-    emergencyContactPhone: z.string().optional(),
-    emergencyContactRelation: z.string().optional(),
+    dateOfBirth: z.string().max(30).optional(),
+    gender: z.string().trim().max(40).optional(),
+    nationality: z.string().trim().max(40).optional(),
+    personalEmail: z.string().trim().email().max(200).optional(),
+    mobilePersonal: z.string().trim().max(40).optional(),
+    mobileWork: z.string().trim().max(40).optional(),
+    emergencyContactName: z.string().trim().max(120).optional(),
+    emergencyContactPhone: z.string().trim().max(40).optional(),
+    emergencyContactRelation: z.string().trim().max(40).optional(),
   }),
 })
 
@@ -73,8 +73,8 @@ export const AccessSchema = z.object({
 export const UpdateEmployeeSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
-    firstName: z.string().min(1).optional(),
-    lastName: z.string().min(1).optional(),
+    firstName: z.string().trim().min(1).max(80).optional(),
+    lastName: z.string().trim().min(1).max(80).optional(),
     orgUnitId: z.string().uuid().optional(),
     jobPositionId: z.string().uuid().optional(),
     managerId: z.string().uuid().optional(),
@@ -83,19 +83,20 @@ export const UpdateEmployeeSchema = z.object({
     legalEntityId: z.string().uuid().nullable().optional(),
     payGroupId: z.string().uuid().nullable().optional(),
     taxJurisdiction: z.string().length(2).optional(),
-    dateOfBirth: z.string().optional(),
+    dateOfBirth: z.string().max(30).optional(),
     employmentType: z.string().trim().min(1).max(40).optional(),
-    gender: z.string().optional(),
-    nationality: z.string().optional(),
-    personalEmail: z.string().email().optional(),
-    mobilePersonal: z.string().optional(),
-    mobileWork: z.string().optional(),
-    emergencyContactName: z.string().optional(),
-    emergencyContactPhone: z.string().optional(),
-    emergencyContactRelation: z.string().optional(),
-    employmentStatus: z.string().optional(),
-    probationEndDate: z.string().optional(),
-    confirmationDate: z.string().optional(),
+    gender: z.string().trim().max(40).optional(),
+    nationality: z.string().trim().max(40).optional(),
+    personalEmail: z.string().trim().email().max(200).optional(),
+    mobilePersonal: z.string().trim().max(40).optional(),
+    mobileWork: z.string().trim().max(40).optional(),
+    emergencyContactName: z.string().trim().max(120).optional(),
+    emergencyContactPhone: z.string().trim().max(40).optional(),
+    emergencyContactRelation: z.string().trim().max(40).optional(),
+    // the status is never typed in: it changes through Terminate, Reinstate, Confirmation or an exit
+    employmentStatus: z.any().refine((v) => v === undefined, 'Status changes through Terminate, Reinstate or Confirmation, not by editing the record').optional(),
+    probationEndDate: z.string().max(30).optional(),
+    confirmationDate: z.string().max(30).optional(),
   }),
 })
 
@@ -110,20 +111,25 @@ export const AddSkillSchema = z.object({
 export const AddResumeLineSchema = z.object({
   body: z.object({
     lineType: z.enum(['experience', 'education', 'certification', 'award']),
-    name: z.string().min(1),
-    description: z.string().optional(),
-    dateStart: z.string().optional(),
-    dateEnd: z.string().optional(),
-    organisation: z.string().optional(),
+    name: z.string().trim().min(1).max(160),
+    description: z.string().trim().max(1000).optional(),
+    dateStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the form 2026-03-31').optional(),
+    dateEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the form 2026-03-31').optional(),
+    organisation: z.string().trim().max(160).optional(),
   }),
 })
 
 export const ArchiveSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
-    reason: z.string().min(1, 'Archive reason is required'),
+    reason: z.string().trim().min(1, 'Archive reason is required').max(500),
+    // who the people reporting to this person move to (required when there are any), and their last day (default today)
+    newManagerId: z.string().uuid().optional(),
+    lastWorkingDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the form 2026-03-31').optional(),
   }),
 })
+
+export const ReinstateSchema = z.object({ params: z.object({ id: z.string().uuid() }) })
 
 export const ListQuerySchema = z.object({
   query: z.object({
@@ -134,6 +140,10 @@ export const ListQuerySchema = z.object({
     employmentType: z.string().optional(),
     employmentStatus: z.string().optional(),
     showArchived: z.string().optional(),
+    status: z.enum(['active', 'archived', 'all']).optional(),
+    sort: z.enum(['name', 'hireDate', 'department', 'code']).optional(),
+    dir: z.enum(['asc', 'desc']).optional(),
+    subUnits: z.enum(['0', '1']).optional(), // 0 = only people directly in the chosen department
   }),
 })
 

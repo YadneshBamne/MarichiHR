@@ -2,7 +2,7 @@ import { Router } from 'express'
 import mongoose from 'mongoose'
 import { authenticate } from '../../middleware/auth.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
-import { tenantHasFeature, tenantModules } from '../../middleware/module.middleware'
+import { tenantHasFeature, tenantModules } from '../../middleware/module.middleware.mongo'
 import { Employee, TsWeek, ConfirmationCase, PayrollCycle, PayrollInput, HelpdeskTicket } from '../../infrastructure/mongo/mongo'
 import { prisma } from '../../infrastructure/database/prisma.stub' // a .mongo file needs the stub to get the Prisma-compatible client
 import { AccessUser } from '../../shared/utils/access'

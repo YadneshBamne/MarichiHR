@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import CareersAdmin from './CareersAdmin'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
@@ -12,6 +13,7 @@ import { fmtDate } from '../../lib/format'
 import { flattenUnits } from '../workplace/AnnouncementsPage'
 import MasterSelect from '../../components/ui/MasterSelect'
 import { useMasters } from '../../lib/hooks/useMasters'
+import { ReasonDialog, SearchTab, TemplatesTab, EmailDialog, HistoryCard, CvControls, icsDownload } from './RecruitmentExtras'
 
 interface Opening { id: string; title: string; description: string; orgUnitId: string; orgUnit: string | null; employmentType: string; openings: number; salaryMin: number | null; salaryMax: number | null; currency: string; hiringManagerId: string | null; hiringManager: string | null; reason: string; replacesEmployeeId: string | null; replacesEmployee: string | null; experienceMinYears: number | null; experienceMaxYears: number | null; status: string; closedReason: string | null; requestedBy: string | null; requestedByUserId: string; createdAt: string; canManage: boolean; pipeline: Record<string, number> | null }
 interface Cand { id: string; openingId: string; opening?: string; firstName: string; lastName: string; stage: string; source: string; summary: string | null; resumeUrl: string | null; rating: number | null; email?: string; phone?: string | null; rejectionReason?: string | null; referredBy?: string | null; offerCtcAnnual?: number | null; offerJoiningDate?: string | null; offerStatus?: string | null; offerNote?: string | null; hiredEmployeeId?: string | null; interviews?: any; feedbackIn?: number; canManage?: boolean }
@@ -32,7 +34,7 @@ export default function RecruitmentPage() {
   const { hasRole } = useAuth()
   const isHR = hasRole('hr_admin')
   const canOpen = isHR || hasRole('manager')
-  const [tab, setTab] = useState<'openings' | 'interviews' | 'referrals'>('openings')
+  const [tab, setTab] = useState<'openings' | 'search' | 'interviews' | 'referrals' | 'templates' | 'careers'>('openings')
   const [creating, setCreating] = useState(false)
   const [referring, setReferring] = useState<Opening | null>(null)
   const { data = [], isLoading } = useQuery({ queryKey: ['openings'], queryFn: async () => (await api.get('/recruitment/openings')).data.data as Opening[] })
@@ -44,10 +46,10 @@ export default function RecruitmentPage() {
       <PageHeader title="Recruitment" sub={isHR ? 'Hiring requests, candidates, interviews and offers' : 'Open positions, your referrals and interviews you are on'}
         actions={canOpen ? <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> {isHR ? 'New opening' : 'Request a hire'}</button> : undefined}>
         <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-          {([['openings', 'Openings'], ['interviews', 'My interviews'], ['referrals', 'My referrals']] as const).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
+          {([['openings', 'Openings'], ...(canOpen ? [['search', 'Find a candidate']] : []), ['interviews', 'My interviews'], ['referrals', 'My referrals'], ...(isHR ? [['templates', 'Email templates'], ['careers', 'Careers page']] : [])] as [typeof tab, string][]).map(([k, l]) => <button key={k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
         </div>
       </PageHeader>
-      {tab === 'interviews' ? <MyInterviews /> : tab === 'referrals' ? <MyReferrals /> : isLoading ? <div className="skeleton" style={{ height: 180, borderRadius: 22 }} /> : (
+      {tab === 'search' ? <SearchTab /> : tab === 'careers' ? <CareersAdmin /> : tab === 'templates' ? <TemplatesTab /> : tab === 'interviews' ? <MyInterviews /> : tab === 'referrals' ? <MyReferrals /> : isLoading ? <div className="skeleton" style={{ height: 180, borderRadius: 22 }} /> : (
         <>
           {mine.length > 0 && (
             <section data-card className="card" style={{ padding: 8, overflowX: 'auto', marginBottom: 18 }}>
@@ -74,7 +76,7 @@ export default function RecruitmentPage() {
                   <div className="dim" style={{ fontSize: 13 }}>{[o.orgUnit, ml('employment_type', o.employmentType), why(o), exp(o), range(o)].filter(Boolean).join(' · ')}</div>
                   {o.description && <p style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 84, overflow: 'hidden' }}>{o.description}</p>}
                   <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
-                    <button className="btn btn-honey btn-sm" onClick={() => setReferring(o)}><Icon name="user" size={14} /> Refer someone</button>
+                    {!o.canManage && <button className="btn btn-honey btn-sm" onClick={() => setReferring(o)}><Icon name="user" size={14} /> Refer someone</button>}
                     {o.canManage && <Link to={`/recruitment/${o.id}`} className="btn btn-ghost btn-sm">Pipeline</Link>}
                   </div>
                 </section>
@@ -135,19 +137,26 @@ function CandidateModal({ opening, referral, onClose }: { opening: { id: string;
   const qc = useQueryClient()
   const toast = useToast()
   const [f, setF] = useState({ firstName: '', lastName: '', email: '', phone: '', resumeUrl: '', summary: '', source: 'direct' })
+  const [dupe, setDupe] = useState<string | null>(null)
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: (allowDuplicate?: boolean) => {
       const body: any = { firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone || null, resumeUrl: f.resumeUrl || null, summary: f.summary || null }
-      if (!referral) body.source = f.source
+      if (!referral) { body.source = f.source; if (allowDuplicate) body.allowDuplicate = true }
       return api.post(`/recruitment/openings/${opening.id}/${referral ? 'refer' : 'candidates'}`, body)
     },
     onSuccess: () => { toast(referral ? 'Thanks! HR has your referral' : 'Candidate added'); qc.invalidateQueries({ queryKey: ['opening', opening.id] }); qc.invalidateQueries({ queryKey: ['openings'] }); qc.invalidateQueries({ queryKey: ['my-referrals'] }); onClose() },
-    onError: (e) => toast(errMsg(e), 'error'),
+    onError: (e: any) => { if (!referral && e?.response?.data?.code === 'DUPLICATE_CANDIDATE' && e.response.data.details?.matches) setDupe(errMsg(e)); else toast(errMsg(e), 'error') },
   })
   const set = (k: keyof typeof f) => (e: any) => setF({ ...f, [k]: e.target.value })
   return (
     <Modal open onClose={onClose} title={`${referral ? 'Refer someone for' : 'Add a candidate to'} ${opening.title}`}>
-      <form onSubmit={(e) => { e.preventDefault(); save.mutate() }} style={{ display: 'grid', gap: 12 }}>
+      <form onSubmit={(e) => { e.preventDefault(); setDupe(null); save.mutate(false) }} style={{ display: 'grid', gap: 12 }}>
+        {dupe && (
+          <div className="well" role="alert" style={{ padding: 12, fontSize: 13, display: 'grid', gap: 8 }}>
+            <span>{dupe}</span>
+            <div style={{ display: 'flex', gap: 8 }}><button type="button" className="btn btn-primary btn-sm" disabled={save.isPending} onClick={() => { setDupe(null); save.mutate(true) }}>Add anyway</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => setDupe(null)}>Change the details</button></div>
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <label className="field"><span>First name</span><input className="input" required value={f.firstName} onChange={set('firstName')} /></label>
           <label className="field"><span>Last name</span><input className="input" required value={f.lastName} onChange={set('lastName')} /></label>
@@ -208,6 +217,7 @@ export function OpeningPage() {
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
   const [showClosed, setShowClosed] = useState(false)
+  const [ask, setAsk] = useState<null | 'reject' | 'close'>(null)
   const { data: o, isLoading, error } = useQuery({ queryKey: ['opening', id], queryFn: async () => (await api.get(`/recruitment/openings/${id}`)).data.data as Opening & { candidates: Cand[] } })
   const root = useReveal<HTMLDivElement>(isLoading)
   const act = useMutation({ mutationFn: async (f: () => Promise<any>) => f(), onSuccess: () => { qc.invalidateQueries({ queryKey: ['opening', id] }); qc.invalidateQueries({ queryKey: ['openings'] }) }, onError: (e) => toast(errMsg(e), 'error') })
@@ -228,17 +238,19 @@ export function OpeningPage() {
           <span>Requested by <strong>{o.requestedBy}</strong> on {fmtDate(o.createdAt)}. Waiting for HR approval.</span>
           {isHR && o.requestedByUserId !== user?.id && <>
             <button className="btn btn-primary btn-sm" onClick={() => act.mutate(async () => { await api.post(`/recruitment/openings/${id}/approve`, {}); toast('Approved, the opening is live') })}>Approve</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { const note = prompt('Reason for rejecting'); if (note) act.mutate(async () => { await api.post(`/recruitment/openings/${id}/reject`, { note }); toast('Rejected') }) }}>Reject</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setAsk('reject')}>Reject</button>
           </>}
         </section>
       )}
-      {o.closedReason && <p className="dim" data-rise style={{ marginBottom: 12 }}>Closed: {o.closedReason}</p>}
+      {o.closedReason && (o.status === 'rejected'
+        ? <p className="pill danger" data-rise style={{ marginBottom: 12, whiteSpace: 'normal', textTransform: 'none' }}>HR rejected this request: {o.closedReason}</p>
+        : <p className="dim" data-rise style={{ marginBottom: 12 }}>Closed: {o.closedReason}</p>)}
       {isHR && !['pending_approval', 'rejected'].includes(o.status) && (
         <div data-rise style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
           {o.status !== 'closed' && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><Icon name="settings" size={14} /> Edit</button>}
           {o.status === 'open' && <button className="btn btn-ghost btn-sm" onClick={() => status('on_hold')}><Icon name="pause" size={14} /> Put on hold</button>}
           {o.status !== 'open' && <button className="btn btn-ghost btn-sm" onClick={() => status('open')}><Icon name="play" size={14} /> {o.status === 'closed' ? 'Reopen' : 'Resume'}</button>}
-          {o.status !== 'closed' && <button className="btn btn-ghost btn-sm" onClick={() => { const r = prompt('Why is it closing?', 'Filled'); if (r) status('closed', r) }}><Icon name="x" size={14} /> Close</button>}
+          {o.status !== 'closed' && <button className="btn btn-ghost btn-sm" onClick={() => setAsk('close')}><Icon name="x" size={14} /> Close</button>}
         </div>
       )}
       {o.canManage && (
@@ -261,6 +273,8 @@ export function OpeningPage() {
       {showClosed && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginTop: 10 }}>{closed.map((c) => <CandCard key={c.id} c={c} />)}</div>}
       {o.description && <section data-card className="card" style={{ padding: 20, marginTop: 18 }}><h3 style={{ fontSize: 15, marginBottom: 8 }}>About the role</h3><p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: 14 }}>{o.description}</p></section>}
       {adding && <CandidateModal opening={o} onClose={() => setAdding(false)} />}
+      {ask === 'reject' && <ReasonDialog title="Reject this request" label="Reason (the requester sees it)" confirm="Reject" onClose={() => setAsk(null)} onSubmit={(note) => { setAsk(null); act.mutate(async () => { await api.post(`/recruitment/openings/${id}/reject`, { note }); toast('Rejected') }) }} />}
+      {ask === 'close' && <ReasonDialog title="Close this opening" label="Why is it closing?" initial="Filled" confirm="Close opening" onClose={() => setAsk(null)} onSubmit={(r) => { setAsk(null); status('closed', r) }} />}
       {editing && <OpeningModal edit={o} onClose={() => setEditing(false)} />}
     </div>
   )
@@ -292,9 +306,11 @@ export function CandidatePage() {
   const navigate = useNavigate()
   const [modal, setModal] = useState<'schedule' | 'offer' | 'hire' | null>(null)
   const [fb, setFb] = useState<Interview | null>(null)
+  const [ask, setAsk] = useState<null | 'reject' | 'withdraw'>(null)
+  const [mail, setMail] = useState<null | 'interview' | 'rejection' | 'offer'>(null)
   const { data: c, isLoading, error } = useQuery({ queryKey: ['candidate', id], queryFn: async () => (await api.get(`/recruitment/candidates/${id}`)).data.data as Cand & { interviews: Interview[] } })
   const root = useReveal<HTMLDivElement>(isLoading)
-  const refresh = () => { qc.invalidateQueries({ queryKey: ['candidate', id] }); qc.invalidateQueries({ queryKey: ['opening'] }); qc.invalidateQueries({ queryKey: ['my-interviews'] }) }
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['cand-history', id] }); qc.invalidateQueries({ queryKey: ['candidate', id] }); qc.invalidateQueries({ queryKey: ['opening'] }); qc.invalidateQueries({ queryKey: ['my-interviews'] }) }
   const act = useMutation({ mutationFn: async (f: () => Promise<any>) => f(), onSuccess: refresh, onError: (e) => toast(errMsg(e), 'error') })
   if (isLoading) return <div className="skeleton" style={{ height: 240, borderRadius: 22 }} />
   if (error || !c) return <section className="card" style={{ padding: 28 }}><h2>Candidate not found</h2><Link to="/recruitment" className="link">Back to recruitment</Link></section>
@@ -308,7 +324,7 @@ export function CandidatePage() {
         <section data-card className="card span-4" style={{ padding: 20, display: 'grid', gap: 10, alignContent: 'start' }}>
           {c.email && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Icon name="mail" size={14} /> <a className="link" href={`mailto:${c.email}`}>{c.email}</a></div>}
           {c.phone && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Icon name="phone" size={14} /> {c.phone}</div>}
-          {c.resumeUrl && <a className="btn btn-ghost btn-sm" href={c.resumeUrl} target="_blank" rel="noopener noreferrer"><Icon name="file" size={14} /> Open CV</a>}
+          <CvControls c={c} onChange={refresh} />
           <div className="dim" style={{ fontSize: 13 }}>Source: {ml('source_of_hire', c.source)}{c.referredBy ? ` · referred by ${c.referredBy}` : ''}</div>
           {c.summary && <p style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{c.summary}</p>}
           {c.rejectionReason && <p className="pill danger" style={{ whiteSpace: 'normal' }}>Rejected: {c.rejectionReason}</p>}
@@ -333,7 +349,9 @@ export function CandidatePage() {
                 <button className="btn btn-ghost btn-sm" onClick={() => act.mutate(async () => { await api.post(`/recruitment/candidates/${id}/offer-response`, { accepted: false }); toast('Offer declined') })}>Declined</button>
               </>}
               {isHR && c.offerStatus === 'accepted' && c.stage === 'offer' && <button className="btn btn-honey btn-sm" onClick={() => setModal('hire')}><Icon name="check" size={14} /> Hire</button>}
-              {live && <button className="btn btn-ghost btn-sm" onClick={() => { const r = prompt('Reason for rejecting'); if (r && r.trim().length > 1) move('rejected', r.trim()) }}>Reject</button>}
+              {isHR && (c.offerStatus === 'made' || c.offerStatus === 'accepted') && c.stage === 'offer' && <button className="btn btn-ghost btn-sm" onClick={() => setAsk('withdraw')}>Withdraw offer</button>}
+              {isHR && live && <button className="btn btn-ghost btn-sm" onClick={() => setMail(c.stage === 'offer' ? 'offer' : 'interview')}><Icon name="mail" size={14} /> Email candidate</button>}
+              {live && <button className="btn btn-ghost btn-sm" onClick={() => setAsk('reject')}>Reject</button>}
               {live && <button className="btn btn-ghost btn-sm" onClick={() => move('withdrawn')}>Withdrew</button>}
               {isHR && (c.stage === 'rejected' || c.stage === 'withdrawn') && <button className="btn btn-ghost btn-sm" onClick={() => move('screening')}>Bring back</button>}
             </div>
@@ -352,6 +370,7 @@ export function CandidatePage() {
                   {i.status === 'completed' && <div style={{ fontSize: 13 }}><span className="pill info">{label(i.recommendation ?? '')}</span> {'★'.repeat(i.rating ?? 0)}<p style={{ whiteSpace: 'pre-wrap', marginTop: 6, lineHeight: 1.5 }}>{i.feedback}</p></div>}
                   <div style={{ display: 'flex', gap: 6 }}>
                     {i.interviewerUserId === user?.id && i.status !== 'cancelled' && <button className="btn btn-primary btn-sm" onClick={() => setFb(i)}>{i.status === 'completed' ? 'Edit feedback' : 'Give feedback'}</button>}
+                    {i.status === 'scheduled' && <button className="btn btn-ghost btn-sm" onClick={() => icsDownload(i.id).catch((e) => toast(errMsg(e), 'error'))}><Icon name="calendar" size={14} /> Calendar file</button>}
                     {c.canManage && i.status === 'scheduled' && <button className="btn btn-ghost btn-sm" onClick={() => act.mutate(async () => { await api.post(`/recruitment/interviews/${i.id}/cancel`); toast('Interview cancelled') })}>Cancel</button>}
                   </div>
                 </div>
@@ -360,6 +379,10 @@ export function CandidatePage() {
           )}
         </section>
       </div>
+      {c.canManage && <HistoryCard id={id} />}
+      {ask === 'reject' && <ReasonDialog title="Reject this candidate" label="Reason (kept on the candidate)" confirm="Reject" onClose={() => setAsk(null)} onSubmit={(r) => { setAsk(null); move('rejected', r) }} />}
+      {ask === 'withdraw' && <ReasonDialog title="Withdraw the offer" label="Why is the offer being withdrawn?" confirm="Withdraw offer" onClose={() => setAsk(null)} onSubmit={(reason) => { setAsk(null); act.mutate(async () => { await api.post(`/recruitment/candidates/${id}/offer/withdraw`, { reason }); toast('Offer withdrawn') }) }} />}
+      {mail && <EmailDialog c={c} interviews={c.interviews} initial={mail} onClose={() => setMail(null)} onSent={() => { setMail(null); refresh() }} />}
       {modal === 'schedule' && <ScheduleModal id={id} onClose={() => { setModal(null); refresh() }} />}
       {modal === 'offer' && <OfferModal id={id} onClose={() => { setModal(null); refresh() }} />}
       {modal === 'hire' && <HireModal c={c} onClose={(empId) => { setModal(null); refresh(); if (empId) navigate(`/employees/${empId}`) }} />}
@@ -404,14 +427,30 @@ function FeedbackModal({ i, onClose }: { i: Interview; onClose: () => void }) {
 function OfferModal({ id, onClose }: { id: string; onClose: () => void }) {
   const toast = useToast()
   const [f, setF] = useState({ ctcAnnual: '', joiningDate: '', note: '' })
-  const save = useMutation({ mutationFn: () => api.post(`/recruitment/candidates/${id}/offer`, { ctcAnnual: Number(f.ctcAnnual), joiningDate: f.joiningDate, ...(f.note ? { note: f.note } : {}) }), onSuccess: () => { toast('Offer recorded'); onClose() }, onError: (e) => toast(errMsg(e), 'error') })
+  const [need, setNeed] = useState<null | { code: string; message: string }>(null)
+  const [skipReason, setSkipReason] = useState('')
+  const [confirmRange, setConfirmRange] = useState(false)
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+  const save = useMutation({
+    mutationFn: () => api.post(`/recruitment/candidates/${id}/offer`, { ctcAnnual: Number(f.ctcAnnual), joiningDate: f.joiningDate, ...(f.note ? { note: f.note } : {}), ...(skipReason.trim() ? { skipInterviewReason: skipReason.trim() } : {}), ...(confirmRange ? { confirmOutOfRange: true } : {}) }),
+    onSuccess: () => { toast('Offer recorded'); onClose() },
+    onError: (e: any) => { const d = e?.response?.data; if (d?.code === 'INTERVIEW_REQUIRED' || d?.code === 'OFFER_OUT_OF_RANGE') setNeed({ code: d.code, message: d.message }); else toast(errMsg(e), 'error') },
+  })
   return (
     <Modal open onClose={onClose} title="Make an offer">
       <form onSubmit={(e) => { e.preventDefault(); save.mutate() }} style={{ display: 'grid', gap: 12 }}>
-        <label className="field"><span>Yearly pay (CTC)</span><input className="input" type="number" min={1} required value={f.ctcAnnual} onChange={(e) => setF({ ...f, ctcAnnual: e.target.value })} /></label>
-        <label className="field"><span>Joining date</span><input className="input" type="date" required value={f.joiningDate} onChange={(e) => setF({ ...f, joiningDate: e.target.value })} /></label>
+        <label className="field"><span>Yearly pay (CTC)</span><input className="input" type="number" min={1} required value={f.ctcAnnual} onChange={(e) => { setF({ ...f, ctcAnnual: e.target.value }); setConfirmRange(false) }} /></label>
+        <label className="field"><span>Joining date</span><input className="input" type="date" required min={today} value={f.joiningDate} onChange={(e) => setF({ ...f, joiningDate: e.target.value })} /></label>
         <label className="field"><span>Note (benefits, conditions)</span><textarea className="input" rows={3} maxLength={1000} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={save.isPending}>Record offer</button></div>
+        {need && (
+          <div className="well" role="alert" style={{ padding: 12, fontSize: 13, display: 'grid', gap: 8 }}>
+            <span>{need.message}</span>
+            {need.code === 'INTERVIEW_REQUIRED'
+              ? <label className="field"><span>Reason for skipping the interview (kept in the history)</span><input className="input" maxLength={300} value={skipReason} onChange={(e) => setSkipReason(e.target.value)} /></label>
+              : <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={confirmRange} onChange={(e) => setConfirmRange(e.target.checked)} /> Yes, make the offer at this pay</label>}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={save.isPending || (need?.code === 'INTERVIEW_REQUIRED' && skipReason.trim().length < 3) || (need?.code === 'OFFER_OUT_OF_RANGE' && !confirmRange)}>Record offer</button></div>
       </form>
     </Modal>
   )
@@ -419,16 +458,42 @@ function OfferModal({ id, onClose }: { id: string; onClose: () => void }) {
 
 function HireModal({ c, onClose }: { c: Cand; onClose: (employeeId?: string) => void }) {
   const toast = useToast()
+  const qc = useQueryClient()
   const [f, setF] = useState({ workEmail: '', hireDate: c.offerJoiningDate?.slice(0, 10) ?? '', referralBonus: '' })
+  const [done, setDone] = useState<null | { id: string; code: string; request: string | null }>(null)
+  const [pw, setPw] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: async () => (await api.post(`/recruitment/candidates/${c.id}/hire`, { workEmail: f.workEmail, hireDate: f.hireDate, ...(f.referralBonus ? { referralBonus: Number(f.referralBonus) } : {}) })).data.data,
-    onSuccess: (d: any) => { toast(`${c.firstName} is now ${d.employee.employeeCode}. Grant login access on their profile.`); onClose(d.employee.id) },
+    onSuccess: (d: any) => { setDone({ id: d.employee.id, code: d.employee.employeeCode, request: d.onboardingRequestId ?? null }); qc.invalidateQueries({ queryKey: ['employees'] }) },
     onError: (e) => toast(errMsg(e), 'error'),
   })
+  const login = useMutation({
+    mutationFn: async () => (await api.put(`/employees/${done!.id}/access`, { roles: ['employee'], password: 'generate', loginEnabled: true })).data.data,
+    onSuccess: (r: any) => setPw(r.temporaryPassword ?? ''), onError: (e) => toast(errMsg(e), 'error'),
+  })
+  if (done) return (
+    <Modal open onClose={() => onClose(done.id)} title={`${c.firstName} ${c.lastName} is hired`}>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <p style={{ fontSize: 14, margin: 0 }}>Employee record <strong>{done.code}</strong> is created{done.request ? ' and an onboarding request is open, so the paperwork can be collected' : ''}.</p>
+        {pw === null ? (
+          <div className="well" style={{ padding: 12, display: 'grid', gap: 8, fontSize: 13 }}>
+            <span>Give them a sign-in now? They get a welcome email with the address, and a temporary password you can pass on (shown once). They must change it at first sign-in.</span>
+            <div><button className="btn btn-primary btn-sm" disabled={login.isPending} onClick={() => login.mutate()}>Create sign-in and send welcome email</button></div>
+          </div>
+        ) : (
+          <div className="well" style={{ padding: 12, fontSize: 13 }}>Sign-in created for {f.workEmail}.{pw ? <> Temporary password (shown once): <code style={{ fontWeight: 700 }}>{pw}</code></> : ''}</div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+          {done.request && <Link to="/requests" className="btn btn-ghost">Open the onboarding request</Link>}
+          <button className="btn btn-honey" onClick={() => onClose(done.id)}>Open employee profile</button>
+        </div>
+      </div>
+    </Modal>
+  )
   return (
     <Modal open onClose={() => onClose()} title={`Hire ${c.firstName} ${c.lastName}`}>
       <form onSubmit={(e) => { e.preventDefault(); save.mutate() }} style={{ display: 'grid', gap: 12 }}>
-        <p className="dim" style={{ fontSize: 13 }}>Creates the employee record in the opening’s department, reporting to the hiring manager. Login access is granted separately on the profile.</p>
+        <p className="dim" style={{ fontSize: 13 }}>Creates the employee record in the opening’s department, reporting to the hiring manager, and opens an onboarding request. You can give them a sign-in on the next step.</p>
         <label className="field"><span>Work email</span><input className="input" type="email" required value={f.workEmail} onChange={(e) => setF({ ...f, workEmail: e.target.value })} /></label>
         <label className="field"><span>Joining date</span><input className="input" type="date" required value={f.hireDate} onChange={(e) => setF({ ...f, hireDate: e.target.value })} /></label>
         {c.referredBy && <label className="field"><span>Referral bonus for {c.referredBy} (optional, approved in Incentives)</span><input className="input" type="number" min={1} value={f.referralBonus} onChange={(e) => setF({ ...f, referralBonus: e.target.value })} /></label>}

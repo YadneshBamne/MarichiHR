@@ -18,6 +18,7 @@ export interface OutboundMessage {
   link?: string | null // page in the app: the WhatsApp button opens it
   button?: string // email only: the button label (default "Open in MarichiHR")
   footer?: string // email only: the small print (default: notification settings)
+  raw?: boolean // email only: send the text as written (a letter to someone outside the app), without the greeting, headline and button
 }
 
 export interface Transport {
@@ -44,6 +45,10 @@ export function smtpClient() {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 export function renderEmail(msg: OutboundMessage, base = process.env.APP_URL || process.env.CLIENT_URL || '') {
   const url = msg.link && base ? `${base.replace(/\/$/, '')}${msg.link.startsWith('/') ? '' : '/'}${msg.link}` : null
+  if (msg.raw) {
+    const small = msg.footer ? `<p style="font-size:12px;color:#8a877e;margin:18px 0 0">${esc(msg.footer)}</p>` : ''
+    return { text: msg.text + (msg.footer ? `\n\n${msg.footer}` : ''), html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#252523;font-size:15px;line-height:1.55">${esc(msg.text).replace(/\n/g, '<br>')}${small}</div>` }
+  }
   const first = msg.to.name.split(' ')[0] || msg.to.name
   const text = `Hi ${first},\n\n${msg.subject}\n${msg.text}${url ? `\n\nOpen it here: ${url}` : ''}\n\n— MarichiHR`
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#252523"><p style="font-size:16px;margin:0 0 14px">Hi ${esc(first)},</p><p style="font-size:15px;line-height:1.55;margin:0 0 18px"><strong>${esc(msg.subject)}</strong><br>${esc(msg.text).replace(/\n/g, '<br>')}</p>${url ? `<p style="margin:0 0 22px"><a href="${esc(url)}" style="display:inline-block;background:#f6c343;color:#252523;padding:11px 22px;border-radius:999px;text-decoration:none;font-weight:600">${esc(msg.button ?? 'Open in MarichiHR')}</a></p>` : ''}<p style="font-size:12px;color:#8a877e;margin:0">${esc(msg.footer ?? 'You get this email because of your notification settings in MarichiHR. You can change them under your account.')}</p></div>`
@@ -77,7 +82,7 @@ export function mandrillPayload(msg: OutboundMessage) {
       from_email: process.env.SMTP_FROM, from_name: process.env.SMTP_FROM_NAME || 'MarichiHR',
       to: [{ email: msg.to.email, name: msg.to.name, type: 'to' }],
       subject: msg.subject, text: body.text, html: body.html,
-      ...(msg.attachments?.length && { attachments: msg.attachments.map((a) => ({ type: /\.pdf$/i.test(a.filename) ? 'application/pdf' : 'application/octet-stream', name: a.filename, content: a.content.toString('base64') })) }),
+      ...(msg.attachments?.length && { attachments: msg.attachments.map((a) => ({ type: /\.pdf$/i.test(a.filename) ? 'application/pdf' : /\.ics$/i.test(a.filename) ? 'text/calendar' : 'application/octet-stream', name: a.filename, content: a.content.toString('base64') })) }),
     },
   }
 }

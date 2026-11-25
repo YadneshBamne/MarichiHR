@@ -4,6 +4,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { employeeRepository } from './employees.repository'
 import { employeeService, accessService } from './employees.service'
 import { ensureDefaults } from '../masters/masters.service'
+import { checkPersonDates, normMobile } from './employees.rules'
 
 // Bulk employee import from a spreadsheet (the browser turns the CSV into rows of header -> text).
 // A dry run checks every row and says what would happen; the real run creates any missing departments, positions
@@ -54,7 +55,7 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
     prisma.orgUnit.findMany({ where: { tenantId: t, active: true }, select: { id: true, name: true } }),
     prisma.jobPosition.findMany({ where: { tenantId: t }, select: { id: true, title: true, orgUnitId: true } }),
     prisma.workLocation.findMany({ where: { tenantId: t }, select: { id: true, name: true } }),
-    prisma.employee.findMany({ where: { tenantId: t }, select: { id: true, employeeCode: true, workEmail: true, active: true, user: { select: { email: true } } } }),
+    prisma.employee.findMany({ where: { tenantId: t }, select: { id: true, employeeCode: true, workEmail: true, active: true, mobilePersonal: true, mobileWork: true, user: { select: { email: true } } } }),
     prisma.orgUnit.findFirst({ where: { tenantId: t, parentId: null, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
     prisma.masterValue.findMany({ where: { tenantId: t, active: true, list: { in: ['employment_type', 'gender', 'nationality'] } }, select: { list: true, code: true, label: true } }),
     prisma.employeeFieldSetting.findMany({ where: { tenantId: t, mode: 'mandatory' }, select: { field: true } }),
@@ -72,6 +73,9 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
   const unitMap = byName(units, (u) => u.name), locMap = byName(locations, (l) => l.name)
   const takenEmails = new Set(existing.flatMap((e) => [e.workEmail, e.user?.email].filter(Boolean).map((x) => key(x!))))
   const takenCodes = new Set(existing.map((e) => e.employeeCode.toUpperCase()))
+  // phone numbers already on active people, and the ones met earlier in this file (a number belongs to one person)
+  const takenMobiles = new Set(existing.filter((e) => e.active).flatMap((e) => [e.mobilePersonal, e.mobileWork]).filter(Boolean) as string[])
+  const seenMobile = new Map<string, number>()
   const existingByRef = new Map<string, string>()
   existing.filter((e) => e.active).forEach((e) => { if (e.workEmail) existingByRef.set(key(e.workEmail), e.id); existingByRef.set(key(e.employeeCode), e.id) })
 
@@ -98,6 +102,15 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
     if (!hireDate) errors.push('hire_date must be a date like 2026-10-01 or 01/10/2026')
     const dob = r.date_of_birth ? parseDate(r.date_of_birth) : null
     if (r.date_of_birth && !dob) errors.push('date_of_birth is not a valid date')
+    // same date rules as Add person: no joining date over a year ahead, no birth date in the future or making them under 14
+    try { checkPersonDates({ hireDate, dateOfBirth: dob }) } catch (e: any) { errors.push(e.message) }
+    let mobile: string | undefined
+    try { mobile = normMobile(r.mobile, 'mobile') } catch (e: any) { errors.push(e.message) }
+    if (mobile) {
+      if (takenMobiles.has(mobile)) errors.push(`mobile ${mobile} already belongs to someone in the company`)
+      else if (seenMobile.has(mobile)) errors.push(`mobile ${mobile} is also on row ${seenMobile.get(mobile)}`)
+      else seenMobile.set(mobile, n)
+    }
     if (r.personal_email && !EMAIL.test(r.personal_email)) errors.push('personal_email is not an email')
     if (r.tax_country && !/^[A-Za-z]{2}$/.test(r.tax_country)) errors.push('tax_country must be a 2-letter country code (ZM, IN…)')
     const type = r.employment_type ? master('employment_type', r.employment_type) : 'full_time'
@@ -119,7 +132,7 @@ export async function importEmployees(actor: Actor, input: { rows: Row[]; dryRun
     let unitId: string | null = null, unitName = r.department ?? ''
     const u = unitMap.get(key(unitName))
     if (!unitName) errors.push('department is required')
-    else if (u && u.length > 1) errors.push(`there are ${u.length} departments called "${unitName}"; rename one first`)
+    else if (u && u.length > 1) errors.push(`there are ${u.length} departments called "${unitName}". Rename or archive one of them in Masters, then try again`)
     else if (u) unitId = u[0].id
     else if (input.createMissing) { if (!willCreate.departments.has(key(unitName))) willCreate.departments.set(key(unitName), unitName) }
     else errors.push(`no department called "${unitName}" (tick "create missing" or add it first)`)

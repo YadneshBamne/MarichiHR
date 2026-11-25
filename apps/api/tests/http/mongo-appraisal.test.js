@@ -105,11 +105,12 @@ const short = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`
     // ── manager's review
     check((await call('POST', `/appraisal/appraisals/${aid}/manager`, mary, { ratings: rate(5), potential: 3, comment: 'Self-approved' })).status === 403, 'Mary cannot review herself')
     const mr = await call('POST', `/appraisal/appraisals/${aid}/manager`, dan, { ratings: rate(4), potential: 3, comment: 'Dependable, ready for more' })
-    check(mr.status === 200 && mr.data.scores.competencyScore === 80 && mr.data.scores.goalScore === 100 && mr.data.scores.computed === 90, `score = half goals (100) + half competencies (80) = 90 (${short(mr).slice(0, 140)})`)
+    // competency ratings now count on the rating-band scale: 4 of 5 = 100% (5 = 120%, 1 = 40%)
+    check(mr.status === 200 && mr.data.scores.competencyScore === 100 && mr.data.scores.goalScore === 100 && mr.data.scores.computed === 100, `score = half goals (100) + half competencies (4 of 5 = 100) = 100 (${short(mr).slice(0, 140)})`)
     const hidden = await call('GET', `/appraisal/appraisals/${aid}`, mary)
     check(hidden.data.managerReview === null && hidden.data.finalScore === null && hidden.data.scores === null, "until HR publishes, Mary sees neither the manager's review nor a score")
     const seen = await call('GET', `/appraisal/appraisals/${aid}`, dan)
-    check(seen.data.finalScore === 90 && seen.data.rating === 'Meets expectations', 'her manager sees 90, Meets expectations')
+    check(seen.data.finalScore === 100 && seen.data.rating === 'Meets expectations', 'her manager sees 100, Meets expectations')
 
     // ── calibration, summary, publishing
     check((await call('POST', `/appraisal/appraisals/${aid}/calibrate`, owner, { finalScore: 95, reason: 'Aligned with peers' })).status === 400, 'calibration waits for the calibration stage')
@@ -133,7 +134,7 @@ const short = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`
     check(JSON.stringify((await call('GET', '/notifications', mary)).body).includes('appraisal.published'), 'she was told when it was published')
 
     // ── improvement plans
-    const plan = { employeeId: maryId, reason: 'Missed two month-end deadlines', endDate: '2027-02-28', objectives: ['Close the books by day 5', 'Weekly check-in with manager'] }
+    const plan = { employeeId: maryId, reason: 'Missed two month-end deadlines', endDate: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10), objectives: ['Close the books by day 5', 'Weekly check-in with manager'] }
     check((await call('POST', '/appraisal/plans', mary, { ...plan, employeeId: maryId })).status === 403, 'Mary cannot start a plan for herself')
     check((await call('POST', '/appraisal/plans', paul, plan)).status === 404, 'someone outside her reporting line cannot')
     const pl = await call('POST', '/appraisal/plans', dan, plan)

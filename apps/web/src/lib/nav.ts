@@ -69,7 +69,7 @@ export const SECTIONS: NavSection[] = [
       { label: 'Confirmations', path: '/confirmation', icon: 'check', roles: ['hr_admin', 'system_admin', 'manager'], feature: 'confirmation', keywords: 'probation confirm review extend permanent' },
       { label: 'Recruitment', selfLabel: 'Jobs & referrals', path: '/recruitment', icon: 'briefcase', feature: 'recruitment', keywords: 'hiring jobs openings requisition candidates interviews offers referrals careers' },
       { label: 'Alumni', selfLabel: 'My alumni page', path: '/alumni', icon: 'door', roles: [...ROLE.HR, 'alumni'], feature: 'alumni', keywords: 'former employees ex staff letters experience relieving certificate' },
-      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', roles: ['hr_admin', 'payroll_admin'], keywords: 'exits resignation full and final settlement clearance' },
+      { label: 'Offboarding', path: '/exits', icon: 'door', app: 'exits', selfLabel: 'My exit', keywords: 'exits resignation full and final settlement clearance' },
     ],
   },
   {
@@ -116,6 +116,7 @@ export const labelFor = (item: NavItem, roleNames: string[]) => tr(englishLabel(
 const englishLabel = (item: NavItem, roleNames: string[]) => {
   if (!item.selfLabel) return item.label
   if (item.path === '/employees') return roleNames.some((r) => ROLE.HR.includes(r) || r === 'payroll_admin' || r === 'compliance_officer') ? item.label : item.selfLabel
+  if (item.path === '/exits') return roleNames.some((r) => r === 'hr_admin' || r === 'payroll_admin') ? item.label : item.selfLabel
   if (item.path === '/payroll') return roleNames.some((r) => ROLE.PAYROLL.includes(r)) ? item.label : item.selfLabel
   if (item.path === '/expenses') return roleNames.some((r) => [...ROLE.APPROVERS, 'payroll_admin'].includes(r)) ? item.label : item.selfLabel
   return hasTeamScope(roleNames) ? item.label : item.selfLabel

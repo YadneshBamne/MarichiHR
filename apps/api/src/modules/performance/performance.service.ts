@@ -4,6 +4,7 @@ import { notify, userIdOfEmployee } from '../../infrastructure/notifications/not
 import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, isReportingChainOf, getReportingSubtreeIds } from '../../shared/utils/access'
 import { businessToday } from '../../shared/utils/businessDate'
+import { metaFor, setDeadline } from './performance.meta'
 
 // Goals and appraisal. A manager (anyone above the person in the reporting line, with the Manager role) or HR sets a
 // goal with up to 5 weighted KPIs in a quarterly or yearly cycle; the person accepts it or sends it back; at review the
@@ -11,7 +12,8 @@ import { businessToday } from '../../shared/utils/businessDate'
 
 const round1 = (n: number) => Math.round(n * 10) / 10
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
-const isHR = (u: AccessUser) => u.roleIds.includes('hr_admin')
+// HR on this page means an HR admin or a system admin (the same rule as the Appraisals side)
+export const isHR = (u: { roleIds: string[] }) => u.roleIds.includes('hr_admin') || u.roleIds.includes('system_admin')
 
 // Each KPI counts up to 150% of its target so one runaway number can't hide the rest
 export function scoreOf(kpis: { target: number; weight: number; achieved: number | null }[]) {
@@ -27,13 +29,15 @@ export const GoalBody = z.object({
   title: z.string().trim().min(3).max(160),
   description: z.string().trim().max(2000).optional(),
   kpis: z.array(Kpi).min(1).max(5).refine((k) => Math.abs(k.reduce((s, x) => s + x.weight, 0) - 100) < 0.01, 'KPI weights must add up to 100'),
+  deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   send: z.boolean().default(false),
 }).strict()
 export type GoalInput = z.infer<typeof GoalBody>
 
 const include = { kpis: { orderBy: { sequence: 'asc' as const } }, cycle: { select: { id: true, name: true, period: true, startDate: true, endDate: true, status: true } } }
 
-async function canManage(user: AccessUser, employeeId: string) {
+export async function canManage(user: AccessUser, employeeId: string) {
+  if (user.employeeId && user.employeeId === employeeId) return false // nobody sets, reviews or withdraws their own goals
   if (isHR(user)) return true
   if (!user.employeeId || user.employeeId === employeeId || !user.roleIds.includes('manager')) return false
   return isReportingChainOf(user.employeeId, employeeId)
@@ -53,13 +57,27 @@ async function tell(tenantId: string, employeeId: string | null | undefined, use
   if (uid) await notify({ tenantId, userIds: [uid], type, title, body, link: '/performance', entityType: 'performance_goal', entityId: goalId, eventId: `${type}:${goalId}:${Date.now()}` })
 }
 
-const audit = (user: AccessUser, action: string, id: string, newValue?: object) =>
+// A goal deadline cannot be in the past (the company's today)
+async function checkDeadline(tenantId: string, deadline?: string) {
+  if (deadline && deadline < ymd(await businessToday(tenantId))) throw new AppError('The deadline cannot be in the past', 400)
+}
+
+export const audit = (user: AccessUser, action: string, id: string, newValue?: object) =>
   prisma.auditLog.create({ data: { tenantId: user.tenantId, userId: user.userId, action, entityType: 'performance_goal', entityId: id, newValue: newValue as any } })
 
-const shape = (g: any, names: Map<string, string>) => ({
-  ...g, employee: names.get(g.employeeId) ?? null, setBy: g.setByEmployeeId ? names.get(g.setByEmployeeId) ?? null : null,
-  cycle: g.cycle ? { ...g.cycle, startDate: ymd(g.cycle.startDate), endDate: ymd(g.cycle.endDate) } : null,
-})
+const shape = (g: any, names: Map<string, string>, meta?: Map<string, import('./performance.meta').GoalMeta>) => {
+  const m = meta?.get(g.id)
+  return {
+    ...g, employee: names.get(g.employeeId) ?? null, setBy: g.setByEmployeeId ? names.get(g.setByEmployeeId) ?? null : null,
+    cycle: g.cycle ? { ...g.cycle, startDate: ymd(g.cycle.startDate), endDate: ymd(g.cycle.endDate) } : null,
+    deadline: m?.deadline ?? null, progress: m?.progress ?? null, progressLog: (m?.progressLog ?? []).slice(-10).reverse(), history: (m?.history ?? []).slice(-10).reverse(),
+  }
+}
+// A goal changed (reviewed, reopened, withdrawn): the goals half of an appraisal that is not yet published is worked out again (MongoDB API)
+export async function afterGoalChange(tenantId: string, employeeId: string) {
+  if (process.env.DB_PROVIDER !== 'mongo') return
+  try { await require('./appraisal.mongo.router').recomputeForEmployee(tenantId, employeeId) } catch (e: any) { console.warn('[performance] appraisal recompute failed:', e?.message) }
+}
 async function names(tenantId: string, ids: (string | null)[]) {
   const rows = await prisma.employee.findMany({ where: { tenantId, id: { in: ids.filter(Boolean) as string[] } }, select: { id: true, firstName: true, lastName: true, employeeCode: true } })
   return new Map(rows.map((r) => [r.id, `${r.firstName} ${r.lastName} (${r.employeeCode})`]))
@@ -107,9 +125,11 @@ export const performanceService = {
       if (!user.employeeId) return []
       where.employeeId = { in: await getReportingSubtreeIds(user.employeeId, user.tenantId) }
     }
-    const rows = await prisma.performanceGoal.findMany({ where, include, orderBy: [{ updatedAt: 'desc' }] })
+    let rows = await prisma.performanceGoal.findMany({ where, include, orderBy: [{ updatedAt: 'desc' }] })
+    if (scope === 'mine') rows = rows.filter((g) => g.status !== 'draft') // a goal the manager has not sent yet is not the person's to see
     const n = await names(user.tenantId, rows.flatMap((g) => [g.employeeId, g.setByEmployeeId]))
-    return rows.map((g) => shape(g, n))
+    const meta = await metaFor(rows.map((g) => g.id))
+    return rows.map((g) => shape(g, n, meta))
   },
 
   async create(user: AccessUser, body: GoalInput) {
@@ -120,7 +140,9 @@ export const performanceService = {
     if (!cycle) throw new AppError('Review cycle not found', 404)
     if (cycle.status !== 'open') throw new AppError('That review cycle is closed', 400)
     if (!emp) throw new AppError('Employee not found', 404)
+    if (emp.id === user.employeeId) throw new AppError('You cannot set a goal for yourself. Your manager, or another HR admin, does it.', 403)
     if (!(await canManage(user, emp.id))) throw new AppError('You can set goals only for people in your team', 403)
+    await checkDeadline(user.tenantId, body.deadline)
     const g = await prisma.performanceGoal.create({
       data: {
         tenantId: user.tenantId, cycleId: cycle.id, employeeId: emp.id, setByUserId: user.userId, setByEmployeeId: user.employeeId ?? null,
@@ -129,7 +151,8 @@ export const performanceService = {
       },
       include,
     })
-    await audit(user, 'GOAL_CREATED', g.id, { title: g.title, employeeId: emp.id, cycle: cycle.name, sent: body.send })
+    if (body.deadline) await setDeadline(user.tenantId, g.id, body.deadline)
+    await audit(user, 'GOAL_CREATED', g.id, { title: g.title, employeeId: emp.id, cycle: cycle.name, sent: body.send, deadline: body.deadline })
     if (body.send) await tell(user.tenantId, emp.id, null, 'performance.goal.sent', `New goal: ${g.title}`, `${cycle.name}: please review and accept it, or send it back with a note.`, g.id)
     return g
   },
@@ -138,6 +161,8 @@ export const performanceService = {
     const { g, manages } = await load(user, id)
     if (!manages) throw new AppError('Only the manager who sets the goal can change it', 403)
     if (!['draft', 'returned'].includes(g.status)) throw new AppError(`A goal that is ${g.status} cannot be changed`, 400)
+    await checkDeadline(user.tenantId, body.deadline)
+    if (body.deadline) await setDeadline(user.tenantId, id, body.deadline)
     await prisma.$transaction([
       prisma.performanceKpi.deleteMany({ where: { goalId: id } }),
       prisma.performanceGoal.update({ where: { id }, data: { title: body.title, description: body.description ?? null, kpis: { create: body.kpis.map((k, i) => ({ name: k.name, target: k.target, unit: k.unit ?? null, weight: k.weight, sequence: i })) }, ...(body.send && { status: 'sent', sentAt: new Date(), returnNote: null }) } }),
@@ -172,6 +197,7 @@ export const performanceService = {
   async review(user: AccessUser, id: string, body: { achieved: Record<string, number>; comment?: string }) {
     const { g, manages } = await load(user, id)
     if (!manages) throw new AppError('Only the manager can review this goal', 403)
+    if (g.cycle.status === 'closed') throw new AppError('This review cycle is closed. Ask HR to reopen it before reviewing this goal.', 400)
     if (!['accepted', 'reviewed'].includes(g.status)) throw new AppError('A goal can be reviewed once the person has accepted it', 400)
     for (const k of g.kpis) if (!(k.id in body.achieved)) throw new AppError(`Enter what was achieved for "${k.name}"`, 400)
     const kpis = g.kpis.map((k) => ({ ...k, achieved: body.achieved[k.id] }))
@@ -182,6 +208,7 @@ export const performanceService = {
       prisma.performanceGoal.update({ where: { id }, data: { status: 'reviewed', score, rating, managerComment: body.comment?.trim() || null, reviewedAt: new Date(), reviewedBy: user.userId, acknowledgedAt: null } }),
     ])
     await audit(user, 'GOAL_REVIEWED', id, { score, rating })
+    await afterGoalChange(user.tenantId, g.employeeId)
     await tell(user.tenantId, g.employeeId, null, 'performance.goal.reviewed', `Review: ${g.title}`, `${score}% of the expectation met · ${rating}. Open it to acknowledge.`, id)
     return { score, rating }
   },

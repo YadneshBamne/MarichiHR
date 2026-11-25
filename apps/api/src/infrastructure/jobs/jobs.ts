@@ -9,6 +9,7 @@ import { attendanceService } from '../../modules/attendance/attendance.service'
 import { announcementService } from '../../modules/announcements/announcements.service'
 import { applyDuePositionChanges } from '../../modules/employees/record.service'
 import { sendExpiryReminders } from '../../modules/employees/documents.service'
+import { sendRequestReminders } from '../../modules/employees/requests.service'
 import { autoYearEnd } from '../../modules/leave/yearend.service'
 import { publishPeopleDates } from '../../modules/automation/automation.service'
 import { retryWebhooks } from '../../modules/automation/integrations.service'
@@ -98,6 +99,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     description: 'Remind the person and HR 30 days, 7 days and on the day a document or ID expires (once each)',
     run: (t) => perTenant(t, (id) => sendExpiryReminders(id)),
   },
+  'request-reminders': {
+    pattern: '15 5 * * *',
+    description: 'Profile requests: remind the person the day before the due date, and weekly while it is overdue',
+    run: (t) => perTenant(t, (id) => sendRequestReminders(id)),
+  },
   'leave-year-end': {
     pattern: '30 1 * * *',
     description: 'On the first day of the leave year, carry forward, encash and lapse the leave left from the year that ended (once)',
@@ -142,6 +148,26 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     pattern: '10 * * * *',
     description: 'Helpdesk: tickets resolved for 7 days close by themselves; a ticket past its response target is flagged and HR is told once (MongoDB API)',
     run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/helpdesk/helpdesk.mongo.router').helpdeskMaintenance(t) : 0),
+  },
+  'goal-reminders': {
+    pattern: '0 5 * * *',
+    description: 'Goals: a deadline within 3 days or passed, a goal waiting 3 days for acceptance, and an agreed goal whose cycle ended without a review each get one reminder a day (MongoDB API)',
+    run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/performance/performance.extras.mongo').goalReminders(t) : 0),
+  },
+  'appraisal-reminders': {
+    pattern: '15 5 * * *',
+    description: 'Appraisals: a peer who has not answered 3 days after being asked gets one reminder (MongoDB API)',
+    run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/performance/appraisal.mongo.router').appraisalReminders(t) : 0),
+  },
+  'probation-reminders': {
+    pattern: '30 5 * * *',
+    description: 'Probation: HR and the manager are told 30 days and 7 days before someone\'s probation ends, once each (MongoDB API)',
+    run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/employees/confirmation.mongo.router').probationReminders(t) : 0),
+  },
+  'exit-last-day': {
+    pattern: '25 * * * *',
+    description: 'Offboarding: after the last working day the exiting person\'s sign-in ends (HR can restore it) and leave asked for after that day is called off; a sign-off open over 3 days gets a reminder to its owner, at most once a day. Hourly so every timezone flips on time; idempotent',
+    run: (t) => perTenant(t, (id) => require('../../modules/exits/exits.service').exitsService.lastDay(id), 'exits'),
   },
   'leave-accrual': {
     pattern: '0 2 * * *',

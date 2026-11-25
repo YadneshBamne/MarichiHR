@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
 import { RequestCard, NewRequestModal, type Req } from './RequestsPage'
-import { useEmployee, useArchiveEmployee } from '../../lib/hooks/useEmployees'
+import { useEmployee, useReinstateEmployee } from '../../lib/hooks/useEmployees'
 import { useAuth } from '../../contexts/AuthContext'
 import Badge from '../../components/ui/Badge'
 import ChatterPanel from '../../components/ChatterPanel'
@@ -17,6 +17,10 @@ import DocumentsTab from './DocumentsTab'
 import LeaveBalancesPanel from '../leave/LeaveBalancesPanel'
 import { useRecord, FieldsCard, ListSection, IdentitySection, PositionHistory, CustomFieldsCard, MissingBanner } from './RecordSections'
 import { useMasters } from '../../lib/hooks/useMasters'
+import Modal from '../../components/ui/Modal'
+import { useToast } from '../../components/ui/Toast'
+import TerminateDialog from './TerminateDialog'
+import { SkillsTab, ResumeTab } from './SkillsResumeTabs'
 
 // Date-only values are stored at UTC midnight: format them in UTC so the day never shifts
 const dateOnly = (v?: string | null) => (v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : undefined)
@@ -31,7 +35,8 @@ export default function EmployeeProfilePage() {
   const { data: employee, isLoading } = useEmployee(id!)
   const { label: master } = useMasters()
   const { data: rec } = useRecord(id!)
-  const archiveEmployee = useArchiveEmployee()
+  const reinstate = useReinstateEmployee()
+  const toast = useToast()
   const [params] = useSearchParams()
   const [activeTab, setActiveTab] = useState<Tab>((params.get('tab') as Tab) || 'overview')
   const [asking, setAsking] = useState(false)
@@ -39,8 +44,8 @@ export default function EmployeeProfilePage() {
   const isSelf = !!user?.employee?.id && user.employee.id === id
   const { data: requests = [] } = useQuery({ queryKey: ['profile-requests', 'employee', id], enabled: isSelf || isHR, queryFn: async () => (await api.get('/profile-requests', { params: isSelf && !isHR ? { mine: '1', status: 'open' } : { employeeId: id, status: 'open' } })).data.data as Req[] })
   const refreshRequests = () => { qc.invalidateQueries({ queryKey: ['profile-requests'] }); qc.invalidateQueries({ queryKey: ['record', id] }) }
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
-  const [archiveReason, setArchiveReason] = useState('')
+  const [terminating, setTerminating] = useState(false)
+  const [reinstating, setReinstating] = useState(false)
   const ref = useReveal<HTMLDivElement>(employee?.id)
 
   if (isLoading) return <div style={{ padding: '40px', color: 'var(--faint)', fontSize: '13px' }}>Loading employee...</div>
@@ -48,12 +53,10 @@ export default function EmployeeProfilePage() {
 
   const fullName = `${employee.firstName} ${employee.lastName}`
 
-  const handleArchive = async () => {
-    if (!archiveReason.trim()) return
-    try {
-      await archiveEmployee.mutateAsync({ id: id!, reason: archiveReason })
-      navigate('/employees')
-    } catch {}
+  const canEditRecord = isSelf || hasRole('hr_admin') || hasRole('system_admin') // skills and resume
+  const canSeeBank = hasRole('hr_admin') || hasRole('system_admin') || hasRole('payroll_admin')
+  const doReinstate = async () => {
+    try { const r = await reinstate.mutateAsync(id!); toast(r.message || 'Reinstated'); setReinstating(false) } catch (e: any) { toast(e?.response?.data?.message || 'Could not reinstate', 'error') }
   }
 
   const TABS: { key: Tab; label: string }[] = [
@@ -66,7 +69,7 @@ export default function EmployeeProfilePage() {
     { key: 'skills', label: `Skills (${employee.skills?.length || 0})` },
     { key: 'resume', label: `Resume (${employee.resumeLines?.length || 0})` },
     { key: 'chatter', label: 'Chatter' },
-    ...(hasRole('hr_admin') && hasApp('leave') ? [{ key: 'leave' as Tab, label: 'Leave balances' }] : []),
+    ...((hasRole('hr_admin') || hasRole('system_admin')) && hasApp('leave') ? [{ key: 'leave' as Tab, label: 'Leave balances' }] : []),
     ...(canManageAccess ? [{ key: 'access' as Tab, label: 'Login & access' }] : []),
   ]
 
@@ -89,7 +92,7 @@ export default function EmployeeProfilePage() {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="calendar" size={14} /> Since {dateOnly(employee.hireDate)}</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <Badge label={employee.employmentStatus} />
+            <Badge label={employee.active === false ? 'archived' : employee.employmentStatus} />
             <Badge label={master('employment_type', employee.employmentType)} />
           </div>
         </div>
@@ -113,12 +116,19 @@ export default function EmployeeProfilePage() {
         </div>
       </div>
 
+      {employee.active === false && (
+        <div role="status" className="well" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, fontSize: 13 }}><strong style={{ fontWeight: 600 }}>Archived</strong>{employee.archivedAt ? ' on ' + dateOnly(employee.archivedAt) : ''}{employee.archiveReason ? ' · ' + employee.archiveReason : ''}. The record can be read but not changed until they are reinstated.</span>
+          {isHR && <button className="btn btn-ghost btn-sm" onClick={() => setReinstating(true)}>Reinstate</button>}
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={s.tabs}>
         {TABS.map((tab) => (
           <button
             key={tab.key}
-            style={{ ...s.tab, ...(activeTab === tab.key ? s.tabActive : {}) }}
+            className={'chip' + (activeTab === tab.key ? ' is-on' : '')}
             onClick={() => setActiveTab(tab.key)}
           >
             {tab.label}
@@ -135,7 +145,7 @@ export default function EmployeeProfilePage() {
       {asking && <NewRequestModal employeeIds={[employee.id]} onClose={(ok) => { setAsking(false); if (ok) refreshRequests() }} />}
 
       {/* Tab content */}
-      <div style={s.tabContent}>
+      <div className="card" style={s.tabContent}>
         {activeTab === 'overview' && <Profile360 employeeId={employee.id} self={{ id: employee.id, name: fullName, employeeCode: employee.employeeCode, title: employee.jobPosition?.title ?? null, avatarUrl: employee.user?.avatarUrl ?? null }} />}
         {activeTab === 'access' && canManageAccess && <AccessCard employeeId={employee.id} isSelf={employee.userId === user?.id} />}
         {activeTab === 'work' && (
@@ -145,10 +155,10 @@ export default function EmployeeProfilePage() {
             <InfoRow label="Department" value={employee.orgUnit?.name} />
             <InfoRow label="Job Position" value={employee.jobPosition?.title} />
             <InfoRow label="Work Location" value={employee.workLocation ? `${employee.workLocation.name}, ${employee.workLocation.city}` : undefined} />
-            <InfoRow label="Manager" value={employee.manager?.user?.fullName} />
+            <InfoRow label="Manager" value={employee.manager?.user?.fullName ?? (isHR ? 'No manager set. Use Change position below to assign one.' : undefined)} />
             <InfoRow label="Resource Calendar" value={employee.resourceCalendar?.name} />
 
-            {hasRole('hr_admin') && <BankDetailsCard employee={employee} />}
+            {canSeeBank && employee.active !== false && <BankDetailsCard employee={employee} />}
 
             {rec && <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 26, marginTop: 8 }}><FieldsCard rec={rec} sections={['job']} title="Employment details" /><PositionHistory rec={rec} /></div>}
 
@@ -201,87 +211,35 @@ export default function EmployeeProfilePage() {
         {activeTab === 'identity' && rec && <IdentitySection rec={rec} />}
 
         {activeTab === 'documents' && <DocumentsTab employeeId={employee.id} />}
-        {activeTab === 'leave' && hasRole('hr_admin') && <LeaveBalancesPanel employeeId={employee.id} name={fullName} />}
+        {activeTab === 'leave' && (hasRole('hr_admin') || hasRole('system_admin')) && <LeaveBalancesPanel employeeId={employee.id} name={fullName} />}
 
-        {activeTab === 'skills' && (
-          <div>
-            {employee.skills?.length === 0 ? (
-              <div style={s.empty}>No skills added yet.</div>
-            ) : (
-              <div style={s.skillGrid}>
-                {employee.skills?.map((es: any) => (
-                  <div key={es.id} style={s.skillCard}>
-                    <div style={s.skillType}>{es.skill?.skillType?.name}</div>
-                    <div style={s.skillName}>{es.skill?.name}</div>
-                    {es.skillLevel && (
-                      <div style={s.skillLevel}>
-                        <div style={s.progressBar}>
-                          <div style={{ ...s.progressFill, width: `${es.skillLevel.progressPct}%` }} />
-                        </div>
-                        <span style={s.skillLevelLabel}>{es.skillLevel.levelName}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {activeTab === 'skills' && <SkillsTab employee={employee} canEdit={canEditRecord && employee.active !== false} />}
 
-        {activeTab === 'resume' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {employee.resumeLines?.length === 0 ? (
-              <div style={s.empty}>No resume lines added yet.</div>
-            ) : (
-              employee.resumeLines?.map((line: any) => (
-                <div key={line.id} style={s.resumeLine}>
-                  <div style={s.resumeType}>{line.lineType}</div>
-                  <div style={s.resumeName}>{line.name}</div>
-                  {line.organisation && <div style={s.resumeOrg}>{line.organisation}</div>}
-                  {(line.dateStart || line.dateEnd) && (
-                    <div style={s.resumeDates}>
-                      {line.dateStart ? new Date(line.dateStart).toLocaleDateString([], { month: 'short', year: 'numeric' }) : ''}
-                      {line.dateEnd ? ` → ${new Date(line.dateEnd).toLocaleDateString([], { month: 'short', year: 'numeric' })}` : line.dateStart ? ' → Present' : ''}
-                    </div>
-                  )}
-                  {line.description && <div style={s.resumeDesc}>{line.description}</div>}
-                </div>
-              ))
-            )}
-          </div>
-        )}
+        {activeTab === 'resume' && <ResumeTab employee={employee} canEdit={canEditRecord && employee.active !== false} />}
 
         {activeTab === 'chatter' && (
           <ChatterPanel entityType="employee" entityId={id!} />
         )}
       </div>
 
-      {/* Archive section */}
-      {isHR && employee.active && (
-        <div style={s.dangerZone}>
-          <div style={s.dangerTitle}>Archive Employee</div>
-          <div style={s.dangerSub}>Archiving removes the employee from active lists but preserves all historical data.</div>
-          {!showArchiveConfirm ? (
-            <button style={s.archiveBtn} onClick={() => setShowArchiveConfirm(true)}>Archive Employee</button>
-          ) : (
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <input
-                style={{ ...s.archiveInput, flex: 1 }}
-                placeholder="Reason for archiving..."
-                value={archiveReason}
-                onChange={(e) => setArchiveReason(e.target.value)}
-              />
-              <button
-                style={{ ...s.archiveBtn, opacity: !archiveReason.trim() ? 0.5 : 1 }}
-                disabled={!archiveReason.trim() || archiveEmployee.isPending}
-                onClick={handleArchive}
-              >
-                {archiveEmployee.isPending ? 'Archiving...' : 'Confirm Archive'}
-              </button>
-              <button style={s.cancelBtn} onClick={() => setShowArchiveConfirm(false)}>Cancel</button>
-            </div>
-          )}
-        </div>
+      {/* End of employment */}
+      {isHR && !isSelf && employee.active && (
+        <section className="card" style={{ marginTop: 24, padding: 20, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <strong style={{ color: 'var(--danger)', fontWeight: 600 }}>End employment</strong>
+            <div className="dim" style={{ fontSize: 13, marginTop: 2 }}>Records the last working day and reason, passes their team to a new manager and switches their login off. History is kept.</div>
+          </div>
+          <button className="btn btn-danger" onClick={() => setTerminating(true)}>Terminate…</button>
+        </section>
+      )}
+      {terminating && <TerminateDialog employee={employee} hasExits={hasApp('exits')} onClose={() => setTerminating(false)} />}
+      {reinstating && (
+        <Modal open onClose={() => setReinstating(false)} title={'Reinstate ' + fullName + '?'} width={460}>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <p style={{ margin: 0 }}>{employee.firstName} comes back into the active lists. Their <strong>login stays off</strong>: turn it on under Login & access when you are ready. If they are paid through payroll, add a new contract.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="btn btn-ghost" onClick={() => setReinstating(false)}>Cancel</button><button className="btn btn-primary" disabled={reinstate.isPending} onClick={doReinstate}>{reinstate.isPending ? 'Reinstating…' : 'Reinstate'}</button></div>
+          </div>
+        </Modal>
       )}
     </div>
   )
@@ -311,7 +269,7 @@ const s: Record<string, React.CSSProperties> = {
   tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
   tabActive: { background: 'var(--night)', color: 'var(--night-ink)', border: '1px solid var(--night)' },
-  tabContent: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '24px' },
+  tabContent: { padding: 24 },
   infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' },
   sectionLabel: { fontSize: '11px', color: 'var(--faint)', fontWeight: '500', marginBottom: '8px' },
   contractCard: { backgroundColor: 'var(--solid)', border: '1px solid var(--line)', borderRadius: '14px', padding: '14px' },

@@ -13,6 +13,19 @@ export function useMyClearances() {
   return useQuery({ queryKey: ['exits', 'mine'], queryFn: async () => (await api.get('/exits/clearances/mine')).data.data })
 }
 
+// The signed-in person's own exit (steps and who has signed off, never pay) and whether they may hand in a resignation
+export function useMyExit() {
+  return useQuery({ queryKey: ['exits', 'my-exit'], retry: false, queryFn: async () => (await api.get('/exits/mine')).data.data as { exit: any | null; canResign: boolean } })
+}
+
+export function useResign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: { reason: string; lastWorkingDate?: string }) => (await api.post('/exits/resign', data)).data.data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['exits'] }),
+  })
+}
+
 export function useAssignableUsers(enabled: boolean) {
   return useQuery({ queryKey: ['exits', 'assignable-users'], enabled, queryFn: async () => (await api.get('/exits/assignable-users')).data.data })
 }
@@ -25,7 +38,7 @@ export function useInitiateExit() {
   })
 }
 
-// path: compute | approve | pay | cancel | clearances/<DEPT>/sign
+// path: compute | approve | pay | cancel | accept | decline | recovery | restore-login | clearances/<DEPT>/sign
 export function useExitAction(id: string) {
   const qc = useQueryClient()
   return useMutation({

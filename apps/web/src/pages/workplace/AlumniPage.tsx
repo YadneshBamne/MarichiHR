@@ -53,7 +53,7 @@ function Staff() {
         {list.data?.alumni.map((a) => (
           <div key={a.employeeId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
             <span style={{ minWidth: 0 }}><strong>{a.name}</strong> <span className="dim">{a.code}</span>
-              <span className="dim" style={{ display: 'block', fontSize: 13 }}>Left {when(a.lastWorkingDate)}</span></span>
+              <span className="dim" style={{ display: 'block', fontSize: 13 }}>Left {when(a.lastWorkingDate)}{a.contact && (a.contact.email || a.contact.phone) ? ` · ${[a.contact.email, a.contact.phone].filter(Boolean).join(' · ')}` : ''}</span></span>
             <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span className={`pill ${a.access === 'enabled' ? 'ok' : 'mute'}`}>{a.access === 'enabled' ? 'Login on' : a.access === 'disabled' ? 'Login off' : 'No login'}</span>
               {a.access === 'enabled'
@@ -71,15 +71,19 @@ function LetterRow({ l, onDone }: { l: any; onDone: () => void }) {
   const toast = useToast()
   const [doc, setDoc] = useState('')
   const [note, setNote] = useState('')
+  const docs = useQuery({ queryKey: ['alumni-employee-docs', l.employeeId], queryFn: async () => (await api.get(`/alumni/employee/${l.employeeId}/documents`)).data.data as any[] })
   const issue = useMutation({ mutationFn: async () => (await api.post(`/alumni/letters/${l.id}/issue`, { documentId: doc.trim() })).data.data, onSuccess: () => { toast('Letter issued'); onDone() }, onError: (e) => toast(errMsg(e), 'error') })
   const decline = useMutation({ mutationFn: async () => (await api.post(`/alumni/letters/${l.id}/decline`, { note })).data.data, onSuccess: () => { toast('Request declined'); onDone() }, onError: (e) => toast(errMsg(e), 'error') })
   return (
     <div style={{ padding: '10px 0', borderTop: '1px solid var(--line)', display: 'grid', gap: 8 }}>
       <span><strong>{l.employeeName}</strong> asked for a {LETTERS[l.type]?.toLowerCase()} <span className="dim">· {when(l.createdAt)}</span>{l.note ? <span className="dim" style={{ display: 'block', fontSize: 13 }}>“{l.note}”</span> : null}</span>
-      <span className="dim" style={{ fontSize: 13 }}>Upload the letter on their profile under Documents (visible to the employee), then paste its document id here.</span>
+      <span className="dim" style={{ fontSize: 13 }}>Upload the letter on their profile under Documents (visible to the employee), then choose it here.</span>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input className="input" style={{ flex: '1 1 260px' }} placeholder="Document id" aria-label="Document id" value={doc} onChange={(e) => setDoc(e.target.value)} />
-        <button className="btn btn-primary btn-sm" disabled={issue.isPending || doc.trim().length < 10} onClick={() => issue.mutate()}>Issue</button>
+        <select className="input" style={{ flex: '1 1 260px' }} aria-label="Letter document" value={doc} onChange={(e) => setDoc(e.target.value)}>
+          <option value="">{docs.data && !docs.data.length ? 'No shared document yet' : 'Choose the uploaded letter…'}</option>
+          {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.title || d.fileName} · {when(d.createdAt)}</option>)}
+        </select>
+        <button className="btn btn-primary btn-sm" disabled={issue.isPending || !doc} onClick={() => issue.mutate()}>Issue</button>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input className="input" style={{ flex: '1 1 260px' }} placeholder="Reason, if you decline" aria-label="Reason for declining" value={note} onChange={(e) => setNote(e.target.value)} />

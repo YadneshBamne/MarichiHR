@@ -38,7 +38,9 @@ const isoIn = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 
     check((await call('GET', '/confirmation/due', owner)).status === 200, 'Confirmation is in the Growth plan')
     const due = await call('GET', '/confirmation/due', owner)
     check(due.data.length === 1 && due.data[0].name === 'Mary Banda' && due.data[0].daysLeft >= 9 && due.data[0].daysLeft <= 11, 'only Mary is due (Zoe is 200 days away)')
-    check((await call('GET', '/confirmation/due', daniel)).status === 403, 'a manager cannot list who is due')
+    const dueDaniel = await call('GET', '/confirmation/due', daniel)
+    check(dueDaniel.status === 200 && dueDaniel.data.length === 1 && dueDaniel.data[0].name === 'Mary Banda' && dueDaniel.data[0].canStart === false, 'a manager sees only their own people who are due, and cannot start the review')
+    check((await call('GET', '/confirmation/due', mary)).status === 403, 'an ordinary employee cannot list who is due')
     check((await call('POST', '/confirmation/cases', owner, { employeeId: zoeId })).status === 201, 'HR can still open a review early')
     check((await call('POST', '/confirmation/cases', owner, { employeeId: paulId })).status === 400, 'no probation end date: 400')
     check((await call('POST', '/confirmation/cases', daniel, { employeeId: maryId })).status === 403, 'a manager cannot open a review')
@@ -70,7 +72,8 @@ const isoIn = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 
     // second round: confirmed
     const c2 = (await call('POST', '/confirmation/cases', owner, { employeeId: maryId })).data.id
     await call('POST', `/confirmation/cases/${c2}/review`, daniel, { rating: 5, strengths: 'excellent', recommendation: 'confirm' })
-    const cf = await call('POST', `/confirmation/cases/${c2}/decide`, owner, { outcome: 'confirmed' })
+    check((await call('POST', `/confirmation/cases/${c2}/decide`, owner, { outcome: 'confirmed' })).status === 409, 'confirming before the probation ends needs a deliberate yes')
+    const cf = await call('POST', `/confirmation/cases/${c2}/decide`, owner, { outcome: 'confirmed', ackEarly: true })
     check(cf.status === 200 && cf.data.decision.outcome === 'confirmed', 'HR confirms Mary')
     check((await db.collection('employees').findOne({ _id: maryId })).confirmationDate, 'her confirmation date is set')
     check((await call('POST', '/confirmation/cases', owner, { employeeId: maryId })).status === 409, 'a confirmed person cannot be reviewed again')

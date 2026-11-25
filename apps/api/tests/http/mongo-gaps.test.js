@@ -131,7 +131,10 @@ const nextMonday = () => { const d = new Date(); d.setUTCDate(d.getUTCDate() + 7
     check((await call('PATCH', `/employees/${maryId}/resume/${rl.data.id}`, owner, { name: 'Senior accountant' })).status < 300, 'and edits it')
     check((await call('GET', `/employees/${maryId}`, owner)).text.includes('Senior accountant'), 'the profile shows the edited line')
     check((await call('DELETE', `/employees/${maryId}/resume/${rl.data.id}`, owner)).status < 300, 'and removes it')
-    check((await call('POST', `/employees/${maryId}/resume`, mary, { lineType: 'award', name: 'X' })).status === 403, 'an employee cannot edit resume lines through HR routes')
+    // people may keep their own resume since the People fixes (HR and the person themselves; other people's records stay closed: see mongo-pe-employees.test.js)
+    const own = await call('POST', `/employees/${maryId}/resume`, mary, { lineType: 'award', name: 'X' })
+    check(own.status === 201, `an employee can add a line to their own resume (${short(own).slice(0, 80)})`)
+    if (own.data?.id) check((await call('DELETE', `/employees/${maryId}/resume/${own.data.id}`, mary)).status < 300, 'and remove it')
 
     // ── data imports
     const leaveTypes = (await call('GET', '/leave/types', mary)).data

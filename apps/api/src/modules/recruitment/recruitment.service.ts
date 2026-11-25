@@ -5,6 +5,8 @@ import { AccessUser } from '../../shared/utils/access'
 import { employeeService } from '../employees/employees.service'
 import { incentiveService } from '../incentives/incentives.service'
 import { assertMasters } from '../masters/masters.service'
+import { requestService } from '../employees/requests.service'
+import { businessToday } from '../../shared/utils/businessDate'
 
 // Recruitment. Who may do what:
 //  - openings: HR creates them open; a manager requests one (pending_approval) that an HR admin other than the
@@ -62,7 +64,7 @@ const openingView = (o: any, names: Map<string, string>, extra: Record<string, u
 
 const candidateView = (c: any, names: Map<string, string>, full: boolean) => ({
   id: c.id, openingId: c.openingId, opening: c.opening?.title, firstName: c.firstName, lastName: c.lastName, stage: c.stage, source: c.source,
-  summary: c.summary, resumeUrl: c.resumeUrl, rating: c.rating, createdAt: c.createdAt,
+  summary: c.summary, resumeUrl: c.resumeUrl?.startsWith('file:') ? null : c.resumeUrl, resumeFile: c.resumeUrl?.startsWith('file:') ? c.resumeUrl.slice(5).split('|')[1] ?? 'CV' : null, rating: c.rating, createdAt: c.createdAt,
   ...(full ? {
     email: c.email, phone: c.phone, rejectionReason: c.rejectionReason,
     referredByEmployeeId: c.referredByEmployeeId, referredBy: c.referredByEmployeeId ? names.get(`e:${c.referredByEmployeeId}`) ?? null : null,
@@ -93,6 +95,22 @@ async function checkOpeningRefs(user: AccessUser, b: Partial<OpeningBody>) {
   // A replacement names the person who left or is leaving (they may already be inactive)
   if (b.reason === 'replacement' && !b.replacesEmployeeId) throw new AppError('Say who this person replaces', 400)
   if (b.replacesEmployeeId && !(await prisma.employee.findFirst({ where: { id: b.replacesEmployeeId, tenantId: t } }))) throw new AppError('The person being replaced was not found', 404)
+}
+
+// The same email already known to us: a candidate for another opening, or someone on the staff list (current or gone)
+async function duplicatesOf(user: AccessUser, email: string, openingId: string) {
+  const t = user.tenantId
+  const [cands, emps, users] = await Promise.all([
+    prisma.candidate.findMany({ where: { tenantId: t, email: { equals: email, mode: 'insensitive' }, openingId: { not: openingId } }, include: { opening: { select: { title: true } } }, take: 5 }),
+    prisma.employee.findMany({ where: { tenantId: t, personalEmail: { equals: email, mode: 'insensitive' } }, select: { id: true, employeeCode: true, firstName: true, lastName: true, active: true }, take: 5 }),
+    prisma.user.findMany({ where: { tenantId: t, email: { equals: email, mode: 'insensitive' } }, select: { id: true }, take: 5 }),
+  ])
+  const viaUser = users.length ? await prisma.employee.findMany({ where: { tenantId: t, userId: { in: users.map((u) => u.id) } }, select: { id: true, employeeCode: true, firstName: true, lastName: true, active: true } }) : []
+  const emp = [...new Map([...emps, ...viaUser].map((e) => [e.id, e])).values()]
+  return [
+    ...cands.map((c) => ({ kind: 'candidate', id: c.id, label: `Already a candidate for ${c.opening.title} (${c.stage})` })),
+    ...emp.map((e) => ({ kind: 'employee', id: e.id, label: `${e.active ? 'Works here' : 'Used to work here'}: ${e.firstName} ${e.lastName} (${e.employeeCode})` })),
+  ]
 }
 
 export const recruitmentService = {
@@ -187,7 +205,7 @@ export const recruitmentService = {
   },
 
   // HR / hiring manager add candidates; anyone can refer someone for an open position
-  async addCandidate(user: AccessUser, openingId: string, b: { firstName: string; lastName: string; email: string; phone?: string | null; source?: string; resumeUrl?: string | null; summary?: string | null }, referral: boolean) {
+  async addCandidate(user: AccessUser, openingId: string, b: { firstName: string; lastName: string; email: string; phone?: string | null; source?: string; resumeUrl?: string | null; summary?: string | null; allowDuplicate?: boolean }, referral: boolean) {
     const o = await findOpening(user, openingId)
     if (o.status !== 'open') throw new AppError('This opening is not taking candidates', 400)
     if (!referral && !manages(user, o)) throw new AppError('Only HR or the hiring manager can add candidates; use Refer instead', 403)
@@ -197,6 +215,10 @@ export const recruitmentService = {
     if (await prisma.candidate.findFirst({ where: { openingId, tenantId: user.tenantId, email: { equals: email, mode: 'insensitive' } } })) {
       throw new AppError('This person is already a candidate for this opening', 409)
     }
+    // The same person elsewhere (another opening, or already on the staff list): HR and hiring managers may continue on purpose; a referral is simply turned away
+    const dupes = await duplicatesOf(user, email, openingId)
+    if (dupes.length && referral) throw new AppError("HR already has this person's details, so there is no need to refer them. Thank you!", 409, 'DUPLICATE_CANDIDATE')
+    if (dupes.length && !b.allowDuplicate) throw new AppError(`This email is already known: ${dupes.map((d) => d.label).join('; ')}. Add them anyway only if it is really a different person or a new application.`, 409, 'DUPLICATE_CANDIDATE', { matches: dupes })
     const c = await prisma.candidate.create({
       data: {
         tenantId: user.tenantId, openingId, firstName: b.firstName, lastName: b.lastName, email, phone: b.phone ?? null,
@@ -235,6 +257,8 @@ export const recruitmentService = {
     if (c.stage === 'hired' || (CLOSED_STAGES.includes(c.stage) && b.stage && !isHR(user))) throw new AppError(`This candidate is ${c.stage}`, 400)
     if (b.stage === 'offer' || b.stage === 'hired') throw new AppError(b.stage === 'offer' ? 'Use Make offer' : 'Use Hire', 400)
     if (b.stage === 'rejected' && !b.rejectionReason) throw new AppError('Give a reason for rejecting', 400)
+    // An accepted offer is a promise: it has to be withdrawn on purpose (with a reason) before the candidate can be rejected or marked as withdrawn
+    if ((b.stage === 'rejected' || b.stage === 'withdrawn') && c.offerStatus === 'accepted') throw new AppError('This candidate has an accepted offer. Withdraw the offer first (with a reason), then reject or close them.', 409, 'OFFER_ACCEPTED')
     const data: any = { ...b }
     if (b.stage && b.stage !== 'rejected') data.rejectionReason = null
     if (b.stage === 'rejected' || b.stage === 'withdrawn') {
@@ -251,6 +275,7 @@ export const recruitmentService = {
     if (CLOSED_STAGES.includes(c.stage)) throw new AppError(`This candidate is ${c.stage}`, 400)
     const interviewer = await prisma.user.findFirst({ where: { id: b.interviewerUserId, tenantId: user.tenantId, active: true } })
     if (!interviewer) throw new AppError('Interviewer not found', 404)
+    if (new Date(b.scheduledAt).getTime() < Date.now() - 10 * 60_000) throw new AppError('Pick a time in the future for the interview', 400, 'INTERVIEW_IN_PAST')
     const i = await prisma.interview.create({ data: { candidateId, interviewerUserId: interviewer.id, scheduledAt: new Date(b.scheduledAt), mode: b.mode ?? 'video', createdByUserId: user.userId } })
     if (['applied', 'screening'].includes(c.stage)) await prisma.candidate.update({ where: { id: candidateId }, data: { stage: 'interview' } })
     await audit(user, 'INTERVIEW_SCHEDULED', 'candidate', candidateId, { interviewId: i.id, interviewer: interviewer.fullName, scheduledAt: b.scheduledAt })
@@ -287,13 +312,35 @@ export const recruitmentService = {
     return { cancelled: true }
   },
 
-  async offer(user: AccessUser, id: string, b: { ctcAnnual: number; joiningDate: string; note?: string }) {
+  // An offer needs: no accepted offer already standing, a completed interview with feedback (HR may skip with a reason, which is audited),
+  // a joining date from today on, and pay inside the opening's range (or an explicit confirmation).
+  async offer(user: AccessUser, id: string, b: { ctcAnnual: number; joiningDate: string; note?: string; skipInterviewReason?: string; confirmOutOfRange?: boolean }) {
     if (!isHR(user)) throw new AppError('Only HR makes offers', 403)
     const { c } = await findCandidate(user, id)
     if (CLOSED_STAGES.includes(c.stage)) throw new AppError(`This candidate is ${c.stage}`, 400)
     if (c.opening.status !== 'open') throw new AppError('The opening is not open', 400)
+    if (c.offerStatus === 'accepted') throw new AppError('This offer was already accepted. Withdraw it first (with a reason) if the terms must change.', 409, 'OFFER_ACCEPTED')
+    if (day(b.joiningDate).getTime() < (await businessToday(user.tenantId)).getTime()) throw new AppError('The joining date cannot be in the past', 400, 'JOINING_IN_PAST')
+    const done = await prisma.interview.count({ where: { candidateId: id, status: 'completed' } })
+    const skip = b.skipInterviewReason?.trim()
+    if (!done && !skip) throw new AppError('Hold at least one interview and record its feedback before an offer, or say why you are skipping it.', 409, 'INTERVIEW_REQUIRED')
+    const lo = num(c.opening.salaryMin), hi = num(c.opening.salaryMax)
+    if (!b.confirmOutOfRange && ((lo != null && b.ctcAnnual < lo) || (hi != null && b.ctcAnnual > hi))) {
+      throw new AppError(`This offer is outside the opening's pay range (${[lo, hi].filter((x) => x != null).map((x) => x!.toLocaleString()).join(' to ')} ${c.opening.currency} a year). Confirm to go ahead.`, 409, 'OFFER_OUT_OF_RANGE')
+    }
     const updated = await prisma.candidate.update({ where: { id }, data: { stage: 'offer', offerStatus: 'made', offerCtcAnnual: b.ctcAnnual, offerJoiningDate: day(b.joiningDate), offerNote: b.note ?? null }, include: { opening: true } })
-    await audit(user, 'OFFER_MADE', 'candidate', id, { ctcAnnual: b.ctcAnnual, joiningDate: b.joiningDate })
+    await audit(user, 'OFFER_MADE', 'candidate', id, { ctcAnnual: b.ctcAnnual, joiningDate: b.joiningDate, ...(!done && { interviewSkipped: skip }), ...(b.confirmOutOfRange && { outOfRangeConfirmed: true }) })
+    return candidateView(updated, new Map(), true)
+  },
+
+  // Takes an offer back (made or accepted) with a reason; the candidate returns to the pipeline so they can be rejected, closed or offered again
+  async withdrawOffer(user: AccessUser, id: string, reason: string) {
+    if (!isHR(user)) throw new AppError('Only HR withdraws offers', 403)
+    const { c } = await findCandidate(user, id)
+    if (!['made', 'accepted'].includes(c.offerStatus ?? '') || c.stage !== 'offer') throw new AppError('There is no offer to withdraw', 400)
+    const back = (await prisma.interview.count({ where: { candidateId: id } })) ? 'interview' : 'screening'
+    const updated = await prisma.candidate.update({ where: { id }, data: { stage: back, offerStatus: 'withdrawn' }, include: { opening: true } })
+    await audit(user, 'OFFER_WITHDRAWN', 'candidate', id, { reason, was: c.offerStatus })
     return candidateView(updated, new Map(), true)
   },
 
@@ -311,6 +358,10 @@ export const recruitmentService = {
     if (!isHR(user)) throw new AppError('Only HR can hire', 403)
     const { c } = await findCandidate(user, id)
     if (c.stage !== 'offer' || c.offerStatus !== 'accepted') throw new AppError('The candidate must accept an offer first', 400)
+    // Seats: a 1-seat opening cannot take a second hire (HR can add seats or reopen the opening first)
+    const taken = await prisma.candidate.count({ where: { openingId: c.openingId, stage: 'hired' } })
+    if (c.opening.status !== 'open') throw new AppError(`This opening is ${c.opening.status.replace(/_/g, ' ')}. Reopen it before hiring.`, 409, 'OPENING_NOT_OPEN')
+    if (taken >= c.opening.openings) throw new AppError(`All ${c.opening.openings} seat${c.opening.openings > 1 ? 's' : ''} of this opening are filled. Add a seat to the opening before hiring another person.`, 409, 'OPENING_FULL')
     if (b.referralBonus && !c.referredByEmployeeId) throw new AppError('This candidate was not referred', 400)
     const hireDate = b.hireDate ?? c.offerJoiningDate?.toISOString().slice(0, 10)
     if (!hireDate) throw new AppError('Give a joining date', 400)
@@ -333,6 +384,20 @@ export const recruitmentService = {
     await prisma.candidate.update({ where: { id }, data: { hiredEmployeeId: employee.id } })
     await audit(user, 'CANDIDATE_HIRED', 'candidate', id, { employeeId: employee.id, employeeCode: employee.employeeCode })
     const hired = await prisma.candidate.count({ where: { openingId: c.openingId, stage: 'hired' } })
+    // Two clicks at once can both pass the check above: the later one gives its place back
+    if (hired > c.opening.openings) {
+      await prisma.candidate.update({ where: { id }, data: { stage: 'offer', hiredAt: null, hiredEmployeeId: null } })
+      await prisma.employee.update({ where: { id: employee.id }, data: { active: false, archivedAt: new Date(), archivedBy: user.userId, archiveReason: 'Hired twice by mistake: the opening was full', employmentStatus: 'terminated' } })
+      throw new AppError('The last seat was just taken by someone else. Add a seat to the opening before hiring another person.', 409, 'OPENING_FULL')
+    }
+    // The new joiner gets an onboarding request (joining details, documents) ready for when they sign in
+    let onboardingRequestId: string | null = null
+    try {
+      const today = await businessToday(user.tenantId)
+      const due = new Date(`${hireDate}T00:00:00.000Z`) >= today ? hireDate : undefined
+      const made = await requestService.create(user, { employeeIds: [employee.id], kind: 'onboarding', sections: ['personal', 'contact', 'addresses', 'emergencyContacts', 'identities', 'documents'], note: `Welcome to the team! Please complete your joining details${c.opening.title ? ` for ${c.opening.title}` : ''}.`, ...(due && { dueDate: due }) })
+      onboardingRequestId = made.ids[0] ?? null
+    } catch (e: any) { console.warn('[recruitment] onboarding request not created:', e?.message) }
     if (hired >= c.opening.openings) await prisma.jobOpening.update({ where: { id: c.openingId }, data: { status: 'closed', closedReason: 'Filled', closedAt: new Date() } })
     let referral: unknown = null
     if (c.referredByEmployeeId) {
@@ -343,6 +408,27 @@ export const recruitmentService = {
         if (type) referral = await incentiveService.nominate(user, { employeeId: c.referredByEmployeeId, typeId: type.id, amount: b.referralBonus, reason: `Referred ${c.firstName} ${c.lastName} (${c.opening.title})` })
       }
     }
-    return { employee, openingFilled: hired >= c.opening.openings, referralIncentive: referral }
+    return { employee, openingFilled: hired >= c.opening.openings, referralIncentive: referral, onboardingRequestId }
+  },
+
+  // Candidates across the openings the caller may work on: HR all of them, a hiring manager their own openings; searched by name or email
+  async searchCandidates(user: AccessUser, q: { q?: string; stage?: string; openingId?: string }) {
+    const mine = isHR(user) ? {} : { OR: [{ requestedByUserId: user.userId }, ...(user.employeeId ? [{ hiringManagerId: user.employeeId }] : [])] }
+    const openings = await prisma.jobOpening.findMany({ where: { tenantId: user.tenantId, ...mine, ...(q.openingId ? { id: q.openingId } : {}) }, select: { id: true, title: true } })
+    if (!openings.length) return []
+    const terms = (q.q ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 4)
+    const where: any = { tenantId: user.tenantId, openingId: { in: openings.map((o) => o.id) }, ...(q.stage ? { stage: q.stage } : {}) }
+    if (terms.length) where.AND = terms.map((t) => ({ OR: [{ firstName: { contains: t, mode: 'insensitive' } }, { lastName: { contains: t, mode: 'insensitive' } }, { email: { contains: t, mode: 'insensitive' } }] }))
+    const rows = await prisma.candidate.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 })
+    const title = new Map(openings.map((o) => [o.id, o.title]))
+    return rows.map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, email: c.email, openingId: c.openingId, opening: title.get(c.openingId) ?? '', stage: c.stage, offerStatus: c.offerStatus, createdAt: c.createdAt }))
+  },
+
+  // Everything done to a candidate: stage changes, interviews, offers, emails sent (from the audit log)
+  async history(user: AccessUser, id: string) {
+    await findCandidate(user, id)
+    const rows = await prisma.auditLog.findMany({ where: { tenantId: user.tenantId, entityType: 'candidate', entityId: id }, orderBy: { createdAt: 'desc' }, take: 100 })
+    const names = await people([], rows.map((r) => r.userId))
+    return rows.map((r) => ({ id: r.id, action: r.action, by: names.get(`u:${r.userId}`) ?? null, at: r.createdAt, detail: r.newValue ?? null }))
   },
 }

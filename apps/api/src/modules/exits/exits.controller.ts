@@ -14,6 +14,30 @@ export const exitsController = {
   list: asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await exitsService.list(req.user!) })
   }),
+  mine: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await exitsService.mine(req.user!) })
+  }),
+  resign: asyncHandler(async (req: Request, res: Response) => {
+    res.status(201).json({ success: true, data: await exitsService.resign(req.user!, req.body) })
+  }),
+  accept: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await exitsService.accept(id(req), req.user!, req.body) })
+  }),
+  decline: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await exitsService.decline(id(req), req.user!, req.body.reason) })
+  }),
+  recovery: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await exitsService.recordRecovery(id(req), req.user!, req.body) })
+  }),
+  restoreLogin: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await exitsService.restoreLogin(id(req), req.user!) })
+  }),
+  exportCsv: asyncHandler(async (req: Request, res: Response) => {
+    const csv = await exitsService.exportCsv(req.user!)
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', 'attachment; filename="exits.csv"')
+    res.send(csv)
+  }),
   myClearances: asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, data: await exitsService.myClearances(req.user!) })
   }),

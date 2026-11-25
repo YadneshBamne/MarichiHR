@@ -75,6 +75,10 @@ export async function inHrScope(user: AccessUser, employeeId: string) {
   const e = await prisma.employee.findFirst({ where: { id: employeeId, tenantId: user.tenantId }, select: { orgUnitId: true } })
   return !!e && units.has(e.orgUnitId)
 }
+// An HR Business Partner may change records only inside their departments; outside, the person is simply not found (as reads already behave)
+export async function assertInHrScope(user: AccessUser, employeeId: string) {
+  if (!(await inHrScope(user, employeeId))) throw new AppError('Employee not found', 404)
+}
 
 // HR admins who look after this person: everyone without a scope, plus Business Partners whose departments include
 // them. Falls back to every HR admin so a request is never stuck.

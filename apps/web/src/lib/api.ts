@@ -92,7 +92,8 @@ api.interceptors.response.use(
         return Promise.reject(error)
       }
       if (!newToken) {
-        window.location.href = '/login'
+        // Public pages (careers, password reset, sign-up, login) stay where they are: an old expired sign-in must not bounce an applicant to the login page
+        if (!['/careers', '/reset-password', '/signup', '/login'].some((p) => window.location.pathname.startsWith(p))) window.location.href = '/login'
         return Promise.reject(error)
       }
       originalRequest.headers.Authorization = `Bearer ${newToken}`

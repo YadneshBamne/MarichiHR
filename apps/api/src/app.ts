@@ -64,6 +64,8 @@ export function createApp() {
   // New apps built on MongoDB only (no Postgres version): helpdesk and timesheets
   if (process.env.DB_PROVIDER === 'mongo') {
     app.use('/api/v1/auth', require('./modules/auth/password-reset.mongo').passwordResetRouter)
+    // The public careers page: no sign-in, only published openings of a company that switched it on
+    app.use('/api/v1/public/careers', require('./modules/recruitment/careers.mongo.router').careersPublicRouter)
     app.use('/api/v1/holidays/optional', require('./modules/holidays/optional.mongo.router').optionalHolidaysRouter)
     app.use('/api/v1/helpdesk', require('./modules/helpdesk/helpdesk.mongo.router').helpdeskRouter)
     app.use('/api/v1/alumni', require('./modules/alumni/alumni.mongo.router').alumniRouter)
@@ -72,6 +74,7 @@ export function createApp() {
     app.use('/api/v1/tracking', require('./modules/tracking/tracking.mongo.router').trackingRouter)
     app.use('/api/v1/devices', require('./modules/devices/devices.mongo.router').devicesRouter)
     app.use('/api/v1/approvals/inbox', require('./modules/approvals/inbox.mongo').inboxRouter)
+    app.use('/api/v1/performance', require('./modules/performance/performance.extras.mongo').performanceExtras)
     app.use('/api/v1/appraisal', require('./modules/performance/appraisal.mongo.router').appraisalRouter)
     app.use('/api/v1/confirmation', require('./modules/employees/confirmation.mongo.router').confirmationRouter)
     app.use('/api/v1/assistant', require('./modules/assistant/assistant.mongo.router').assistantRouter)
@@ -107,7 +110,8 @@ export function createApp() {
   app.use('/api/v1/approvals', approvalsRouter)
   app.use('/api/v1/salary-revisions', authenticate, requireModule('payroll'), revisionsRouter)
   app.use('/api/v1/comp-reviews', authenticate, requireModule('payroll'), compReviewRouter)
-  app.use('/api/v1/recruitment', authenticate, requireFeature('recruitment'), recruitmentRouter)
+  // MongoDB API: the extras (email templates, candidate emails, calendar files, CV upload) sit in front of the main router
+  app.use('/api/v1/recruitment', authenticate, requireFeature('recruitment'), ...(process.env.DB_PROVIDER === 'mongo' ? [require('./modules/recruitment/careers.mongo.router').careersAdminRouter, require('./modules/recruitment/recruitment.extras.mongo.router').recruitmentExtrasRouter] : []), recruitmentRouter)
   app.use('/api/v1/tax', authenticate, requireModule('payroll'), taxRouter)
   app.use('/api/v1/dashboard', dashboardRouter)
   app.use('/api/v1/notifications', notificationsRouter)

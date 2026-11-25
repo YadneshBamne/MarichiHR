@@ -3,7 +3,9 @@ import api from '../api'
 import { useAuth } from '../../contexts/AuthContext'
 
 export function useCompany() {
-  return useQuery({ queryKey: ['company'], queryFn: async () => (await api.get('/company')).data.data })
+  const { user } = useAuth()
+  const alumni = !!user?.roles?.length && user.roles.every((r) => r.name === 'alumni') // former employees may not open /company
+  return useQuery({ queryKey: ['company'], enabled: !alumni, queryFn: async () => (await api.get('/company')).data.data })
 }
 
 // Company changes also refresh the signed-in user so the shell (name, logo, apps) updates at once
@@ -34,7 +36,7 @@ export function useSetEmployeeAccess(employeeId: string) {
 export const ROLE_INFO: { name: string; label: string; hint: string; sysOnly?: boolean }[] = [
   { name: 'manager', label: 'Manager', hint: 'Approves leave and attendance for their direct reports' },
   { name: 'hr_admin', label: 'HR admin', hint: 'Manages people, leave policy and onboarding for the whole company' },
-  { name: 'payroll_admin', label: 'Payroll / finance', hint: 'Runs payroll, finance-approves expenses and payroll' },
+  { name: 'payroll_admin', label: 'Payroll / finance', hint: 'Runs payroll, finance-approves expenses and payroll. Only a system admin can give this role', sysOnly: true },
   { name: 'compliance_officer', label: 'Compliance', hint: 'Statutory configuration and audit access', sysOnly: true },
   { name: 'system_admin', label: 'System admin', hint: 'Company settings, apps and who can sign in', sysOnly: true },
 ]

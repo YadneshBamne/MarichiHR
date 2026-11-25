@@ -7,11 +7,11 @@ import Avatar from '../../components/ui/Avatar'
 import Icon from '../../components/ui/Icon'
 import { useReveal } from '../../lib/motion'
 
-interface Person { id: string; name: string; title: string | null; department: string | null; departmentId: string; location: string | null; avatarUrl: string | null; managerId: string | null; isMe: boolean; canOpen: boolean }
+interface Person { id: string; name: string; title: string | null; department: string | null; departmentId: string; location: string | null; avatarUrl: string | null; managerId: string | null; isMe: boolean; canOpen: boolean; managerMissing?: boolean; isHead?: boolean }
 interface Unit { id: string; name: string; parentId: string | null; type: string }
 type View = 'people' | 'units'
 
-const ZOOMS = [0.5, 0.65, 0.8, 1, 1.15]
+const MIN_K = 0.2, MAX_K = 2
 
 // The company as a tree: reporting lines (who reports to whom) or departments with their people.
 // Everyone can see it; cards link to a profile only when the viewer may open it (self, HR, their own reports).
@@ -20,7 +20,7 @@ export default function OrgChartPage() {
   const people = data?.people ?? []
   const [view, setView] = useState<View>('people')
   const [query, setQuery] = useState('')
-  const [zoom, setZoom] = useState(1)
+  const [view2, setView2] = useState({ x: 0, y: 0, k: 1 }) // pan and zoom of the chart
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const canvas = useRef<HTMLDivElement>(null)
   const root = useReveal<HTMLDivElement>(isLoading)
@@ -61,58 +61,92 @@ export default function OrgChartPage() {
   }, [matches, people])
   const jumpToFirst = () => {
     const first = [...matches][0]
-    canvas.current?.querySelector(`[data-person="${first}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    focusOn(`[data-person="${first}"]`)
   }
 
   const toggle = (id: string) => setCollapsed((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const allOpen = () => setCollapsed(new Set())
   const allClosed = () => setCollapsed(new Set(people.filter((p) => kids.has(p.id) && p.managerId !== null).map((p) => p.id)))
 
-  // Fit: scale the tree so its width fits the canvas (never above 100%)
-  const [, rerender] = useState(0)
-  const fit = (how: 'middle' | 'me' = 'middle') => {
-    const el = canvas.current, tree = el?.firstElementChild as HTMLElement | null
-    if (!el || !tree) return
-    const natural = tree.scrollWidth / zoom
-    const z = Math.max(0.6, Math.min(1, (el.clientWidth - 32) / natural)) // below 60% names get unreadable; scroll instead
-    setZoom(Math.round(z * 100) / 100)
-    centre.current = how
-    rerender((n) => n + 1) // re-centre even when the zoom didn't change
+  // Pan and zoom: the tree is moved with a transform inside a fixed viewport
+  const tree = useRef<HTMLDivElement>(null)
+  const clampK = (k: number) => Math.max(MIN_K, Math.min(MAX_K, k))
+  const zoomAt = (px: number, py: number, factor: number) => setView2((v) => { const k = clampK(v.k * factor); const r = k / v.k; return { k, x: px - (px - v.x) * r, y: py - (py - v.y) * r } })
+  const zoomCentre = (factor: number) => { const el = canvas.current; if (el) zoomAt(el.clientWidth / 2, el.clientHeight / 2, factor) }
+  const focusOn = (sel: string) => {
+    const el = canvas.current, n = el?.querySelector(sel)
+    if (!el || !n) return
+    const nr = n.getBoundingClientRect(), er = el.getBoundingClientRect()
+    setView2((v) => ({ ...v, x: v.x + (er.left + er.width / 2) - (nr.left + nr.width / 2), y: v.y + (er.top + er.height / 2) - (nr.top + nr.height / 2) }))
   }
-  // After a zoom change has been laid out: scroll to the middle, or to the viewer's own card on first open
-  const centre = useRef<'middle' | 'me' | null>(null)
+  // Fit: show the whole tree (middle) or, on first open, readable size centred on the viewer's own card
+  const fit = (how: 'middle' | 'me' = 'middle') => {
+    const el = canvas.current, t = tree.current
+    if (!el || !t) return
+    const w = t.offsetWidth, h = t.offsetHeight, cw = el.clientWidth, ch = el.clientHeight
+    const me = how === 'me' ? t.querySelector('.oc-card.me') : null
+    if (me) {
+      const k = Math.max(0.6, Math.min(1, (cw - 32) / w))
+      const tr = t.getBoundingClientRect(), mr = me.getBoundingClientRect(), cur = view2.k
+      const cx = (mr.left + mr.width / 2 - tr.left) / cur, cy = (mr.top + mr.height / 2 - tr.top) / cur
+      setView2({ k, x: cw / 2 - cx * k, y: ch / 2 - cy * k })
+    } else {
+      const k = clampK(Math.min(1, (cw - 32) / w, (ch - 32) / h))
+      setView2({ k, x: (cw - w * k) / 2, y: Math.max(16, (ch - h * k) / 2) })
+    }
+  }
+  // On open (and when the view changes) fit once the chart has been laid out; big companies collapse first, so wait one more render
+  const pendingFit = useRef(0)
+  useEffect(() => { if (people.length) pendingFit.current = people.length > 40 ? 2 : 1 }, [people.length, view])
   useLayoutEffect(() => {
-    const el = canvas.current, how = centre.current
-    if (!el || !how) return
-    centre.current = null
-    const me = how === 'me' ? el.querySelector<HTMLElement>('.oc-card.me') : null
-    if (me) me.scrollIntoView({ block: 'nearest', inline: 'center' })
-    else el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
+    if (!pendingFit.current || !people.length) return
+    pendingFit.current -= 1
+    if (pendingFit.current === 0) fit('me')
   })
-  // On open: fit, then bring the viewer's own card into view (useful on phones where the tree is wider than the screen)
-  useLayoutEffect(() => {
-    if (!people.length) return
-    fit('me')
-  }, [people.length, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drag to pan (mouse); touch screens scroll natively
-  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+  // Wheel zooms toward the pointer
+  useEffect(() => {
+    const el = canvas.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const r = el.getBoundingClientRect()
+      zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0015))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // Drag to pan (mouse, pen, touch); two fingers pinch
+  const ptrs = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef(0)
   const onDown = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'mouse' || (e.target as HTMLElement).closest('button, a, input')) return
-    const el = canvas.current!
-    drag.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
-    el.setPointerCapture(e.pointerId)
+    if ((e.target as HTMLElement).closest('button, a, input')) return
+    canvas.current!.setPointerCapture(e.pointerId)
+    ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (ptrs.current.size === 2) { const [a, b] = [...ptrs.current.values()]; pinch.current = Math.hypot(a.x - b.x, a.y - b.y) }
   }
   const onMove = (e: React.PointerEvent) => {
-    const d = drag.current, el = canvas.current
-    if (!d || !el) return
-    el.scrollLeft = d.left - (e.clientX - d.x)
-    el.scrollTop = d.top - (e.clientY - d.y)
+    const el = canvas.current, p = ptrs.current.get(e.pointerId)
+    if (!el || !p) return
+    if (ptrs.current.size === 1) {
+      const dx = e.clientX - p.x, dy = e.clientY - p.y
+      setView2((v) => ({ ...v, x: v.x + dx, y: v.y + dy }))
+      ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    } else if (ptrs.current.size === 2) {
+      ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      const [a, b] = [...ptrs.current.values()]
+      const d = Math.hypot(a.x - b.x, a.y - b.y), r = el.getBoundingClientRect()
+      if (pinch.current > 0 && d > 0) zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, d / pinch.current)
+      pinch.current = d
+    }
   }
-  const onUp = () => { drag.current = null }
+  const onUp = (e: React.PointerEvent) => { ptrs.current.delete(e.pointerId); pinch.current = 0 }
 
-  const step = (dir: 1 | -1) => setZoom((z) => { const i = ZOOMS.findIndex((v) => v >= z - 0.001); const at = i === -1 ? ZOOMS.length - 1 : i; return ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, at + dir))] })
-  const tops = kids.get(null) ?? []
+  const step = (dir: 1 | -1) => zoomCentre(dir > 0 ? 1.25 : 0.8)
+  const roots = kids.get(null) ?? []
+  const tops = roots.filter((p) => !p.managerMissing)
+  const orphans = roots.filter((p) => p.managerMissing)
   const deptCount = new Set(people.map((p) => p.departmentId)).size
 
   return (
@@ -134,7 +168,7 @@ export default function OrgChartPage() {
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
             {view === 'people' && <><button className="btn btn-ghost btn-sm" onClick={allOpen}>Expand all</button><button className="btn btn-ghost btn-sm" onClick={allClosed}>Collapse</button></>}
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => step(-1)} aria-label="Zoom out" title="Zoom out"><Icon name="minus" size={14} /></button>
-            <span className="num dim" style={{ fontSize: 12, minWidth: 38, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+            <span className="num dim" style={{ fontSize: 12, minWidth: 38, textAlign: 'center' }}>{Math.round(view2.k * 100)}%</span>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => step(1)} aria-label="Zoom in" title="Zoom in"><Icon name="plus" size={14} /></button>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => fit()} aria-label="Fit to screen" title="Fit to screen"><Icon name="focus" size={14} /></button>
           </div>
@@ -142,17 +176,25 @@ export default function OrgChartPage() {
       </PageHeader>
 
       <section data-card className="card oc-canvas" ref={canvas} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
-        <div className="oc-tree" style={{ zoom }}>
+        <div className="oc-tree" ref={tree} style={{ transform: `translate(${view2.x}px, ${view2.y}px) scale(${view2.k})` }}>
           {isLoading ? (
             <div className="skeleton" style={{ width: 220, height: 84, borderRadius: 18, margin: '0 auto' }} />
           ) : view === 'people' ? (
-            <ul>{tops.map((p) => <PersonNode key={p.id} p={p} kids={kids} teamSize={teamSize} collapsed={collapsed} toggle={toggle} matches={matches} searching={!!q} />)}</ul>
+            <ul>
+              {tops.map((p) => <PersonNode key={p.id} p={p} kids={kids} teamSize={teamSize} collapsed={collapsed} toggle={toggle} matches={matches} searching={!!q} />)}
+              {orphans.length > 0 && (
+                <li>
+                  <div className="oc-card unit"><div style={{ textAlign: 'left' }}><div className="oc-name">Unassigned</div><div className="oc-sub">{orphans.length} {orphans.length === 1 ? 'person' : 'people'} whose manager has left</div></div></div>
+                  <ul>{orphans.map((p) => <PersonNode key={p.id} p={p} kids={kids} teamSize={teamSize} collapsed={collapsed} toggle={toggle} matches={matches} searching={!!q} />)}</ul>
+                </li>
+              )}
+            </ul>
           ) : (
             <UnitTree units={data?.departments ?? []} people={people} />
           )}
         </div>
       </section>
-      <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Drag to move around · use the zoom buttons or Fit · cards you can open link to the full profile</p>
+      <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Drag to move around · scroll or pinch to zoom · Fit shows everything · cards you can open link to the full profile</p>
     </div>
   )
 }
@@ -177,6 +219,7 @@ function PersonNode({ p, kids, teamSize, collapsed, toggle, matches, searching }
           <div className="oc-sub">{p.title ?? 'No title yet'}</div>
           <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
             {p.department && <span className="pill mute" style={{ height: 20, fontSize: 10 }}>{p.department}</span>}
+            {p.isHead && <span className="pill night" style={{ height: 20, fontSize: 10 }}>Head</span>}
             {p.isMe && <span className="pill honey" style={{ height: 20, fontSize: 10 }}>You</span>}
           </div>
         </div>

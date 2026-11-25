@@ -147,6 +147,9 @@ export const attendanceService = {
   async clockIn(employeeId: string, tenantId: string, data: ClockInDto) {
     const at = data.at ?? new Date()
     const today = await dayOf(tenantId, data.at)
+    // After the last working day (an exit in progress) nobody clocks in any more
+    const leaving = await prisma.employee.findUnique({ where: { id: employeeId }, select: { exitDate: true } })
+    if (leaving?.exitDate && ymdOf(today) > ymdOf(leaving.exitDate)) throw new AppError('Your last working day has passed, so you can no longer clock in.', 403, 'EMPLOYMENT_ENDED')
     const [open, existing] = await Promise.all([findOpenRecord(employeeId, today), attendanceRepository.findTodayRecord(employeeId, today)])
     if (open) throw new AppError('You are already clocked in', 400)
     if (existing?.isLocked) throw new AppError('Attendance record is locked and cannot be modified', 400)

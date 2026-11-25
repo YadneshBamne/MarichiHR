@@ -47,7 +47,7 @@ export default function AccessCard({ employeeId, isSelf }: { employeeId: string;
     <section className="card" style={{ padding: 22 }} data-card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={{ fontSize: 22, flex: 1 }}>Login & access</h2>
-        <span className={`pill ${access.loginEnabled ? 'ok' : 'mute'}`}>{access.loginEnabled ? 'Can sign in' : access.active ? 'No password yet' : 'Login disabled'}</span>
+        <span className={`pill ${access.loginEnabled ? 'ok' : 'mute'}`}>{access.archived ? 'Archived: cannot sign in' : access.loginEnabled ? 'Can sign in' : access.active ? 'No password yet' : 'Login disabled'}</span>
         {access.mustChangePassword && <span className="pill warn">Must set own password</span>}
         {access.mfaEnabled && <span className="pill info">2FA on</span>}
         {access.googleLinked && <span className="pill mute">Google linked</span>}
@@ -59,9 +59,9 @@ export default function AccessCard({ employeeId, isSelf }: { employeeId: string;
           <input type="checkbox" checked disabled /> <span><strong style={{ fontWeight: 500 }}>Employee</strong><br /><span className="dim" style={{ fontSize: 12 }}>Self-service: leave, attendance, payslips, expenses</span></span>
         </label>
         {ROLE_INFO.map((r) => {
-          const locked = (r.sysOnly && !isSys) || (isSelf && ['hr_admin', 'system_admin'].includes(r.name) && access.roles.includes(r.name))
+          const locked = access.archived || (r.sysOnly && !isSys) || (isSelf && ['hr_admin', 'system_admin'].includes(r.name) && access.roles.includes(r.name))
           return (
-            <label key={r.name} className="well" style={{ display: 'flex', gap: 10, padding: 12, cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1, border: roles.includes(r.name) ? '1px solid var(--night)' : '1px solid transparent' }} title={locked ? (isSelf ? 'You cannot remove your own admin access' : 'Only a system admin can change this') : undefined}>
+            <label key={r.name} className="well" style={{ display: 'flex', gap: 10, padding: 12, cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1, border: roles.includes(r.name) ? '1px solid var(--night)' : '1px solid transparent' }} title={locked ? (access.archived ? 'Reinstate this person first' : isSelf && ['hr_admin', 'system_admin'].includes(r.name) && access.roles.includes(r.name) ? 'You cannot remove your own admin access' : 'Only a system admin can change this') : undefined}>
               <input type="checkbox" disabled={locked} checked={roles.includes(r.name)} onChange={(e) => setRoles(e.target.checked ? [...roles, r.name] : roles.filter((x) => x !== r.name))} />
               <span><strong style={{ fontWeight: 500 }}>{r.label}</strong><br /><span className="dim" style={{ fontSize: 12 }}>{r.hint}</span></span>
             </label>
@@ -70,10 +70,10 @@ export default function AccessCard({ employeeId, isSelf }: { employeeId: string;
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-        <button className="btn btn-primary" disabled={!dirty || save.isPending} onClick={() => run({ roles }, 'Roles updated. They take effect at the next sign-in.')}>Save roles</button>
-        {!isSelf && <button className="btn btn-ghost" disabled={save.isPending} onClick={() => run({ password: 'generate', loginEnabled: true }, 'Temporary password created')}><Icon name="key" size={15} /> {access.hasPassword ? 'Reset password' : 'Create login'}</button>}
-        {!isSelf && access.active && access.hasPassword && <button className="btn btn-danger" disabled={save.isPending} onClick={() => run({ loginEnabled: false }, 'Login disabled and sessions ended')}>Disable login</button>}
-        {!isSelf && !access.active && <button className="btn btn-ghost" disabled={save.isPending} onClick={() => run({ loginEnabled: true }, 'Login enabled')}>Enable login</button>}
+        <button className="btn btn-primary" disabled={!dirty || save.isPending || access.archived} onClick={() => run({ roles }, 'Roles updated. They take effect at the next sign-in.')}>Save roles</button>
+        {!isSelf && !access.archived && <button className="btn btn-ghost" disabled={save.isPending} onClick={() => run({ password: 'generate', loginEnabled: true }, 'Temporary password created')}><Icon name="key" size={15} /> {access.hasPassword ? 'Reset password' : 'Create login'}</button>}
+        {!isSelf && !access.archived && access.active && access.hasPassword && <button className="btn btn-danger" disabled={save.isPending} onClick={() => run({ loginEnabled: false }, 'Login disabled and sessions ended')}>Disable login</button>}
+        {!isSelf && !access.archived && !access.active && <button className="btn btn-ghost" disabled={save.isPending} onClick={() => run({ loginEnabled: true }, 'Login enabled')}>Enable login</button>}
       </div>
       {isSys && !isSelf && access.roles.includes('hr_admin') && <HrScope current={access.hrScopeUnitIds ?? []} onSave={(ids) => run({ hrScopeUnitIds: ids }, ids.length ? 'Limited to the chosen departments' : 'Looks after the whole company')} busy={save.isPending} />}
       {issued && <div style={{ marginTop: 14 }}><TemporaryPassword email={access.email} password={issued} workspace={user?.tenant?.slug} /></div>}

@@ -36,7 +36,7 @@ const candidateFields = {
   resumeUrl: z.string().trim().url().max(500).refine((u) => /^https?:\/\//i.test(u), 'Use an http(s) link').nullable().optional(),
   summary: z.string().trim().max(2000).nullable().optional(),
 }
-const AddCandidate = z.object({ params: id, body: z.object({ ...candidateFields, source: z.string().trim().min(1).max(40).optional() }).strict() })
+const AddCandidate = z.object({ params: id, body: z.object({ ...candidateFields, source: z.string().trim().min(1).max(40).optional(), allowDuplicate: z.boolean().optional() }).strict() })
 const Refer = z.object({ params: id, body: z.object(candidateFields).strict() })
 const UpdateCandidate = z.object({ params: id, body: z.object({
   stage: z.enum(['applied', 'screening', 'interview', 'rejected', 'withdrawn']).optional(),
@@ -46,7 +46,9 @@ const UpdateCandidate = z.object({ params: id, body: z.object({
 }).strict() })
 const Schedule = z.object({ params: id, body: z.object({ interviewerUserId: z.string().uuid(), scheduledAt: z.string().datetime({ offset: true }), mode: z.enum(['video', 'phone', 'in_person']).optional() }).strict() })
 const Feedback = z.object({ params: id, body: z.object({ rating: z.number().int().min(1).max(5), recommendation: z.enum(['strong_hire', 'hire', 'no_hire', 'strong_no_hire']), feedback: z.string().trim().min(5).max(5000) }).strict() })
-const Offer = z.object({ params: id, body: z.object({ ctcAnnual: money, joiningDate: ymd, note: z.string().trim().max(1000).optional() }).strict() })
+const Offer = z.object({ params: id, body: z.object({ ctcAnnual: money, joiningDate: ymd, note: z.string().trim().max(1000).optional(), skipInterviewReason: z.string().trim().min(3).max(300).optional(), confirmOutOfRange: z.boolean().optional() }).strict() })
+const WithdrawOffer = z.object({ params: id, body: z.object({ reason: z.string().trim().min(3).max(500) }).strict() })
+const Search = z.object({ query: z.object({ q: z.string().trim().max(80).optional(), stage: z.enum(['applied', 'screening', 'interview', 'offer', 'hired', 'rejected', 'withdrawn']).optional(), openingId: z.string().uuid().optional() }) })
 const OfferResponse = z.object({ params: id, body: z.object({ accepted: z.boolean() }).strict() })
 const Hire = z.object({ params: id, body: z.object({ workEmail: z.string().trim().email().max(200), orgUnitId: z.string().uuid().optional(), managerId: uuidOrNull.optional(), jobPositionId: uuidOrNull.optional(), hireDate: ymd.optional(), referralBonus: money.optional() }).strict() })
 
@@ -69,7 +71,10 @@ recruitmentRouter.get('/interviews/mine', asyncHandler(async (req, res) => ok(re
 recruitmentRouter.post('/interviews/:id/feedback', validate(Feedback), asyncHandler(async (req, res) => ok(res, await svc.feedback(req.user!, p(req), req.body))))
 recruitmentRouter.post('/interviews/:id/cancel', validate(z.object({ params: id })), asyncHandler(async (req, res) => ok(res, await svc.cancelInterview(req.user!, p(req)))))
 
+recruitmentRouter.get('/candidates', validate(Search), asyncHandler(async (req, res) => ok(res, await svc.searchCandidates(req.user!, req.query as any))))
 recruitmentRouter.get('/candidates/:id', validate(z.object({ params: id })), asyncHandler(async (req, res) => ok(res, await svc.candidate(req.user!, p(req)))))
+recruitmentRouter.get('/candidates/:id/history', validate(z.object({ params: id })), asyncHandler(async (req, res) => ok(res, await svc.history(req.user!, p(req)))))
+recruitmentRouter.post('/candidates/:id/offer/withdraw', validate(WithdrawOffer), asyncHandler(async (req, res) => ok(res, await svc.withdrawOffer(req.user!, p(req), req.body.reason))))
 recruitmentRouter.patch('/candidates/:id', validate(UpdateCandidate), asyncHandler(async (req, res) => ok(res, await svc.updateCandidate(req.user!, p(req), req.body))))
 recruitmentRouter.post('/candidates/:id/interviews', validate(Schedule), asyncHandler(async (req, res) => ok(res, await svc.schedule(req.user!, p(req), req.body), 201)))
 recruitmentRouter.post('/candidates/:id/offer', validate(Offer), asyncHandler(async (req, res) => ok(res, await svc.offer(req.user!, p(req), req.body))))

@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import mongoose from 'mongoose'
 import { authenticate } from '../../middleware/auth.middleware'
-import { requireFeature } from '../../middleware/module.middleware'
+import { requireFeature } from '../../middleware/module.middleware.mongo'
 import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
@@ -46,8 +46,16 @@ alumniRouter.get('/', asyncHandler(async (req, res) => {
   const pending = await AlumniLetter.countDocuments({ tenantId, status: 'requested' })
   res.json({ success: true, data: { pendingLetters: pending, alumni: left.map((e) => {
     const a = byEmp.get(e._id), x = exitBy.get(e._id)
-    return { employeeId: e._id, code: e.employeeCode, name: `${e.firstName} ${e.lastName}`, email: e.workEmail ?? null, lastWorkingDate: ymd(x?.lastWorkingDate ?? e.exitDate ?? e.archivedAt), access: a?.active ? 'enabled' : a ? 'disabled' : 'none', enabledAt: a?.enabledAt ?? null }
+    return { employeeId: e._id, code: e.employeeCode, name: `${e.firstName} ${e.lastName}`, email: e.workEmail ?? null, lastWorkingDate: ymd(x?.lastWorkingDate ?? e.exitDate ?? e.archivedAt), access: a?.active ? 'enabled' : a ? 'disabled' : 'none', enabledAt: a?.enabledAt ?? null, contact: a?.contact ?? null }
   }) } })
+}))
+
+// The documents on a former employee's record that they can see (the letters HR may attach to a request), for the letter picker
+alumniRouter.get('/employee/:employeeId/documents', validate(z.object({ params: empId })), asyncHandler(async (req, res) => {
+  staffOnly(req)
+  const { tenantId } = req.user!
+  const docs: any[] = await mongoose.connection.collection('employee_documents').find({ tenantId, employeeId: req.params.employeeId, active: true, visibility: 'employee' } as any).sort({ createdAt: -1 }).limit(100).toArray()
+  res.json({ success: true, data: docs.map((d) => ({ id: d._id, category: d.category, title: d.title, fileName: d.fileName, createdAt: d.createdAt })) })
 }))
 
 alumniRouter.post('/:employeeId/enable', validate(z.object({ params: empId })), asyncHandler(async (req, res) => {
