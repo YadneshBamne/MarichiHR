@@ -13,12 +13,38 @@ import {
 // The business date a punch belongs to: today for a live punch, the local date of its own timestamp for a terminal's
 const dayOf = async (tenantId: string, at?: Date) => (at ? dateOnly(localDateString(at, await getTenantTimezone(tenantId))) : businessToday(tenantId))
 
-import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
+import { AccessUser, assertCanApprove, assertProfileAccess, getReportingSubtreeIds } from '../../shared/utils/access'
 import { PAYROLL_CONFIG } from '../payroll/payroll.config'
 import { calendarApplies, holidayMap, holidaysBetween, holidayTargetOf, HolidayTarget } from '../../shared/utils/holidays'
-import { policyFor, minutesOf, isWorkingDay, PolicyRules } from './policy.service'
+import { optionalPickDays, optionalPicksFor } from '../../shared/utils/optional-holidays'
+import { policyFor, policyResolver, minutesOf, isWorkingDay, isoWeekday, workDaysFrom, workDaysOf, PolicyRules } from './policy.service'
 
 const ymdOf = (d: Date) => d.toISOString().slice(0, 10)
+
+export const DAY_LOCKED = 'That day is locked for payroll. Ask HR to unlock it.'
+// A day is closed to fixes when its record is locked, or when it falls in a payroll cycle whose attendance is locked.
+// (HR's manual lock only locks records that already exist, so a day with no record is protected only by a locked cycle.)
+async function assertDayOpen(tenantId: string, employeeId: string, date: Date, record?: { isLocked?: boolean | null } | null) {
+  const rec = record === undefined ? await attendanceRepository.findByDate(employeeId, date) : record
+  const cycle = rec?.isLocked ? null : await prisma.payrollCycle.findFirst({ where: { tenantId, attendanceLockedAt: { not: null }, payPeriodStart: { lte: date }, payPeriodEnd: { gte: date } }, select: { id: true } })
+  if (rec?.isLocked || cycle || (await manualLockCovers(tenantId, date))) throw new AppError(DAY_LOCKED, 400, 'DAY_LOCKED')
+}
+
+// MongoDB API: the range HR locks by hand is remembered, so days with no record in it are protected too (the record lock alone cannot cover them).
+// Nothing happens on the Postgres API or if the lookup fails. HR can still correct a locked day with an override.
+const lockPeriods = () => (require('mongoose') as typeof import('mongoose')).connection.collection('attendance_lock_periods')
+async function manualLockCovers(tenantId: string, date: Date) {
+  if (process.env.DB_PROVIDER !== 'mongo') return false
+  try { return !!(await lockPeriods().findOne({ tenantId, start: { $lte: date }, end: { $gte: date } } as any)) } catch { return false }
+}
+
+// "HH:MM" times on a business date in the company timezone; an end at or before the start belongs to the next day (a night shift 22:00 to 06:00 is 8 hours)
+function punchTimes(date: Date, from: string, to: string, tz: string) {
+  const checkIn = zonedTimeToUtc(ymdOf(date), from, tz)
+  let checkOut = zonedTimeToUtc(ymdOf(date), to, tz)
+  if (checkOut <= checkIn) checkOut = new Date(checkOut.getTime() + 86_400_000)
+  return { checkIn, checkOut }
+}
 
 // Kept to the second (6 decimals of an hour), so the UI can show exact HH:MM:SS totals
 function computeWorkedHours(checkIn: Date, checkOut: Date): number {
@@ -182,6 +208,14 @@ export const attendanceService = {
     // The day's total: sessions already closed plus the one ending now
     const checkOut = data.at ?? new Date()
     if (data.at && checkOut < (record.openSince ?? record.checkInTime)) throw new AppError('This punch is earlier than the clock-in already recorded', 400)
+    // Clock-out within a minute of clocking in (the plain button only): almost always a mis-tap, so ask, and on a yes cancel the clock-in
+    const sessionStart = record.openSince ?? record.checkInTime
+    if (data.guardShort && !data.at && checkOut.getTime() - sessionStart.getTime() < 60_000) {
+      if (!data.confirmShort) throw new AppError('You clocked in less than a minute ago. Cancel that clock-in instead?', 409, 'SHORT_SESSION')
+      if ((record.workedHours ?? 0) > 0) await prisma.attendanceRecord.update({ where: { id: record.id }, data: { openSince: null, checkOutTime: sessionStart } }) // an earlier session stays
+      else await prisma.attendanceRecord.delete({ where: { id: record.id } })
+      return { cancelled: true, message: 'Clock-in cancelled. Nothing was counted.' }
+    }
     const workedHours = Math.round(((record.workedHours ?? 0) + computeWorkedHours(record.openSince ?? record.checkInTime, checkOut)) * 1e6) / 1e6
 
     const rules = await dayRules(employeeId, record.date)
@@ -237,24 +271,35 @@ export const attendanceService = {
       holidayTargetOf(employeeId),
     ])
     const holidays = holidayMap(holidayRows, target)
+    // an optional holiday this person picked is a day off for them
+    if (emp) for (const [d, name] of await optionalPickDays(emp.tenantId, employeeId, mStart, mEnd)) if (!holidays.has(d)) holidays.set(d, `${name} (optional)`)
 
+    // The person's working week (isWeekend = their weekly day off, whichever days those are) and the approved leave that covers the month
+    const [workDays, leaves] = await Promise.all([
+      workDaysOf(employeeId),
+      prisma.leaveRequest.findMany({ where: { employeeId, status: 'approved', startDate: { lte: mEnd }, endDate: { gte: mStart } }, select: { startDate: true, endDate: true, startHalf: true, endHalf: true, leaveType: { select: { name: true } } } }),
+    ])
+    const leaveOn = (date: string) => leaves.find((l) => ymdOf(l.startDate) <= date && date <= ymdOf(l.endDate)) ?? null
     const calendar = []
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+      const isWeekend = !workDays.has((dayOfWeek + 6) % 7)
 
       const record = records.find((r) => new Date(r.date).getUTCDate() === day)
 
       const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const holiday = holidays.get(date) ?? null
+      const leave = leaveOn(date)
       calendar.push({
         date,
         dayOfWeek,
         isWeekend,
         holiday,
+        leave: leave ? { type: leave.leaveType.name, half: !!(leave.startHalf || leave.endHalf) && leave.startDate.getTime() === leave.endDate.getTime() } : null,
         record: record || null,
-        status: record?.status || (isWeekend ? 'week_off' : holiday ? 'holiday' : 'no_record'),
+        // a recorded day keeps its record's status (a leave day someone worked shows as worked); an empty leave day is on leave
+        status: record?.status || (isWeekend ? 'week_off' : holiday ? 'holiday' : leave ? 'on_leave' : 'no_record'),
       })
     }
 
@@ -292,12 +337,69 @@ export const attendanceService = {
     }
   },
 
+  // Everyone in scope (a manager: their reporting line, HR: the company) with where they stand right now:
+  //   in (clocked in, running) · done (clocked out) · not_yet_in (working day, shift not past its grace yet) · absent (working day, past the
+  //   grace, nothing recorded) · on_leave (approved leave) · day_off (their weekly day off, a holiday, or a roster day off)
   async getTeamAttendanceToday(managerId: string, tenantId: string, isHR: boolean) {
-    const today = await businessToday(tenantId)
-    if (isHR) {
-      return attendanceRepository.getOrgAttendanceToday(tenantId, today)
+    const [today, tz] = await Promise.all([businessToday(tenantId), getTenantTimezone(tenantId)])
+    const date = ymdOf(today)
+    const ids = isHR ? null : await getReportingSubtreeIds(managerId, tenantId)
+    const emps = await prisma.employee.findMany({
+      where: { tenantId, active: true, employmentStatus: { not: 'terminated' }, hireDate: { lte: today }, ...(ids ? { id: { in: ids } } : {}) },
+      select: {
+        id: true, firstName: true, lastName: true, employeeCode: true, exitDate: true, orgUnitId: true, workLocationId: true, employeeCategory: true, employmentType: true, taxJurisdiction: true,
+        orgUnit: { select: { name: true } }, jobPosition: { select: { title: true } }, user: { select: { avatarUrl: true } }, workLocation: { select: { countryCode: true } },
+        resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } },
+      },
+      orderBy: [{ firstName: 'asc' }],
+      take: 2000,
+    })
+    const empIds = new Set(emps.map((e) => e.id))
+    const [records, leaves, rosters, shifts, holidays, policyOf] = await Promise.all([
+      prisma.attendanceRecord.findMany({ where: { employee: { tenantId }, date: { gte: new Date(today.getTime() - 86_400_000), lte: today } } }),
+      prisma.leaveRequest.findMany({ where: { status: 'approved', employee: { tenantId }, startDate: { lte: today }, endDate: { gte: today } }, select: { employeeId: true, leaveType: { select: { name: true } } } }),
+      prisma.rosterDay.findMany({ where: { tenantId, date: today }, select: { employeeId: true, shiftTemplateId: true } }),
+      prisma.shiftTemplate.findMany({ where: { tenantId } }),
+      holidaysBetween(tenantId, today, today),
+      policyResolver(tenantId),
+    ])
+    const rec = new Map<string, (typeof records)[number]>()
+    for (const r of records) { // today's record, else an unfinished session from yesterday (a night shift)
+      if (!empIds.has(r.employeeId)) continue
+      if (ymdOf(r.date) === date) rec.set(r.employeeId, r)
+      else if (r.openSince && !rec.has(r.employeeId)) rec.set(r.employeeId, r)
     }
-    return attendanceRepository.getTeamAttendanceToday(managerId, today)
+    const leaveOf = new Map(leaves.map((l) => [l.employeeId, l.leaveType.name]))
+    const rosterOf = new Map(rosters.map((r) => [r.employeeId, r.shiftTemplateId]))
+    const shiftById = new Map(shifts.map((s) => [s.id, s]))
+    const nowMin = minutesOf(localTimeString(new Date(), tz))
+    const order = ['absent', 'not_yet_in', 'in', 'done', 'on_leave', 'day_off']
+
+    const people = emps.filter((e) => !e.exitDate || ymdOf(e.exitDate) >= date).map((e) => {
+      const r = rec.get(e.id)
+      const who = { countryCode: e.workLocation?.countryCode || e.taxJurisdiction || null, workLocationId: e.workLocationId ?? null }
+      const rosterShift = rosterOf.has(e.id) ? rosterOf.get(e.id) : undefined // undefined: no roster, null: a day off on the roster
+      let status: string
+      if (r?.openSince) status = 'in'
+      else if (r?.checkInTime || (r && ['present', 'half_day', 'wfh'].includes(r.status))) status = 'done'
+      else if (leaveOf.has(e.id) || r?.status === 'on_leave') status = 'on_leave'
+      else if (rosterShift === null || (rosterShift === undefined && !workDaysFrom(e.resourceCalendar?.days).has(isoWeekday(today))) || holidays.some((h) => !h.isOptional && ymdOf(h.date) === date && calendarApplies(h.calendar, who))) status = 'day_off'
+      else {
+        const pol = policyOf(e)
+        const shift = rosterShift ? shiftById.get(rosterShift) : undefined
+        const flexible = shift ? shift.shiftType === 'flexible' : pol.flexible
+        // flexible hours: only the end of the day makes someone absent; otherwise the start plus grace
+        const cutoff = flexible ? minutesOf(shift?.endTime ?? pol.endTime) : minutesOf(shift?.startTime ?? pol.startTime) + (shift ? shift.graceLateMinutes : pol.graceInMinutes)
+        status = nowMin > cutoff || r?.status === 'absent' ? 'absent' : 'not_yet_in'
+      }
+      return {
+        employeeId: e.id, name: `${e.firstName} ${e.lastName}`, code: e.employeeCode, department: e.orgUnit?.name ?? null, position: e.jobPosition?.title ?? null, avatarUrl: e.user?.avatarUrl ?? null,
+        status, leaveType: leaveOf.get(e.id) ?? null, checkInTime: r?.checkInTime ?? null, checkOutTime: r?.checkOutTime ?? null, openSince: r?.openSince ?? null, workedHours: r?.workedHours ?? 0,
+      }
+    }).sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.name.localeCompare(b.name))
+    const counts: Record<string, number> = { total: people.length, in: 0, done: 0, not_yet_in: 0, absent: 0, on_leave: 0, day_off: 0 }
+    for (const p of people) counts[p.status]++
+    return { date, counts, people }
   },
 
   async raiseRegularisation(employeeId: string, tenantId: string, data: RegularisationDto) {
@@ -310,10 +412,9 @@ export const attendanceService = {
     const used = await prisma.attendanceRegularisation.count({ where: { employeeId, date: { gte: monthStart, lte: monthEnd }, status: { in: ['pending', 'approved'] } } })
     if (used >= policy.regularisationPerMonth) throw new AppError(`Your attendance policy allows ${policy.regularisationPerMonth} regularisations a month`, 400)
 
+    if (data.actualIn === data.actualOut) throw new AppError('The in and out times are the same. Enter when you actually started and finished.', 400)
     const record = await attendanceRepository.findByDate(employeeId, date)
-    if (record?.isLocked) {
-      throw new AppError('Attendance record is locked. Contact HR for corrections.', 400)
-    }
+    await assertDayOpen(tenantId, employeeId, date, record)
 
     const existing = await prisma.attendanceRegularisation.findFirst({
       where: { employeeId, date, status: { in: ['pending', 'approved'] } },
@@ -341,15 +442,15 @@ export const attendanceService = {
     if (!user.employeeId) throw new AppError('Only employees with an employee record can approve requests', 403)
     const approverId = user.employeeId
     if (reg.status !== 'pending') throw new AppError(`Already ${reg.status}`, 400)
+    const regDate = normaliseDateInput(reg.date)
+    await assertDayOpen(tenantId, reg.employeeId, regDate) // the day may have been locked for payroll since the request was made
     const step = await actOnApproval(user, 'regularisation', id, reg.employeeId, true, opts.comments, opts)
     if (!step.final) return attendanceRepository.findRegularisationById(id)
 
     await attendanceRepository.approveRegularisation(id, approverId)
 
-    const regDate = normaliseDateInput(reg.date)
     const tz = await getTenantTimezone(tenantId)
-    const checkIn = zonedTimeToUtc(ymdOf(regDate), reg.actualIn!, tz)
-    const checkOut = zonedTimeToUtc(ymdOf(regDate), reg.actualOut!, tz)
+    const { checkIn, checkOut } = punchTimes(regDate, reg.actualIn!, reg.actualOut!, tz)
 
     const workedHours = computeWorkedHours(checkIn, checkOut)
     const rules = await dayRules(reg.employeeId, regDate)
@@ -419,6 +520,9 @@ export const attendanceService = {
   },
 
   async requestOvertime(employeeId: string, tenantId: string, data: OvertimeRequestDto) {
+    // 30 minutes to 12 hours in quarters of an hour, for a day that has already started (the company's today)
+    if (!(data.overtimeHours >= 0.5 && data.overtimeHours <= 12 && Number.isInteger(data.overtimeHours * 4))) throw new AppError('Overtime is between 0.5 and 12 hours, in quarters of an hour', 400)
+    if (normaliseDateInput(data.date) > (await businessToday(tenantId))) throw new AppError('You cannot ask for overtime on a future day', 400)
     const policy = await policyFor(employeeId)
     if (!policy.overtimeEnabled) throw new AppError('Your attendance policy does not pay overtime', 400)
     if (policy.overtimeMaxHoursPerMonth != null) {
@@ -499,6 +603,9 @@ export const attendanceService = {
       lockedBy
     )
 
+    if (process.env.DB_PROVIDER === 'mongo') {
+      await lockPeriods().insertOne({ _id: require('crypto').randomUUID(), tenantId, start: normaliseDateInput(startDate), end: normaliseDateInput(endDate), lockedBy, at: new Date() } as any).catch((e: any) => console.warn('[attendance] lock period not saved:', e?.message))
+    }
     await eventBus.publish(tenantId, 'attendance.locked', {
       startDate,
       endDate,
@@ -552,6 +659,7 @@ export const attendanceService = {
     const locked = (d: string) => lockedCycles.some((c) => ymdOf(c.payPeriodStart) <= d && d <= ymdOf(c.payPeriodEnd))
     const onLeave = (empId: string, d: string) => leaves.some((l) => l.employeeId === empId && ymdOf(l.startDate) <= d && d <= ymdOf(l.endDate))
     const isHoliday = (who: HolidayTarget, d: string) => holidays.some((h) => !h.isOptional && ymdOf(h.date) === d && calendarApplies(h.calendar, who))
+    const picked = await optionalPicksFor(tenantId, employees.map((e) => e.id), from, to) // optional holidays people picked: their day off
 
     const created: { employeeId: string; date: string }[] = []
     for (const emp of employees) {
@@ -563,7 +671,7 @@ export const attendanceService = {
       for (const d of dates) {
         if (d < ymdOf(emp.hireDate) || (emp.exitDate && d > ymdOf(emp.exitDate))) continue
         if (!workDays.has((normaliseDateInput(d).getUTCDay() + 6) % 7)) continue
-        if (isHoliday(who, d) || recorded.has(`${emp.id}|${d}`) || onLeave(emp.id, d) || locked(d)) continue
+        if (isHoliday(who, d) || picked.has(`${emp.id}|${d}`) || recorded.has(`${emp.id}|${d}`) || onLeave(emp.id, d) || locked(d)) continue
         const res = await prisma.attendanceRecord.createMany({
           data: [{ employeeId: emp.id, date: normaliseDateInput(d), status: 'absent', source: 'system', overrideReason: 'No attendance or approved leave (nightly job)' }],
           skipDuplicates: true,

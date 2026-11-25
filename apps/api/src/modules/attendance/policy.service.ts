@@ -22,7 +22,7 @@ export const BUILT_IN: PolicyRules = {
 const RULE_KEYS = Object.keys(BUILT_IN).filter((k) => k !== 'id' && k !== 'name') as (keyof PolicyRules)[]
 const toRules = (p: any): PolicyRules => ({ id: p.id, name: p.name, ...Object.fromEntries(RULE_KEYS.map((k) => [k, p[k]])) } as PolicyRules)
 
-type Who = { orgUnitId: string | null; workLocationId: string | null; employeeCategory: string | null; employmentType: string | null }
+export type Who = { orgUnitId: string | null; workLocationId: string | null; employeeCategory: string | null; employmentType: string | null }
 const matches = (p: any, e: Who) =>
   (!p.orgUnitIds.length || (!!e.orgUnitId && p.orgUnitIds.includes(e.orgUnitId))) &&
   (!p.workLocationIds.length || (!!e.workLocationId && p.workLocationIds.includes(e.workLocationId))) &&
@@ -37,17 +37,31 @@ export async function policyFor(employeeId: string): Promise<PolicyRules> {
   return p ? toRules(p) : BUILT_IN
 }
 
+// Policies are loaded once for a whole list of people (Team Today): same rule as policyFor
+export async function policyResolver(tenantId: string) {
+  const policies = await prisma.attendancePolicy.findMany({ where: { tenantId, active: true }, orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }] })
+  return (e: Who): PolicyRules => { const p = policies.find((x) => !x.isDefault && matches(x, e)) ?? policies.find((x) => x.isDefault); return p ? toRules(p) : BUILT_IN }
+}
+
 // Minutes since midnight for "HH:MM"
 export const minutesOf = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m }
+
+// The working week as day numbers, 0 = Monday ... 6 = Sunday: the person's resource calendar, else Monday to Friday.
+// (A company changes it under Attendance policies > Working week; see workweek.service.)
+// ponytail: two-week calendars (weekType) are treated as one repeating week
+export const DEFAULT_WORK_DAYS = [0, 1, 2, 3, 4]
+export const workDaysFrom = (calendarDays: { dayOfWeek: number }[] | null | undefined) => new Set<number>(calendarDays?.length ? calendarDays.map((d) => d.dayOfWeek) : DEFAULT_WORK_DAYS)
+export const isoWeekday = (d: Date) => (d.getUTCDay() + 6) % 7
+export async function workDaysOf(employeeId: string) {
+  const emp = await prisma.employee.findUnique({ where: { id: employeeId }, select: { resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } } } })
+  return workDaysFrom(emp?.resourceCalendar?.days)
+}
 
 // Is this date a working day for the person (their working week, not a mandatory holiday)?
 export async function isWorkingDay(employeeId: string, tenantId: string, date: Date) {
   const rostered = await prisma.rosterDay.findUnique({ where: { employeeId_date: { employeeId, date: new Date(`${date.toISOString().slice(0, 10)}T00:00:00Z`) } } })
   if (rostered) return !!rostered.shiftTemplateId
-  const emp = await prisma.employee.findUnique({ where: { id: employeeId }, select: { resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } } } })
-  const days = new Set((emp?.resourceCalendar?.days ?? []).map((d) => d.dayOfWeek))
-  const weekday = (date.getUTCDay() + 6) % 7 // calendars use 0 = Monday
-  if (days.size ? !days.has(weekday) : weekday > 4) return false
+  if (!(await workDaysOf(employeeId)).has(isoWeekday(date))) return false
   const hol = holidayMap(await holidaysBetween(tenantId, date, date), await holidayTargetOf(employeeId))
   return !hol.has(date.toISOString().slice(0, 10))
 }

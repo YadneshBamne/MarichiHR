@@ -5,6 +5,7 @@ import Modal from '../../components/ui/Modal'
 import { FormField, inputStyle, selectStyle } from '../../components/ui/FormField'
 import { useLeaveTypes, useMyLeaveBalances, useApplyLeave } from '../../lib/hooks/useLeave'
 import { useAuth } from '../../contexts/AuthContext'
+import { useWorkingWeek } from '../../lib/hooks/useAttendance'
 
 // Leave days to two decimals without trailing zeros (1.67, 10, 0.5)
 const days = (n?: number) => String(+(n ?? 0).toFixed(2))
@@ -15,13 +16,13 @@ interface Props {
   resubmit?: { id: string; leaveTypeId: string; startDate: string; endDate: string; reason?: string | null; returnNote?: string | null }
 }
 
-// Weekdays in the range minus public holidays (date-only values: UTC throughout); matches the server's count
-function getWorkingDays(start: string, end: string, holidays: Set<string>): number {
+// Working days in the range (the company's working week, 0 = Monday) minus public holidays (date-only values: UTC throughout); matches the server's count
+function getWorkingDays(start: string, end: string, holidays: Set<string>, workDays: number[] = [0, 1, 2, 3, 4]): number {
   if (!start || !end || start > end) return 0
   let count = 0
   for (let cur = new Date(`${start}T00:00:00Z`); cur <= new Date(`${end}T00:00:00Z`); cur = new Date(cur.getTime() + 86_400_000)) {
     const day = cur.toISOString().slice(0, 10)
-    if (cur.getUTCDay() !== 0 && cur.getUTCDay() !== 6 && !holidays.has(day)) count++
+    if (workDays.includes((cur.getUTCDay() + 6) % 7) && !holidays.has(day)) count++
   }
   return count
 }
@@ -31,6 +32,7 @@ export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
   const { data: balances = [] } = useMyLeaveBalances()
   const applyLeave = useApplyLeave()
   const qc = useQueryClient()
+  const { data: week } = useWorkingWeek()
 
   const [form, setForm] = useState({
     leaveTypeId: resubmit?.leaveTypeId ?? '',
@@ -43,7 +45,9 @@ export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
   const [hours, setHours] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const { user } = useAuth()
+  const { user, hasRole } = useAuth()
+  // Employees can apply up to 30 days back; HR and system admins are not limited
+  const earliest = hasRole('hr_admin') || hasRole('system_admin') ? undefined : new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
   const [cert, setCert] = useState<{ id: string; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -71,7 +75,7 @@ export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
     } catch (err: any) { setError(err?.response?.data?.message || 'Could not upload the certificate') } finally { setUploading(false) }
   }
   const hourly = !!selectedType?.hourlyAllowed && !!form.startDate && form.startDate === form.endDate && Number(hours) > 0
-  const workingDays = hourly ? Math.round((Number(hours) / 8) * 100) / 100 : getWorkingDays(form.startDate, form.endDate, new Set(offDays.map((h) => h.date)))
+  const workingDays = hourly ? Math.round((Number(hours) / 8) * 100) / 100 : getWorkingDays(form.startDate, form.endDate, new Set(offDays.map((h) => h.date)), week?.days)
   const available = selectedBalance
     ? Math.max(0, selectedBalance.balanceDays - selectedBalance.usedDays - selectedBalance.pendingDays)
     : null
@@ -165,7 +169,7 @@ export default function ApplyLeaveModal({ open, onClose, resubmit }: Props) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
           <FormField label="Start date" required>
-            <input style={inputStyle} type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required />
+            <input style={inputStyle} type="date" value={form.startDate} min={earliest} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required />
           </FormField>
           <FormField label="End date" required>
             <input style={inputStyle} type="date" value={form.endDate} min={form.startDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} required />

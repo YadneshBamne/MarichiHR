@@ -1,69 +1,58 @@
-import { useTeamAttendanceToday } from '../../lib/hooks/useAttendance'
-import Badge from '../../components/ui/Badge'
+import { useTeamAttendanceToday, type TeamStatus } from '../../lib/hooks/useAttendance'
+import Avatar from '../../components/ui/Avatar'
+import { EmptyState } from '../../components/ui/PageHeader'
+import Icon from '../../components/ui/Icon'
 import { fmtHours } from '../../lib/format'
 
+// Team Today: everyone in the team (HR: the company) with where they stand right now. People who need a look come first.
+const STATUS: Record<TeamStatus, { pill: string; label: string }> = {
+  absent: { pill: 'danger', label: 'Absent' },
+  not_yet_in: { pill: 'warn', label: 'Not in yet' },
+  in: { pill: 'ok', label: 'In' },
+  done: { pill: 'info', label: 'Done for today' },
+  on_leave: { pill: 'honey', label: 'On leave' },
+  day_off: { pill: 'mute', label: 'Day off' },
+}
+const ORDER: TeamStatus[] = ['absent', 'not_yet_in', 'in', 'done', 'on_leave', 'day_off']
+const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')
+
 export default function TeamTodayPanel() {
-  const { data: records = [], isLoading } = useTeamAttendanceToday()
+  const { data, isLoading, isError } = useTeamAttendanceToday()
 
-  const formatTime = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
-
-  if (isLoading) return <div style={{ color: 'var(--faint)', fontSize: '13px' }}>Loading team attendance...</div>
-
-  if (records.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '40px', color: 'var(--faint)', fontSize: '13px' }}>
-        No attendance records found for today.
-      </div>
-    )
-  }
-
-  const present = records.filter((r: any) => r.status === 'present').length
-  const absent = records.filter((r: any) => r.status === 'absent').length
-  const onLeave = records.filter((r: any) => r.status === 'on_leave').length
+  if (isLoading) return <div className="skeleton" style={{ height: 220, borderRadius: 18 }} />
+  if (isError || !data) return <div className="card" style={{ padding: 20 }}>Could not load the team. Try again in a moment.</div>
+  if (!data.people.length) return <div className="card"><EmptyState icon={<Icon name="users" size={26} />} title="No one to show" body="People who report to you appear here, with who is in, absent or on leave today." /></div>
 
   return (
-    <div>
-      <div style={s.statRow}>
-        <div style={s.statPill}>✅ {present} Present</div>
-        <div style={{ ...s.statPill, backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}>⚠ {absent} Absent</div>
-        {onLeave > 0 && <div style={{ ...s.statPill, backgroundColor: 'var(--honey-soft)', color: 'var(--brand)' }}>🌿 {onLeave} On Leave</div>}
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} aria-label="Today at a glance">
+        {ORDER.map((k) => (
+          <span key={k} className={`pill ${STATUS[k].pill}`} style={{ textTransform: 'none', opacity: data.counts[k] ? 1 : 0.5 }}>{data.counts[k]} {STATUS[k].label.toLowerCase()}</span>
+        ))}
+        <span className="dim" style={{ fontSize: 12, alignSelf: 'center', marginLeft: 'auto' }}>{data.counts.total} {data.counts.total === 1 ? 'person' : 'people'}</span>
       </div>
 
-      <div style={s.table}>
-        <div style={s.headerRow}>
-          <div style={{ ...s.col, flex: 2 }}>Employee</div>
-          <div style={s.col}>Clock In</div>
-          <div style={s.col}>Clock Out</div>
-          <div style={s.col}>Hours</div>
-          <div style={s.col}>Status</div>
-        </div>
-        {records.map((rec: any) => (
-          <div key={rec.id} style={s.row}>
-            <div style={{ ...s.col, flex: 2, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={s.avatar}>{rec.employee?.user?.fullName?.charAt(0)}</div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: '500', color: 'var(--ink)' }}>{rec.employee?.user?.fullName}</div>
-                <div style={{ fontSize: '11px', color: 'var(--faint)' }}>{rec.employee?.jobPosition?.title || rec.employee?.orgUnit?.name}</div>
-              </div>
-            </div>
-            <div style={s.col}>{formatTime(rec.checkInTime)}</div>
-            <div style={s.col}>{formatTime(rec.checkOutTime)}</div>
-            <div style={s.col}>{rec.openSince ? 'Working now' : rec.workedHours ? fmtHours(rec.workedHours) : '—'}</div>
-            <div style={s.col}><Badge label={rec.status} /></div>
-          </div>
-        ))}
-      </div>
+      <section className="card" style={{ padding: 0, overflowX: 'auto' }}>
+        <table className="tbl" style={{ width: '100%', minWidth: 560 }}>
+          <thead><tr><th>Person</th><th>Status</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+          <tbody>
+            {data.people.map((p) => (
+              <tr key={p.employeeId}>
+                <td>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Avatar name={p.name} src={p.avatarUrl} size={30} />
+                    <span><strong style={{ fontWeight: 500 }}>{p.name}</strong><span className="dim" style={{ display: 'block', fontSize: 12 }}>{p.position || p.department || p.code}</span></span>
+                  </span>
+                </td>
+                <td><span className={`pill ${STATUS[p.status].pill}`} style={{ textTransform: 'none' }}>{p.status === 'on_leave' && p.leaveType ? p.leaveType : STATUS[p.status].label}</span></td>
+                <td className="num">{time(p.checkInTime)}</td>
+                <td className="num">{time(p.checkOutTime)}</td>
+                <td className="num">{p.openSince ? 'Working now' : p.workedHours ? fmtHours(p.workedHours) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </div>
   )
-}
-
-const s: Record<string, React.CSSProperties> = {
-  statRow: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' },
-  statPill: { padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '500', backgroundColor: 'var(--ok-bg)', color: 'var(--ok)' },
-  table: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', overflow: 'hidden' },
-  headerRow: { display: 'flex', padding: '10px 16px', backgroundColor: 'var(--solid)', borderBottom: '1px solid var(--line)', gap: '12px' },
-  row: { display: 'flex', padding: '12px 16px', borderBottom: '1px solid var(--well)', alignItems: 'center', gap: '12px' },
-  col: { flex: 1, fontSize: '13px', color: 'var(--ink)' },
-  avatar: { width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '600', flexShrink: 0 },
 }

@@ -35,15 +35,24 @@ export function useEmployeeAttendanceCalendar(employeeId: string, year: number, 
   })
 }
 
+export type TeamStatus = 'in' | 'done' | 'not_yet_in' | 'absent' | 'on_leave' | 'day_off'
+export interface TeamPerson { employeeId: string; name: string; code: string; department: string | null; position: string | null; avatarUrl: string | null; status: TeamStatus; leaveType: string | null; checkInTime: string | null; checkOutTime: string | null; openSince: string | null; workedHours: number }
+export interface TeamToday { date: string; counts: Record<TeamStatus | 'total', number>; people: TeamPerson[] }
+
 export function useTeamAttendanceToday() {
   return useQuery({
     queryKey: ['team-attendance-today'],
     queryFn: async () => {
       const res = await api.get('/attendance/team/today')
-      return res.data.data
+      return res.data.data as TeamToday
     },
     refetchInterval: 120000,
   })
+}
+
+// The company's working week: day numbers, 0 = Monday ... 6 = Sunday
+export function useWorkingWeek() {
+  return useQuery({ queryKey: ['working-week'], queryFn: async () => (await api.get('/attendance/working-week')).data.data as { days: number[]; calendar: string | null } })
 }
 
 export function useClockIn() {
@@ -63,7 +72,8 @@ export function useClockIn() {
 export function useClockOut() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { method?: string; latitude?: number; longitude?: number }) => {
+    // confirmShort: the person agreed to cancel a clock-in of under a minute (the server answers 409 SHORT_SESSION first)
+    mutationFn: async (data: { method?: string; latitude?: number; longitude?: number; confirmShort?: boolean }) => {
       const res = await api.post('/attendance/clock-out', data)
       return res.data.data
     },

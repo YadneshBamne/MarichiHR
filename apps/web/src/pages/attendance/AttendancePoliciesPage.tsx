@@ -8,6 +8,7 @@ import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 import { useMasters } from '../../lib/hooks/useMasters'
 import { useOrgTree, useWorkLocations } from '../../lib/hooks/useEmployees'
+import { useWorkingWeek } from '../../lib/hooks/useAttendance'
 
 // Attendance policies (greytHR "attendance schemes"): office hours and the rules applied to each day, per group
 interface Policy {
@@ -46,6 +47,7 @@ export default function AttendancePoliciesPage() {
     <div ref={root}>
       <PageHeader title="Attendance policies" sub="Office hours, grace time, late rules, regularisation, overtime and comp-off for each group of people"
         actions={<button className="btn btn-primary btn-sm" disabled={!data} onClick={() => setEdit({ ...data!.builtIn, name: '', priority: 100, isDefault: !data!.policies.some((p) => p.isDefault), active: true, orgUnitIds: [], workLocationIds: [], employeeCategories: [], employmentTypes: [] })}><Icon name="plus" size={14} /> New policy</button>} />
+      <div style={{ maxWidth: 900, marginBottom: 12 }}><WorkingWeek /></div>
       {isLoading || !data ? <div className="skeleton" style={{ height: 200, borderRadius: 18 }} /> : (
         <div style={{ display: 'grid', gap: 12, maxWidth: 900 }}>
           {!data.policies.length && <section data-card className="card" style={{ padding: 18 }}><p className="dim" style={{ fontSize: 13 }}>No policies yet, so everyone follows the standard rules: 09:00–17:00, 10 minutes grace, 8 hours a full day, 4 a half day, overtime after 8 hours at 1.5×. Create a policy to set your own.</p></section>}
@@ -71,6 +73,40 @@ export default function AttendancePoliciesPage() {
       )}
       {edit && <PolicyModal p={edit} units={units} locations={locations as any[]} onClose={(ok) => { setEdit(null); if (ok) qc.invalidateQueries({ queryKey: ['attendance-policies'] }) }} />}
     </div>
+  )
+}
+
+// The company's working week: the days that count as working days for leave, absence marking, the attendance calendar, Team Today and payroll
+const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+function WorkingWeek() {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const { data } = useWorkingWeek()
+  const [days, setDays] = useState<number[] | null>(null)
+  const cur = days ?? data?.days ?? [0, 1, 2, 3, 4]
+  const same = (a: number[], b: number[]) => a.length === b.length && a.every((x) => b.includes(x))
+  const save = useMutation({
+    mutationFn: async () => (await api.put('/attendance/working-week', { days: cur })).data.data,
+    onSuccess: () => { toast('Working week saved'); setDays(null); qc.invalidateQueries({ queryKey: ['working-week'] }) },
+    onError: (e) => toast(errMsg(e), 'error'),
+  })
+  const tick = (d: number) => setDays(cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b))
+  const dirty = !!data && !same(cur, data.days)
+  return (
+    <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 10 }}>
+      <div><strong style={{ fontSize: 16 }}>Working week</strong><div className="dim" style={{ fontSize: 13 }}>The days people normally work. Leave is counted, absences are marked and payroll days are worked out from this. Public holidays are set under Holiday calendar.</div></div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {WEEK.map((w, d) => <button key={w} type="button" className="chip" aria-pressed={cur.includes(d)} style={cur.includes(d) ? { background: 'var(--night)', color: 'var(--night-ink)' } : undefined} onClick={() => tick(d)}>{w}</button>)}
+        <span className="dim" style={{ fontSize: 12, margin: '0 4px' }}>Quick pick:</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDays([0, 1, 2, 3, 4])}>Mon–Fri</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDays([0, 1, 2, 3, 4, 5])}>Mon–Sat</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button className="btn btn-primary btn-sm" disabled={!dirty || !cur.length || save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save working week'}</button>
+        {dirty && <button className="btn btn-ghost btn-sm" onClick={() => setDays(null)}>Undo</button>}
+        <span className="dim" style={{ fontSize: 12 }}>{cur.length ? `${cur.length} working days a week` : 'Choose at least one day'}</span>
+      </div>
+    </section>
   )
 }
 
@@ -100,7 +136,7 @@ function PolicyModal({ p, units, locations, onClose }: { p: Policy; units: { id:
       <form onSubmit={(e) => { e.preventDefault(); save.mutate() }} style={{ display: 'grid', gap: 12 }}>
         <div style={grid}>
           <label className="field" style={{ gridColumn: 'span 2' }}><span>Name</span><input className="input" required value={f.name} onChange={(e) => set({ name: e.target.value })} /></label>
-          <label className="field"><span>Priority (lower wins)</span>{num('priority')}</label>
+          <label className="field"><span>Order (lowest number is checked first)</span>{num('priority')}</label>
         </div>
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>{yes('isDefault', 'Default for everyone else')}{p.id && !p.isDefault && yes('active', 'Active')}</div>
         {!f.isDefault && <>

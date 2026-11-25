@@ -24,6 +24,8 @@ const ymd = (d) => d.toISOString().slice(0, 10)
   const compType = await prisma.leaveType.findFirst({ where: { tenantId: tenant.id, code: 'COMPOFF' } })
   const balance = async () => Number((await prisma.leaveBalance.findUnique({ where: { employeeId_leaveTypeId: { employeeId: B.id, leaveTypeId: compType.id } } }))?.balanceDays ?? 0)
   const before = await balance() // before Bea works today at all
+  // clocking out within a minute of clocking in asks first (SHORT_SESSION), so the open session is moved back a few minutes before each clock-out
+  const age = (e) => prisma.attendanceRecord.updateMany({ where: { employeeId: e.id, openSince: { not: null } }, data: { openSince: new Date(Date.now() - 5 * 60_000) } })
   const recordOf = (e) => prisma.attendanceRecord.findUnique({ where: { employeeId_date: { employeeId: e.id, date: today } } })
 
   // ─── Policies & who they cover ─────────────────────────────
@@ -54,7 +56,7 @@ const ymd = (d) => d.toISOString().slice(0, 10)
   r = await api(tB, 'POST', '/attendance/clock-in', { method: 'web' })
   let rec = await recordOf(B)
   check('clocking in after start + grace records minutes late', [200, 201].includes(r.status) && rec.lateMinutes > 0, { status: r.status, late: rec?.lateMinutes })
-  r = await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
+  await age(B); r = await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
   rec = await recordOf(B)
   check('clocking out before end − grace records minutes early', r.status === 200 && rec.earlyOutMinutes > 0, rec)
   check('with no allowance left the day becomes a half day (loss of pay)', rec.penalty === 'half_day_lop' && rec.status === 'half_day', { penalty: rec.penalty, status: rec.status })
@@ -63,15 +65,15 @@ const ymd = (d) => d.toISOString().slice(0, 10)
   check('a policy can require the location to clock in (400)', r.status === 400 && /location/.test(r.data.message), r.data)
   await api(owner, 'PATCH', `/attendance/policies/${office.id}`, { requireGeofence: false })
   await api(tB, 'POST', '/attendance/clock-in', { method: 'web' })
-  await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
+  await age(B); await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
   rec = await recordOf(B)
   check('within the allowance there is no penalty', rec.penalty === null && rec.status === 'present', { penalty: rec.penalty, status: rec.status })
 
   // ─── Comp-off for working a holiday ────────────────────────
   const cal = (await api(owner, 'POST', '/holidays/calendars', { name: `Hol ${TAG}`, year: today.getUTCFullYear(), holidays: [{ name: 'Test holiday', date: ymd(today), type: 'company' }] })).body
-  await api(tB, 'POST', '/attendance/clock-in', { method: 'web' }); await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
+  await api(tB, 'POST', '/attendance/clock-in', { method: 'web' }); await age(B); await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
   const once = await balance()
-  await api(tB, 'POST', '/attendance/clock-in', { method: 'web' }); await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
+  await api(tB, 'POST', '/attendance/clock-in', { method: 'web' }); await age(B); await api(tB, 'POST', '/attendance/clock-out', { method: 'web' })
   check('working a holiday (or a weekly off) earns one comp-off day', once - before === 1 && (await recordOf(B)).compOffDays === 1, { before, once })
   check('…once, however many times you clock out', (await balance()) === once)
 

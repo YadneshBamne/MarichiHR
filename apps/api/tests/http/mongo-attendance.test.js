@@ -43,6 +43,8 @@ const short = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 150)}`
     check((await call('POST', '/attendance/clock-in', mary, { method: 'web' })).status >= 400, 'clocking in twice is refused')
     const t1 = await call('GET', '/attendance/today', mary)
     check(t1.status === 200 && t1.data.clockedIn === true, 'today shows the open record')
+    // clocking out within a minute asks first (see mongo-ta-core.test.js); she clocked in a few minutes ago
+    await db.collection('attendance_records').updateOne({ employeeId: maryId, openSince: { $ne: null } }, { $set: { checkInTime: new Date(Date.now() - 5 * 60000), openSince: new Date(Date.now() - 5 * 60000) } })
     const co = await call('POST', '/attendance/clock-out', mary, { method: 'web' })
     check(co.status === 200, `Mary clocks out (${short(co)})`)
     const month = iso(new Date()).slice(0, 7), mq = 'year=' + month.slice(0, 4) + '&month=' + Number(month.slice(5))

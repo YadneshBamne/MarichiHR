@@ -13,6 +13,8 @@ export interface ClockOutDto {
   longitude?: number
   method?: 'web' | 'mobile' | 'biometric' | 'qr' | 'nfc'
   at?: Date
+  guardShort?: boolean // set by the plain clock-out route only: a session under a minute asks for confirmation and is then cancelled
+  confirmShort?: boolean // the person agreed to cancel that clock-in
 }
 
 export interface RegularisationDto {

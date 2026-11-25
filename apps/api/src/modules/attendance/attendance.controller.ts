@@ -15,7 +15,7 @@ export const attendanceController = {
 
   clockOut: asyncHandler(async (req: Request, res: Response) => {
     const { employeeId, tenantId } = req.user!
-    const record = await attendanceService.clockOut(employeeId!, tenantId, req.body)
+    const record = await attendanceService.clockOut(employeeId!, tenantId, { ...req.body, guardShort: true })
     res.json({ success: true, data: record })
   }),
 

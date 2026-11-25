@@ -6,6 +6,7 @@ import api from '../../lib/api'
 import PageHeader from '../../components/ui/PageHeader'
 import Modal from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
+import { useAuth } from '../../contexts/AuthContext'
 import { useReveal } from '../../lib/motion'
 
 // Shifts & rosters (HR), my roster, the attendance heatmap (HR), the office QR code and the page it opens.
@@ -13,18 +14,20 @@ const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 const addDays = (s: string, n: number) => ymd(new Date(new Date(`${s}T00:00:00Z`).getTime() + n * 86_400_000))
 const monday = () => { const d = new Date(); const w = (d.getUTCDay() + 6) % 7; return ymd(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - w))) }
-interface Shift { id: string; name: string; shiftType: string; startTime: string | null; endTime: string | null; splitStartTime: string | null; splitEndTime: string | null; active: boolean }
-const hours = (s: Shift) => s.shiftType === 'flexible' ? 'Flexible' : `${s.startTime}–${s.endTime}${s.splitStartTime ? `, ${s.splitStartTime}–${s.splitEndTime}` : ''}`
+interface Shift { id: string; name: string; shiftType: string; startTime: string | null; endTime: string | null; splitStartTime: string | null; splitEndTime: string | null; active: boolean; overnight?: boolean }
+const hours = (s: Shift) => s.shiftType === 'flexible' ? 'Flexible' : `${s.startTime}–${s.endTime}${s.overnight ? ' (next day)' : ''}${s.splitStartTime ? `, ${s.splitStartTime}–${s.splitEndTime}` : ''}`
 const useShifts = () => useQuery({ queryKey: ['shifts'], queryFn: async () => (await api.get('/attendance/shifts')).data.data as Shift[] })
 
 export default function RostersPage() {
   const root = useReveal<HTMLDivElement>(true)
+  const { hasRole } = useAuth()
+  const hr = hasRole('hr_admin') || hasRole('system_admin')
   return (
     <div ref={root}>
-      <PageHeader title="Shifts & rosters" sub="Set up shifts (fixed, flexible or split) and plan who works which shift, with rotating patterns." />
+      <PageHeader title="Shifts & rosters" sub={hr ? 'Set up shifts (fixed, flexible or split) and plan who works which shift, with rotating patterns.' : 'Plan who in your team works which shift. People are told when a roster is set.'} />
       <div style={{ display: 'grid', gap: 'var(--gap)' }}>
-        <Shifts />
-        <AssignRoster />
+        {hr && <Shifts />}
+        <AssignRoster hr={hr} />
         <RosterWeek all />
       </div>
     </div>
@@ -41,12 +44,18 @@ function Shifts() {
     onSuccess: () => { toast('Shift saved'); qc.invalidateQueries({ queryKey: ['shifts'] }); setF(null) },
     onError: (e) => toast(errMsg(e), 'error'),
   })
+  // Switching a shift off stops it being offered in new rosters; rosters already made keep it
+  const toggle = useMutation({
+    mutationFn: (s: Shift) => api.patch(`/attendance/shifts/${s.id}`, { active: !s.active }),
+    onSuccess: (_r, s) => { toast(s.active ? `${s.name} switched off` : `${s.name} switched on`); qc.invalidateQueries({ queryKey: ['shifts'] }) },
+    onError: (e) => toast(errMsg(e), 'error'),
+  })
   return (
     <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><h3 style={{ fontSize: 16, flex: 1 }}>Shifts</h3><button className="btn btn-primary btn-sm" onClick={() => setF({ name: '', shiftType: 'fixed', startTime: '09:00', endTime: '17:00', splitStartTime: '', splitEndTime: '' })}>New shift</button></div>
       {!data.length ? <p className="dim" style={{ fontSize: 13 }}>No shifts yet. Without one, everyone follows their attendance policy's office hours.</p> : (
         <table className="tbl" style={{ width: '100%' }}><thead><tr><th>Shift</th><th>Type</th><th>Hours</th><th /></tr></thead>
-          <tbody>{data.map((s) => <tr key={s.id} style={{ opacity: s.active ? 1 : 0.5 }}><td>{s.name}</td><td>{s.shiftType}</td><td className="num">{hours(s)}</td><td style={{ textAlign: 'right' }}><button className="btn btn-ghost btn-sm" onClick={() => setF({ ...s, splitStartTime: s.splitStartTime ?? '', splitEndTime: s.splitEndTime ?? '' })}>Edit</button></td></tr>)}</tbody>
+          <tbody>{data.map((s) => <tr key={s.id} style={{ opacity: s.active ? 1 : 0.55 }}><td>{s.name} {!s.active && <span className="pill mute">off</span>}</td><td>{s.shiftType}</td><td className="num">{hours(s)}</td><td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><button className="btn btn-ghost btn-sm" onClick={() => setF({ ...s, splitStartTime: s.splitStartTime ?? '', splitEndTime: s.splitEndTime ?? '' })}>Edit</button> <button className="btn btn-ghost btn-sm" disabled={toggle.isPending} onClick={() => toggle.mutate(s)}>{s.active ? 'Switch off' : 'Switch on'}</button></td></tr>)}</tbody>
         </table>
       )}
       {f && (
@@ -55,6 +64,7 @@ function Shifts() {
             <label className="field"><span>Name</span><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={60} placeholder="Early, Late, Night…" /></label>
             <label className="field"><span>Type</span><select className="input" value={f.shiftType} onChange={(e) => setF({ ...f, shiftType: e.target.value })}><option value="fixed">Fixed hours</option><option value="flexible">Flexible (no late marks)</option><option value="split">Split (two parts a day)</option></select></label>
             {f.shiftType !== 'flexible' && <div style={{ display: 'flex', gap: 10 }}><label className="field"><span>Starts</span><input className="input" type="time" value={f.startTime ?? ''} onChange={(e) => setF({ ...f, startTime: e.target.value })} /></label><label className="field"><span>Ends</span><input className="input" type="time" value={f.endTime ?? ''} onChange={(e) => setF({ ...f, endTime: e.target.value })} /></label></div>}
+            {f.shiftType !== 'flexible' && f.startTime && f.endTime && f.endTime < f.startTime && <p className="dim" style={{ fontSize: 12, margin: 0 }}>This shift ends the next day, so it is saved as a night shift.</p>}
             {f.shiftType === 'split' && <div style={{ display: 'flex', gap: 10 }}><label className="field"><span>Second part starts</span><input className="input" type="time" value={f.splitStartTime} onChange={(e) => setF({ ...f, splitStartTime: e.target.value })} /></label><label className="field"><span>Second part ends</span><input className="input" type="time" value={f.splitEndTime} onChange={(e) => setF({ ...f, splitEndTime: e.target.value })} /></label></div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="btn btn-primary" disabled={save.isPending || f.name.trim().length < 2} onClick={() => save.mutate()}>Save</button></div>
           </div>
@@ -64,11 +74,21 @@ function Shifts() {
   )
 }
 
-function AssignRoster() {
+function AssignRoster({ hr = true }: { hr?: boolean }) {
   const toast = useToast()
   const qc = useQueryClient()
   const { data: shifts = [] } = useShifts()
-  const { data: people = [] } = useQuery({ queryKey: ['roster-people'], queryFn: async () => ((await api.get('/employees/org-chart')).data.data.people as { id: string; name: string; department: string | null }[]) })
+  // HR picks from everyone; a manager from the people who report to them (the server checks this too)
+  const { data: people = [] } = useQuery({
+    queryKey: ['roster-people', hr],
+    queryFn: async () => hr
+      ? ((await api.get('/employees/org-chart')).data.data.people as { id: string; name: string; department: string | null }[])
+      : ((await api.get('/employees', { params: { limit: 100 } })).data.data as any[]).map((p) => ({ id: p.id as string, name: `${p.firstName} ${p.lastName}`, department: (p.orgUnit?.name ?? null) as string | null })),
+  })
+  const [q, setQ] = useState('')
+  const [dept, setDept] = useState('')
+  const departments = [...new Set(people.map((p) => p.department).filter(Boolean) as string[])].sort()
+  const shown = people.filter((p) => (!dept || p.department === dept) && (!q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase())))
   const [f, setF] = useState({ employeeIds: [] as string[], from: monday(), to: addDays(monday(), 27), pattern: [''] as string[] })
   const save = useMutation({
     mutationFn: async () => (await api.post('/attendance/roster', { employeeIds: f.employeeIds, from: f.from, to: f.to, pattern: f.pattern.map((p) => p || null) })).data.data,
@@ -80,7 +100,24 @@ function AssignRoster() {
     <section data-card className="card" style={{ padding: 18, display: 'grid', gap: 10 }}>
       <h3 style={{ fontSize: 16 }}>Plan a roster</h3>
       <p className="dim" style={{ fontSize: 13 }}>Pick people and dates, then the repeating pattern of shifts and days off (e.g. Early, Early, Late, Late, Off, Off). It replaces any roster those people already have on those dates.</p>
-      <label className="field"><span>People</span><select className="input" multiple value={f.employeeIds} onChange={(e) => setF({ ...f, employeeIds: [...e.target.selectedOptions].map((o) => o.value) })} style={{ height: 120 }}>{people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.department ? ` · ${p.department}` : ''}</option>)}</select></label>
+      <div className="field">
+        <span>People ({f.employeeIds.length} chosen)</span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input className="input" style={{ flex: '1 1 200px' }} placeholder="Search by name" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
+          {departments.length > 1 && <select className="input" style={{ flex: '0 1 200px' }} aria-label="Department" value={dept} onChange={(e) => setDept(e.target.value)}><option value="">All departments</option>{departments.map((d) => <option key={d} value={d}>{d}</option>)}</select>}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setF({ ...f, employeeIds: [...new Set([...f.employeeIds, ...shown.map((p) => p.id)])] })} disabled={!shown.length}>Choose all shown</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setF({ ...f, employeeIds: [] })} disabled={!f.employeeIds.length}>Clear</button>
+        </div>
+        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 2, marginTop: 6 }} role="group" aria-label="People">
+          {!shown.length && <span className="dim" style={{ fontSize: 13 }}>{people.length ? 'No one matches.' : hr ? 'No people yet.' : 'Nobody reports to you yet.'}</span>}
+          {shown.map((p) => (
+            <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 34, fontSize: 14 }}>
+              <input type="checkbox" checked={f.employeeIds.includes(p.id)} onChange={(e) => setF({ ...f, employeeIds: e.target.checked ? [...f.employeeIds, p.id] : f.employeeIds.filter((x) => x !== p.id) })} />
+              {p.name}{p.department && <span className="dim" style={{ fontSize: 12 }}> · {p.department}</span>}
+            </label>
+          ))}
+        </div>
+      </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <label className="field"><span>From</span><input className="input" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></label>
         <label className="field"><span>To (up to 3 months)</span><input className="input" type="date" min={f.from} value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></label>

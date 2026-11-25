@@ -14,6 +14,7 @@ import { prisma } from '../../infrastructure/database/prisma.stub' // a .mongo f
 import { Employee, OrgUnit, User, PayrollCycle, PayrollInput, Payslip, Notification } from '../../infrastructure/mongo/mongo'
 import { businessToday, monthRange } from '../../shared/utils/businessDate'
 import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
+import { workDaysOf, isoWeekday } from '../attendance/policy.service'
 import { announcementService } from '../announcements/announcements.service'
 import { policyService } from '../policies/policies.service'
 import { buildInbox } from '../approvals/inbox.mongo'
@@ -109,7 +110,8 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
     ])
     const myHolidays = holidayMap(holidayRows, target)
     let workingSoFar = 0
-    for (let d = new Date(monthStart); d < today; d = new Date(d.getTime() + dayMs)) if (![0, 6].includes(d.getUTCDay()) && !myHolidays.has(ymd(d))) workingSoFar++
+    const myWeek = await workDaysOf(me) // the person's own working week (a 6-day company counts Saturdays)
+    for (let d = new Date(monthStart); d < today; d = new Date(d.getTime() + dayMs)) if (myWeek.has(isoWeekday(d)) && !myHolidays.has(ymd(d))) workingSoFar++
     const present = monthRecs.filter((r: any) => ['present', 'half_day', 'on_leave'].includes(r.status)).length
     return {
       leave: has('leave') ? {

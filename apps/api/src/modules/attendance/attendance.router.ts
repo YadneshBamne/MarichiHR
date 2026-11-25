@@ -6,6 +6,7 @@ import { attendanceController } from './attendance.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { policyService } from './policy.service'
+import { workWeekService, WorkWeekBody } from './workweek.service'
 
 import { attendanceExtras, ShiftBody, RosterBody } from './attendance-extras.service'
 export const attendanceRouter = Router()
@@ -14,7 +15,8 @@ attendanceRouter.use(authenticate)
 
 // ─── CLOCK IN/OUT ─────────────────────────────────────────────
 attendanceRouter.post('/clock-in', requirePermission('attendance:write'), attendanceController.clockIn)
-attendanceRouter.post('/clock-out', requirePermission('attendance:write'), attendanceController.clockOut)
+const ClockOutBody = z.object({ method: z.enum(['web', 'mobile', 'qr', 'nfc']).optional(), latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional(), confirmShort: z.boolean().optional() }).strict()
+attendanceRouter.post('/clock-out', requirePermission('attendance:write'), validate(z.object({ body: ClockOutBody })), attendanceController.clockOut)
 attendanceRouter.get('/today', requirePermission('attendance:read'), attendanceController.getTodayStatus)
 
 // ─── CALENDAR ─────────────────────────────────────────────────
@@ -26,14 +28,17 @@ attendanceRouter.get('/calendar/:employeeId', requirePermission('attendance:read
 attendanceRouter.get('/team/today', requirePermission('attendance:read'), requireRoles('manager', 'hr_admin', 'system_admin'), attendanceController.getTeamToday)
 
 // ─── REGULARISATIONS ──────────────────────────────────────────
-attendanceRouter.post('/regularisations', requirePermission('attendance:write'), attendanceController.raiseRegularisation)
+const hm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM')
+const RegularisationBody = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), actualIn: hm, actualOut: hm, reason: z.string().trim().min(3).max(500) }).strict()
+attendanceRouter.post('/regularisations', requirePermission('attendance:write'), validate(z.object({ body: RegularisationBody })), attendanceController.raiseRegularisation)
 attendanceRouter.get('/regularisations/me', requirePermission('attendance:read'), attendanceController.listMyRegularisations)
 attendanceRouter.get('/regularisations/pending', requirePermission('attendance:approve'), attendanceController.listPendingRegularisations)
 attendanceRouter.post('/regularisations/:id/approve', requirePermission('attendance:approve'), attendanceController.approveRegularisation)
 attendanceRouter.post('/regularisations/:id/reject', requirePermission('attendance:approve'), attendanceController.rejectRegularisation)
 
 // ─── OVERTIME ─────────────────────────────────────────────────
-attendanceRouter.post('/overtime', requirePermission('attendance:write'), attendanceController.requestOvertime)
+const OvertimeBody = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), overtimeHours: z.number().min(0.5).max(12).refine((h) => Number.isInteger(h * 4), 'Hours go in quarters'), reason: z.string().trim().min(3).max(500) }).strict()
+attendanceRouter.post('/overtime', requirePermission('attendance:write'), validate(z.object({ body: OvertimeBody })), attendanceController.requestOvertime)
 attendanceRouter.get('/overtime/me', requirePermission('attendance:read'), attendanceController.listMyOvertime)
 attendanceRouter.get('/overtime/pending', requirePermission('attendance:approve'), attendanceController.listPendingOvertime)
 attendanceRouter.post('/overtime/:id/approve', requirePermission('attendance:approve'), attendanceController.approveOvertime)
@@ -64,7 +69,11 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 attendanceRouter.get('/shifts', asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.shifts(req.user!.tenantId) })))
 attendanceRouter.post('/shifts', policyAdmins, validate(z.object({ body: ShiftBody })), asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await attendanceExtras.saveShift(req.user!, null, req.body) })))
 attendanceRouter.patch('/shifts/:id', policyAdmins, validate(z.object({ params: id, body: ShiftBody.partial() })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.saveShift(req.user!, String(req.params.id), req.body as any) })))
-attendanceRouter.post('/roster', policyAdmins, validate(z.object({ body: RosterBody })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.assignRoster(req.user!, req.body) })))
+// The working week (which weekdays are working days): everyone reads it, HR sets it
+attendanceRouter.get('/working-week', asyncHandler(async (req, res) => res.json({ success: true, data: await workWeekService.get(req.user!.tenantId) })))
+attendanceRouter.put('/working-week', policyAdmins, validate(z.object({ body: WorkWeekBody })), asyncHandler(async (req, res) => res.json({ success: true, data: await workWeekService.set(req.user!, req.body) })))
+// Rosters: HR for anyone, a manager for their reporting line (the service checks the scope)
+attendanceRouter.post('/roster', requireRoles('hr_admin', 'system_admin', 'manager'), validate(z.object({ body: RosterBody })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.assignRoster(req.user!, req.body) })))
 attendanceRouter.get('/roster', validate(z.object({ query: z.object({ from: day, to: day, employeeId: z.string().uuid().optional() }) })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.roster(req.user!, String(req.query.from), String(req.query.to), req.query.employeeId as string | undefined) })))
 attendanceRouter.get('/locations/:id/qr', policyAdmins, validate(z.object({ params: id })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.qrToken(req.user!, String(req.params.id)) })))
 attendanceRouter.post('/locations/:id/qr/rotate', policyAdmins, validate(z.object({ params: id })), asyncHandler(async (req, res) => res.json({ success: true, data: await attendanceExtras.qrToken(req.user!, String(req.params.id), true) })))

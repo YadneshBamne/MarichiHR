@@ -30,6 +30,8 @@ export const BlackoutBody = z.object({
   name: z.string().trim().min(2).max(80), startDate: ymdArg, endDate: ymdArg,
   leaveTypeIds: z.array(z.string().uuid()).max(50).default([]), departmentIds: z.array(z.string().uuid()).max(100).default([]),
 }).strict()
+// A change sends only the fields that change (no defaults, or a rename would clear the leave types)
+export const BlackoutPatch = z.object({ name: z.string().trim().min(2).max(80), startDate: ymdArg, endDate: ymdArg, leaveTypeIds: z.array(z.string().uuid()).max(50), departmentIds: z.array(z.string().uuid()).max(100) }).strict().partial()
 
 export const leaveExtras = {
   // ─── Blackouts ────────────────────────────────────────────
@@ -44,6 +46,22 @@ export const leaveExtras = {
     const row = await prisma.leaveBlackout.create({ data: { tenantId: u.tenantId, name: b.name, startDate: day(b.startDate), endDate: day(b.endDate), leaveTypeIds: b.leaveTypeIds, departmentIds: b.departmentIds, createdBy: u.userId } })
     await prisma.auditLog.create({ data: { tenantId: u.tenantId, userId: u.userId, action: 'LEAVE_BLACKOUT_CREATED', entityType: 'leave_blackout', entityId: row.id, newValue: b } })
     return row
+  },
+  async updateBlackout(u: AccessUser, id: string, b: z.infer<typeof BlackoutPatch>) {
+    const cur = await prisma.leaveBlackout.findFirst({ where: { id, tenantId: u.tenantId, active: true } })
+    if (!cur) throw new AppError('Blackout not found', 404)
+    if ((b.endDate ?? ymd(cur.endDate)) < (b.startDate ?? ymd(cur.startDate))) throw new AppError('The end date is before the start date', 400)
+    if (b.leaveTypeIds?.length && (await prisma.leaveType.count({ where: { tenantId: u.tenantId, id: { in: b.leaveTypeIds } } })) !== b.leaveTypeIds.length) throw new AppError('Leave type not found', 404)
+    if (b.departmentIds?.length && (await prisma.orgUnit.count({ where: { tenantId: u.tenantId, id: { in: b.departmentIds } } })) !== b.departmentIds.length) throw new AppError('Department not found', 404)
+    const data: Record<string, unknown> = {}
+    if (b.name !== undefined) data.name = b.name
+    if (b.startDate !== undefined) data.startDate = day(b.startDate)
+    if (b.endDate !== undefined) data.endDate = day(b.endDate)
+    if (b.leaveTypeIds !== undefined) data.leaveTypeIds = b.leaveTypeIds
+    if (b.departmentIds !== undefined) data.departmentIds = b.departmentIds
+    const row = await prisma.leaveBlackout.update({ where: { id: cur.id }, data })
+    await prisma.auditLog.create({ data: { tenantId: u.tenantId, userId: u.userId, action: 'LEAVE_BLACKOUT_UPDATED', entityType: 'leave_blackout', entityId: id, newValue: b } })
+    return { ...row, startDate: ymd(row.startDate), endDate: ymd(row.endDate) }
   },
   async removeBlackout(u: AccessUser, id: string) {
     const r = await prisma.leaveBlackout.updateMany({ where: { id, tenantId: u.tenantId }, data: { active: false } })

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../infrastructure/database/prisma'
 import { notify, userIdsWithRole } from '../../infrastructure/notifications/notify'
 import { AppError } from '../../shared/utils/AppError'
-import { AccessUser } from '../../shared/utils/access'
+import { AccessUser, getReportingSubtreeIds } from '../../shared/utils/access'
 import { businessToday, getTenantTimezone } from '../../shared/utils/businessDate'
 
 // Attendance extras: shift templates (fixed, flexible, split) and rosters (a shift or a day off per person and date,
@@ -15,6 +15,7 @@ const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 const day = (s: string) => new Date(`${s}T00:00:00.000Z`)
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
 const round2 = (n: number) => Math.round(n * 100) / 100
+const isAdminRole = (u: AccessUser) => u.roleIds.some((r) => ['hr_admin', 'system_admin'].includes(r))
 
 export const ShiftBody = z.object({
   name: z.string().trim().min(2).max(60),
@@ -39,9 +40,26 @@ export const attendanceExtras = {
   // ─── Shifts ───────────────────────────────────────────────
   shifts: (tenantId: string) => prisma.shiftTemplate.findMany({ where: { tenantId }, orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
   async saveShift(u: AccessUser, id: string | null, b: z.infer<typeof ShiftBody>) {
-    if (b.shiftType !== 'flexible' && (!b.startTime || !b.endTime) && !id) throw new AppError('Set the start and end time', 400)
-    if (b.shiftType === 'split' && (!b.splitStartTime || !b.splitEndTime)) throw new AppError('A split shift needs the second part\'s start and end', 400)
-    const data = { ...b, ...(b.shiftType !== 'split' && { splitStartTime: null, splitEndTime: null }) }
+    // Check the shift as it will be after this change (a change may send only some fields, e.g. just { active: false })
+    const cur = id ? await prisma.shiftTemplate.findFirst({ where: { id, tenantId: u.tenantId } }) : null
+    if (id && !cur) throw new AppError('Shift not found', 404)
+    const m = { ...(cur ?? {}), ...b } as any
+    const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+    let overnight = false
+    if (m.shiftType !== 'flexible') {
+      if (!m.startTime || !m.endTime) throw new AppError('Set the start and end time', 400)
+      if (m.startTime === m.endTime) throw new AppError('A shift cannot start and end at the same time', 400)
+      overnight = mins(m.endTime) < mins(m.startTime) // a night shift runs past midnight
+    }
+    if (m.shiftType === 'split') {
+      if (!m.splitStartTime || !m.splitEndTime) throw new AppError('A split shift needs the second part\'s start and end', 400)
+      if (overnight) throw new AppError('A split shift cannot run past midnight', 400)
+      if (mins(m.splitStartTime) <= mins(m.endTime)) throw new AppError('The second part must start after the first part ends', 400)
+      if (mins(m.splitEndTime) <= mins(m.splitStartTime)) throw new AppError('The second part must end after it starts', 400)
+    }
+    // times and type are rewritten only when the change touches them
+    const touchesTimes = !cur || ['shiftType', 'startTime', 'endTime', 'splitStartTime', 'splitEndTime'].some((k) => (b as any)[k] !== undefined)
+    const data = { ...b, ...(touchesTimes && { overnight, ...(m.shiftType !== 'split' && { splitStartTime: null, splitEndTime: null }) }) }
     if (id) {
       const r = await prisma.shiftTemplate.updateMany({ where: { id, tenantId: u.tenantId }, data })
       if (!r.count) throw new AppError('Shift not found', 404)
@@ -58,6 +76,11 @@ export const attendanceExtras = {
     const shiftIds = [...new Set(b.pattern.filter(Boolean) as string[])]
     if ((await prisma.shiftTemplate.count({ where: { tenantId: u.tenantId, id: { in: shiftIds }, active: true } })) !== shiftIds.length) throw new AppError('Shift not found', 404)
     if ((await prisma.employee.count({ where: { tenantId: u.tenantId, id: { in: b.employeeIds }, active: true } })) !== b.employeeIds.length) throw new AppError('Employee not found', 404)
+    // HR plans anyone; a manager only the people in their reporting line
+    if (!isAdminRole(u)) {
+      const mine = new Set(u.employeeId ? await getReportingSubtreeIds(u.employeeId, u.tenantId) : [])
+      if (b.employeeIds.some((e) => !mine.has(e))) throw new AppError('You can plan rosters only for the people who report to you', 403)
+    }
     const rows: { tenantId: string; employeeId: string; date: Date; shiftTemplateId: string | null; createdBy: string }[] = []
     for (let i = 0; i < span; i++) {
       const date = new Date(day(b.from).getTime() + i * 86_400_000)
@@ -68,11 +91,26 @@ export const attendanceExtras = {
       prisma.rosterDay.createMany({ data: rows }),
     ])
     await prisma.auditLog.create({ data: { tenantId: u.tenantId, userId: u.userId, action: 'ROSTER_ASSIGNED', entityType: 'roster', entityId: b.from, newValue: { people: b.employeeIds.length, from: b.from, to: b.to, pattern: b.pattern } } })
+    await this.tellRostered(u, b, shiftIds)
     return { days: rows.length }
   },
+  // Each person in the roster is told once for the whole range ("from 1 Dec to 28 Dec: Early, Early, Late, Off ...")
+  async tellRostered(u: AccessUser, b: z.infer<typeof RosterBody>, shiftIds: string[]) {
+    try {
+      const shifts = await prisma.shiftTemplate.findMany({ where: { tenantId: u.tenantId, id: { in: shiftIds } }, select: { id: true, name: true } })
+      const name = new Map(shifts.map((s) => [s.id, s.name]))
+      const pattern = b.pattern.map((p) => (p ? name.get(p) ?? 'Shift' : 'Off')).join(', ')
+      const emps = await prisma.employee.findMany({ where: { tenantId: u.tenantId, id: { in: b.employeeIds } }, select: { id: true, userId: true } })
+      const range = b.from === b.to ? b.from : `${b.from} to ${b.to}`
+      await notify({ tenantId: u.tenantId, userIds: emps.map((e) => e.userId).filter((x) => x !== u.userId), type: 'attendance.roster', title: 'Your roster was updated', body: `${range}: ${pattern}${b.pattern.length > 1 ? ' (repeats)' : ''}`, link: '/attendance' })
+    } catch { /* best effort: a failed notification never fails the roster */ }
+  },
   async roster(u: AccessUser, from: string, to: string, employeeId?: string) {
-    const isAdmin = u.roleIds.some((r) => ['hr_admin', 'system_admin'].includes(r))
-    const rows = await prisma.rosterDay.findMany({ where: { tenantId: u.tenantId, date: { gte: day(from), lte: day(to) }, ...(isAdmin ? (employeeId ? { employeeId } : {}) : { employeeId: u.employeeId ?? '-' }) }, orderBy: { date: 'asc' } })
+    const isAdmin = isAdminRole(u)
+    // HR sees anyone; a manager their reporting line and themselves; everyone else only themselves
+    const team = !isAdmin && u.employeeId && u.roleIds.includes('manager') ? [u.employeeId, ...(await getReportingSubtreeIds(u.employeeId, u.tenantId))] : null
+    const who = isAdmin ? (employeeId ? { employeeId } : {}) : team ? { employeeId: employeeId ? (team.includes(employeeId) ? employeeId : '-') : { in: team } } : { employeeId: u.employeeId ?? '-' }
+    const rows = await prisma.rosterDay.findMany({ where: { tenantId: u.tenantId, date: { gte: day(from), lte: day(to) }, ...who }, orderBy: { date: 'asc' } })
     const [shifts, emps] = await Promise.all([
       prisma.shiftTemplate.findMany({ where: { tenantId: u.tenantId, id: { in: [...new Set(rows.map((r) => r.shiftTemplateId).filter(Boolean) as string[])] } } }),
       prisma.employee.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, firstName: true, lastName: true, employeeCode: true } }),

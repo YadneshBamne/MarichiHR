@@ -34,9 +34,14 @@ function Review() {
   const [note, setNote] = useState<Record<string, string>>({})
   const q = useQuery({ queryKey: ['geomark-checks', status], queryFn: async () => (await api.get('/geomark/checks', { params: { status } })).data.data as any[] })
   const decide = useMutation({ mutationFn: async (v: { id: string; approve: boolean }) => (await api.post(`/geomark/checks/${v.id}/decision`, { approve: v.approve, note: note[v.id]?.trim() || undefined })).data.data, onSuccess: () => { toast('Saved'); qc.invalidateQueries({ queryKey: ['geomark-checks'] }) }, onError: (e) => toast(errMsg(e), 'error') })
+  // Accept the whole list in one go (only accepting is bulk; rejecting always needs a reason for that person)
+  const open = (q.data ?? []).filter((c) => ['flagged', 'verified'].includes(c.status))
+  const bulk = useMutation({ mutationFn: async () => (await api.post('/geomark/checks/bulk-decision', { ids: open.slice(0, 100).map((c) => c.id) })).data.data as { approved: number }, onSuccess: (r) => { toast(`${r.approved} accepted`); qc.invalidateQueries({ queryKey: ['geomark-checks'] }) }, onError: (e) => toast(errMsg(e), 'error') })
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 6 }}>{(['flagged', 'all'] as const).map((k) => <button key={k} className={`btn btn-sm ${status === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setStatus(k)}>{k === 'flagged' ? 'Needs a look' : 'Recent (spot check)'}</button>)}</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{(['flagged', 'all'] as const).map((k) => <button key={k} className={`btn btn-sm ${status === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setStatus(k)}>{k === 'flagged' ? 'Needs a look' : 'Recent (spot check)'}</button>)}
+        {status === 'flagged' && open.length > 1 && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} disabled={bulk.isPending} onClick={() => { if (window.confirm(`Accept all ${open.length} shown clock-ins? Anything you did not check will count as fine.`)) bulk.mutate() }}>Accept all shown ({open.length})</button>}
+      </div>
       {q.data?.length === 0 && <div className="card" style={{ padding: 20 }}>Nothing to review.</div>}
       {q.data?.map((c) => (
         <div key={c.id} className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
@@ -61,7 +66,7 @@ function Review() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input className="input" style={{ flex: '1 1 220px' }} placeholder="Note (needed to reject)" aria-label="Note" value={note[c.id] ?? ''} onChange={(e) => setNote({ ...note, [c.id]: e.target.value })} />
               <button className="btn btn-primary btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: c.id, approve: true })}>Accept</button>
-              <button className="btn btn-ghost btn-sm" disabled={decide.isPending || (note[c.id] ?? '').trim().length < 3} onClick={() => decide.mutate({ id: c.id, approve: false })}>Reject</button>
+              <button className="btn btn-ghost btn-sm" title="The person is told and gets a task to fix it. The attendance day itself is not changed." disabled={decide.isPending || (note[c.id] ?? '').trim().length < 3} onClick={() => decide.mutate({ id: c.id, approve: false })}>Reject</button>
             </div>
           )}
         </div>

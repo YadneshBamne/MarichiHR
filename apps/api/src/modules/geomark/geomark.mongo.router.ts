@@ -12,6 +12,9 @@ import { getReportingSubtreeIds } from '../../shared/utils/access'
 import { storage, storageConfigured } from '../../infrastructure/storage/storage'
 import { Employee, AuditLog, Notification } from '../../infrastructure/mongo/mongo'
 import { attendanceService } from '../attendance/attendance.service'
+import { prisma } from '../../infrastructure/database/prisma.stub' // a .mongo file needs the stub to get the Prisma-compatible client
+import { notify } from '../../infrastructure/notifications/notify'
+import { getTenantTimezone } from '../../shared/utils/businessDate'
 import { THRESHOLD, MAX_SAMPLES, Strictness, parseEmbedding, parseEmbeddings, seal, open, bestScore } from './face.match'
 
 // GeoMark+ and Visage: clock in with proof. The person takes a selfie and shares their location at the moment they punch; the API checks
@@ -223,8 +226,35 @@ geomarkRouter.post('/checks/:id/decision', validate(z.object({ params: idp, body
   if (!req.body.approve && !req.body.note) throw new AppError('Say what was wrong', 400)
   await col('geomark_checks').updateOne({ _id: c._id } as any, { $set: { status: req.body.approve ? 'approved' : 'rejected', note: req.body.note ?? null, decidedBy: req.user!.userId, decidedAt: new Date() } })
   await audit(req, req.body.approve ? 'GEOMARK_CHECK_APPROVED' : 'GEOMARK_CHECK_REJECTED', c._id, { employeeId: c.employeeId })
-  if (!req.body.approve) await tell(req.user!.tenantId, c.employeeId, 'A clock-in was not accepted', `${req.body.note} Raise a regularisation if your time is wrong.`)
+  // A rejection never changes the attendance day by itself: the person is told why and gets a task to fix it (a regularisation if the time is wrong)
+  if (!req.body.approve) await rejectedClockIn(req.user!.tenantId, c, req.body.note)
   ok(res, { status: req.body.approve ? 'approved' : 'rejected' })
+}))
+
+async function rejectedClockIn(tenantId: string, c: any, reason: string) {
+  try {
+    const emp: any = await Employee.findOne({ _id: c.employeeId, tenantId }).select('userId').lean()
+    const tz = await getTenantTimezone(tenantId)
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(c.at))
+    if (emp?.userId) await notify({ tenantId, userIds: [emp.userId], type: 'attendance.checkin_rejected', title: `Your clock-in on ${date} was not accepted`, body: `${reason} Open Attendance to fix it if your time is wrong.`, link: '/attendance', entityType: 'attendance_check', entityId: c._id })
+    // one open task per rejected clock-in (a second click never doubles it)
+    if ((await prisma.activity.count({ where: { tenantId, entityType: 'attendance_check', entityId: c._id } })) > 0) return
+    const types = await prisma.activityType.findMany({ where: { tenantId }, select: { id: true, name: true } })
+    const type = types.find((t: any) => /to-?do/i.test(t.name)) ?? types[0]
+    if (!type) return
+    await prisma.activity.create({ data: { tenantId, activityTypeId: type.id, entityType: 'attendance_check', entityId: c._id, title: `Fix your clock-in on ${date}`, note: `A reviewer did not accept it: ${reason} If your real time differs, raise a missed-punch fix in Attendance.`, assignedToId: c.employeeId, createdBy: 'system', dueDate: new Date(Date.now() + 2 * 86_400_000), status: 'planned' } })
+  } catch { /* best effort: the decision itself is already saved */ }
+}
+
+// Accept every proof in a list at once (accepting only; rejecting needs a reason each time). Same scope as one decision; your own are skipped.
+geomarkRouter.post('/checks/bulk-decision', validate(z.object({ body: z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }).strict() })), asyncHandler(async (req, res) => {
+  const team = await teamIds(req)
+  const me = req.user!.employeeId
+  const who = team ? { $in: team.filter((x) => x !== me) } : me ? { $ne: me } : null
+  const where: any = { _id: { $in: [...new Set(req.body.ids as string[])] }, tenantId: req.user!.tenantId, status: { $in: ['flagged', 'verified'] }, ...(who && { employeeId: who }) }
+  const r = await col('geomark_checks').updateMany(where, { $set: { status: 'approved', note: null, decidedBy: req.user!.userId, decidedAt: new Date() } })
+  await audit(req, 'GEOMARK_CHECKS_BULK_APPROVED', 'bulk', { requested: req.body.ids.length, approved: r.modifiedCount })
+  ok(res, { approved: r.modifiedCount })
 }))
 
 // Deletes proof photos past each company's retention period (run daily by the geomark-purge job)

@@ -8,6 +8,7 @@ import { useToast } from '../ui/Toast'
 import Icon, { type IconName } from '../ui/Icon'
 import { fmtDuration } from '../../lib/format'
 import ProofPunch, { type ProofSettings } from '../attendance/ProofPunch'
+import Modal from '../ui/Modal'
 
 // Dashboard widgets shared by the dashboard and the attendance page
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
@@ -55,9 +56,19 @@ export function TimeTracker({ className = '' }: { className?: string }) {
     if (withProof) return setProofFor('in')
     try { await clockIn.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked in. Have a good day!') } catch (e) { toast(errMsg(e), 'error') }
   }
+  // Clocking out within a minute of clocking in: the server asks first (SHORT_SESSION); a yes cancels that clock-in instead of saving a few seconds as work
+  const [shortAsk, setShortAsk] = useState<{ latitude?: number; longitude?: number } | null>(null)
   const stop = async () => {
     if (withProof) return setProofFor('out')
-    try { await clockOut.mutateAsync({ method: 'web', ...(await where()) }); toast('Clocked out. Hours saved to attendance.') } catch (e) { toast(errMsg(e), 'error') }
+    const pos = await where()
+    try { await clockOut.mutateAsync({ method: 'web', ...pos }); toast('Clocked out. Hours saved to attendance.') } catch (e: any) {
+      if (e?.response?.data?.code === 'SHORT_SESSION') setShortAsk(pos)
+      else toast(errMsg(e), 'error')
+    }
+  }
+  const cancelShort = async () => {
+    try { const r = await clockOut.mutateAsync({ method: 'web', ...shortAsk, confirmShort: true }); toast(r?.message ?? 'Clock-in cancelled') } catch (e) { toast(errMsg(e), 'error') }
+    setShortAsk(null)
   }
   const status = running ? `Since ${new Date(t!.openSince).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : t?.clockedOut ? `Done · ${fmtDuration(secs)}` : 'Not clocked in'
   const ticks = Array.from({ length: 60 }, (_, i) => { const a = (i / 60) * Math.PI * 2 - Math.PI / 2; const r1 = i % 5 ? 86 : 82; return { x1: 100 + Math.cos(a) * r1, y1: 100 + Math.sin(a) * r1, x2: 100 + Math.cos(a) * 91, y2: 100 + Math.sin(a) * 91 } })
@@ -81,6 +92,17 @@ export function TimeTracker({ className = '' }: { className?: string }) {
         <span className="dim" style={{ fontSize: 12, marginLeft: 'auto', textAlign: 'right' }}>{status}</span>
       </div>
       {proofFor && proof && <ProofPunch type={proofFor} settings={proof} onClose={() => setProofFor(null)} />}
+      {shortAsk && (
+        <Modal open onClose={() => setShortAsk(null)} title="Cancel that clock-in?" width={420}>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <p style={{ margin: 0 }}>You clocked in less than a minute ago. If that was a mistake, cancel it and nothing is counted. Otherwise keep working and clock out later.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShortAsk(null)}>Keep clocked in</button>
+              <button className="btn btn-primary" disabled={clockOut.isPending} onClick={cancelShort}>Cancel that clock-in</button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </section>
   )
 }

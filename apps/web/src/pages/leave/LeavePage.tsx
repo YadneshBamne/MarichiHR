@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useToast } from '../../components/ui/Toast'
 import { useMyLeaveBalances, useMyLeaveRequests, useCancelLeave } from '../../lib/hooks/useLeave'
 import { useAuth } from '../../contexts/AuthContext'
 import Badge from '../../components/ui/Badge'
@@ -15,7 +17,9 @@ type Tab = 'overview' | 'requests' | 'approvals' | 'calendar'
 export default function LeavePage() {
   const pageTitle = usePageLabel('/leave')
   const { isManager } = useAuth()
-  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [params] = useSearchParams()
+  const first = params.get('tab')
+  const [activeTab, setActiveTab] = useState<Tab>((['overview', 'requests', 'approvals', 'calendar'] as string[]).includes(first ?? '') ? (first as Tab) : 'overview')
   const [showApply, setShowApply] = useState(false)
   const [showAllocation, setShowAllocation] = useState(false)
 
@@ -23,7 +27,17 @@ export default function LeavePage() {
   const { data: requestsData } = useMyLeaveRequests()
   const requests = requestsData?.requests || []
   const cancelLeave = useCancelLeave()
+  const toast = useToast()
   const [resubmitting, setResubmitting] = useState<any>(null)
+  // Approved leave that starts within 2 days (or has started) is cancelled by the manager: the button asks them, and the server tells them
+  const soon = (req: any) => (Date.parse(`${String(req.startDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)) / 86_400_000 <= 2
+  const doCancel = (req: any) => {
+    if (req.status === 'approved' && !soon(req) && !window.confirm('Cancel this approved leave? The days go back to your balance and your manager is told.')) return
+    cancelLeave.mutate(req.id, {
+      onSuccess: () => toast('Leave cancelled'),
+      onError: (e: any) => toast(e?.response?.data?.message ?? 'Could not cancel it', e?.response?.data?.code === 'MANAGER_MUST_CANCEL' ? undefined : 'error'),
+    })
+  }
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Balances' },
@@ -129,13 +143,14 @@ export default function LeavePage() {
                           <button style={s.cancelBtn} onClick={() => setResubmitting(req)}>Edit and send again</button>
                         </span>
                       )}
-                      {req.status === 'pending' && (
+                      {(req.status === 'pending' || req.status === 'approved') && (
                         <button
                           style={s.cancelBtn}
-                          onClick={() => cancelLeave.mutate(req.id)}
+                          onClick={() => doCancel(req)}
                           disabled={cancelLeave.isPending}
+                          title={req.status === 'approved' && soon(req) ? 'This leave starts within 2 days or has started: your manager cancels it' : undefined}
                         >
-                          Cancel
+                          {req.status === 'approved' && soon(req) ? 'Ask manager to cancel' : 'Cancel'}
                         </button>
                       )}
                     </td>

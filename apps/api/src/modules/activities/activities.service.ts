@@ -57,7 +57,7 @@ async function assertEntityAccess(user: AccessUser, entityType: string, entityId
 
 const isHrUser = (u: AccessUser) => u.roleIds.some((r) => ['hr_admin', 'system_admin'].includes(r))
 // Where a task's "about" record lives in the app
-const ABOUT_PATH: Record<string, (id: string) => string | null> = { employee: (id) => `/employees/${id}`, leave_request: () => '/leave', attendance_regularisation: () => '/attendance', contract: () => '/compensation' }
+const ABOUT_PATH: Record<string, (id: string) => string | null> = { employee: (id) => `/employees/${id}`, leave_request: () => '/leave', attendance_regularisation: () => '/attendance', contract: () => '/compensation', attendance_check: () => '/attendance' }
 
 // Adds who made each task and what it is about, so the screen can say "From Dan · about Mary" and link to the record
 async function describeTasks(user: AccessUser, rows: any[]) {

@@ -74,6 +74,9 @@ function Terminals() {
 function Row({ d, locations, busy, onSave, onRemove }: { d: any; locations: any[]; busy: boolean; onSave: (v: any) => void; onRemove: () => void }) {
   const [name, setName] = useState(d.name)
   const [loc, setLoc] = useState<string>(d.workLocationId ?? '')
+  // The machine's own clock zone: blank follows the company's timezone
+  const [tz, setTz] = useState<string>(d.timezone ?? '')
+  const zones: string[] = (Intl as any).supportedValuesOf ? (Intl as any).supportedValuesOf('timeZone') : []
   const state: [string, string] = !d.active ? ['mute', 'Switched off'] : d.online ? ['ok', 'Online'] : d.lastSeenAt ? ['warn', 'Offline'] : ['mute', 'Never connected']
   return (
     <div className="card" style={{ padding: 18, display: 'grid', gap: 10 }}>
@@ -85,7 +88,8 @@ function Row({ d, locations, busy, onSave, onRemove }: { d: any; locations: any[
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
         <div className="field"><label htmlFor={`n-${d.id}`}>Name</label><input id={`n-${d.id}`} className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div className="field"><label htmlFor={`l-${d.id}`}>Work location</label><select id={`l-${d.id}`} className="input" value={loc} onChange={(e) => setLoc(e.target.value)}><option value="">Not set</option>{locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-        <button className="btn btn-primary btn-sm" disabled={busy || name.trim().length < 2} onClick={() => onSave({ name: name.trim(), workLocationId: loc || null })}>Save</button>
+        <div className="field"><label htmlFor={`z-${d.id}`}>Terminal clock timezone</label><select id={`z-${d.id}`} className="input" value={tz} onChange={(e) => setTz(e.target.value)}><option value="">Company timezone</option>{tz && !zones.includes(tz) && <option value={tz}>{tz}</option>}{zones.map((z) => <option key={z} value={z}>{z}</option>)}</select></div>
+        <button className="btn btn-primary btn-sm" disabled={busy || name.trim().length < 2} onClick={() => onSave({ name: name.trim(), workLocationId: loc || null, timezone: tz || null })}>Save</button>
         <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onSave({ active: !d.active })}>{d.active ? 'Switch off' : 'Switch on'}</button>
         <button className="btn btn-ghost btn-sm" onClick={onRemove}>Remove</button>
       </div>

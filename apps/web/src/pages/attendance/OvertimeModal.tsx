@@ -59,11 +59,12 @@ export default function OvertimeModal({ open, onClose }: Props) {
               onChange={(e) => setForm({ ...form, date: e.target.value })} required />
           </FormField>
           <FormField label="Overtime hours" required>
-            <input style={inputStyle} type="number" min="0.5" step="0.5" max="12"
+            <input style={inputStyle} type="number" min="0.5" step="0.25" max="12"
               value={form.overtimeHours} placeholder="e.g. 2.5"
               onChange={(e) => setForm({ ...form, overtimeHours: e.target.value })} required />
           </FormField>
         </div>
+        <p style={{ fontSize: '12px', color: 'var(--dim)', margin: 0 }}>From 30 minutes to 12 hours, in quarters of an hour, for today or an earlier day.</p>
 
         <FormField label="Reason" required>
           <textarea style={{ ...inputStyle, resize: 'vertical' } as React.CSSProperties}

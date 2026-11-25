@@ -21,20 +21,21 @@ function pickLeaveTypeFields(body: Record<string, unknown>) {
   for (const k of LEAVE_TYPE_FIELDS) if (body[k] !== undefined) out[k] = body[k]
   return out
 }
-import { AccessUser, assertCanApprove, assertProfileAccess } from '../../shared/utils/access'
+import { AccessUser, assertCanApprove, assertProfileAccess, hrAdminsFor } from '../../shared/utils/access'
+import { DEFAULT_WORK_DAYS, isoWeekday, workDaysOf } from '../attendance/policy.service'
 import { consistent } from './leave.schema'
 import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
+import { optionalPickDays } from '../../shared/utils/optional-holidays'
 import { leaveExtras } from './leave-extras.service'
 import { assertStatutoryFloor, statutoryFloor } from './leave-rules'
 
-// Weekdays in the range minus the employee's (mandatory) public holidays
-function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string, holidays: Map<string, string> = new Map()): number {
+// Working days in the range (the person's working week, Monday to Friday unless the company changed it) minus their (mandatory) public holidays
+function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, endHalf?: string, holidays: Map<string, string> = new Map(), workDays: Set<number> = new Set(DEFAULT_WORK_DAYS)): number {
   let days = 0
   const current = new Date(startDate)
 
   while (current <= endDate) {
-    const dow = current.getUTCDay()
-    if (dow !== 0 && dow !== 6 && !holidays.has(current.toISOString().slice(0, 10))) {
+    if (workDays.has(isoWeekday(current)) && !holidays.has(current.toISOString().slice(0, 10))) {
       days++
     }
     current.setUTCDate(current.getUTCDate() + 1)
@@ -50,6 +51,33 @@ function computeWorkingDays(startDate: Date, endDate: Date, startHalf?: string, 
   }
 
   return Math.max(0, days)
+}
+
+const BACKDATE_DAYS = 30
+const CANCEL_NOTICE_DAYS = 2 // approved leave starting sooner than this (or already started) is cancelled by the manager, not by the person
+const ymd = (d: Date) => d.toISOString().slice(0, 10)
+
+// One person cannot hold two pending or approved requests for the same days. A morning and an afternoon half day on one date,
+// or two hourly requests on one date, are not an overlap.
+async function assertNoOwnOverlap(employeeId: string, data: ApplyLeaveDto, start: Date, end: Date) {
+  const rows = await prisma.leaveRequest.findMany({ where: { employeeId, status: { in: ['pending', 'approved'] }, startDate: { lte: end }, endDate: { gte: start } }, select: { startDate: true, endDate: true, startHalf: true, endHalf: true, hours: true, status: true } })
+  const oneDay = start.getTime() === end.getTime()
+  for (const r of rows) {
+    const sameDay = oneDay && r.startDate.getTime() === r.endDate.getTime()
+    const halves = sameDay && !!data.startHalf && !!r.startHalf && data.startHalf !== r.startHalf
+    const hourly = sameDay && data.hours != null && r.hours != null
+    if (halves || hourly) continue
+    throw new AppError(`You already have ${r.status} leave from ${ymd(r.startDate)} to ${ymd(r.endDate)} that overlaps these dates. Change the dates or cancel that request first.`, 409, 'LEAVE_OVERLAP')
+  }
+}
+
+// Tell the person's manager (or HR when there is no manager); best effort
+async function tellManager(tenantId: string, employeeId: string, n: { type: string; title: string; body: string; link: string; requestId: string; eventId?: string }) {
+  try {
+    const e = await prisma.employee.findUnique({ where: { id: employeeId }, select: { managerId: true } })
+    const to = e?.managerId ? [await userIdOfEmployee(tenantId, e.managerId)] : await hrAdminsFor(tenantId, employeeId)
+    await notify({ tenantId, userIds: to.filter(Boolean) as string[], type: n.type, title: n.title, body: n.body, link: n.link, entityType: 'leave_request', entityId: n.requestId, ...(n.eventId && { eventId: n.eventId }) })
+  } catch { /* best effort */ }
 }
 
 export const leaveService = {
@@ -96,7 +124,8 @@ export const leaveService = {
     return leaveRepository.getBalances(employeeId)
   },
 
-  async applyLeave(employeeId: string, tenantId: string, data: ApplyLeaveDto) {
+  // opts.limitBackdating: employees may apply up to 30 days back (HR and system admins are not limited; the web route sets it)
+  async applyLeave(employeeId: string, tenantId: string, data: ApplyLeaveDto, opts: { limitBackdating?: boolean } = {}) {
     const leaveType = await prisma.leaveType.findFirst({
       where: { id: data.leaveTypeId, tenantId, active: true },
     })
@@ -106,18 +135,24 @@ export const leaveService = {
     const endDate = normaliseDateInput(data.endDate)
 
     if (startDate > endDate) throw new AppError('Start date cannot be after end date', 400)
+    if (opts.limitBackdating && startDate.getTime() < (await businessToday(tenantId)).getTime() - BACKDATE_DAYS * 86_400_000) {
+      throw new AppError(`Leave can be applied for up to ${BACKDATE_DAYS} days back. For an earlier date, ask HR to add it.`, 400, 'LEAVE_TOO_OLD')
+    }
+    await assertNoOwnOverlap(employeeId, data, startDate, endDate)
 
     await leaveExtras.assertNoBlackout(tenantId, employeeId, data.leaveTypeId, startDate, endDate)
     if (data.attachmentDocumentId) await leaveExtras.assertOwnDocument(tenantId, employeeId, data.attachmentDocumentId)
     const [holidayRows, target] = await Promise.all([holidaysBetween(tenantId, startDate, endDate), holidayTargetOf(employeeId)])
-    let totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf, holidayMap(holidayRows, target))
+    const daysOff = holidayMap(holidayRows, target)
+    for (const [d, name] of await optionalPickDays(tenantId, employeeId, startDate, endDate)) if (!daysOff.has(d)) daysOff.set(d, name) // optional holidays this person picked
+    let totalDays = computeWorkingDays(startDate, endDate, data.startHalf, data.endHalf, daysOff, await workDaysOf(employeeId))
     // Hourly leave: some hours on one working day (8 hours = 1 day)
     if (data.hours != null) {
       if (!leaveType.hourlyAllowed) throw new AppError(`${leaveType.name} cannot be taken by the hour`, 400)
       if (data.startDate !== data.endDate || data.startHalf || data.endHalf) throw new AppError('Hourly leave is for one day', 400)
       if (totalDays > 0) totalDays = Math.round((data.hours / 8) * 100) / 100
     }
-    if (totalDays <= 0) throw new AppError('No working days in that range (weekends and public holidays do not count)', 400)
+    if (totalDays <= 0) throw new AppError('No working days in that range (your days off and public holidays do not count)', 400)
 
     const lwpDays = leaveType.isPaid ? 0 : totalDays
 
@@ -245,12 +280,26 @@ export const leaveService = {
     return leaveRepository.findRequestById(requestId)
   },
 
-  async cancelLeave(requestId: string, employeeId: string, tenantId: string) {
+  // The person cancels their own pending request at any time, and approved leave that starts more than 2 days from now. Approved leave that starts
+  // sooner (or has started) is cancelled by their manager or HR: asking tells the manager, who cancels it with this same call (user = the manager).
+  async cancelLeave(requestId: string, employeeId: string, tenantId: string, user: AccessUser) {
     const request = await leaveRepository.findRequestById(requestId)
-    if (!request) throw new AppError('Leave request not found', 404)
-    if (request.employeeId !== employeeId) throw new AppError('Access denied', 403)
+    if (!request || request.employee.tenantId !== tenantId) throw new AppError('Leave request not found', 404)
+    const own = request.employeeId === employeeId
+    if (!own) {
+      await assertCanApprove(user, request.employeeId, tenantId, { entityType: 'leave_request', entityId: requestId })
+    }
     if (!['pending', 'approved'].includes(request.status)) {
       throw new AppError(`Cannot cancel a ${request.status} leave request`, 400)
+    }
+    const who = `${request.employee.firstName} ${request.employee.lastName}`
+    const what = `${request.leaveType.name}: ${ymd(request.startDate)} to ${ymd(request.endDate)}`
+    if (own && request.status === 'approved') {
+      const lead = (request.startDate.getTime() - (await businessToday(tenantId)).getTime()) / 86_400_000
+      if (lead <= CANCEL_NOTICE_DAYS) {
+        await tellManager(tenantId, employeeId, { type: 'leave.cancel_requested', title: `${who} asks to cancel approved leave`, body: `${what}. It starts within ${CANCEL_NOTICE_DAYS} days or has started, so only you or HR can cancel it.`, link: '/leave?tab=calendar', requestId, eventId: `leave-cancel-ask:${requestId}` })
+        throw new AppError(`This leave starts within ${CANCEL_NOTICE_DAYS} days or has already started, so your manager has to cancel it. We have told them.`, 409, 'MANAGER_MUST_CANCEL')
+      }
     }
 
     const prevStatus = request.status
@@ -265,6 +314,13 @@ export const leaveService = {
       await leaveRepository.updateBalance(request.employeeId, request.leaveTypeId, {
         usedDays: -request.totalDays,
       })
+    }
+
+    await prisma.auditLog.create({ data: { tenantId, userId: user.userId, action: 'LEAVE_CANCELLED', entityType: 'leave_request', entityId: requestId, newValue: { employeeId: request.employeeId, was: prevStatus, by: own ? 'employee' : 'manager_or_hr' } } })
+    if (own && prevStatus === 'approved') await tellManager(tenantId, employeeId, { type: 'leave.cancelled', title: `${who} cancelled approved leave`, body: `${what}. The days went back to their balance.`, link: '/leave?tab=calendar', requestId })
+    if (!own) {
+      const to = await userIdOfEmployee(tenantId, request.employeeId)
+      if (to) await notify({ tenantId, userIds: [to], type: 'leave.cancelled_by_manager', title: 'Your leave was cancelled', body: `${what} was cancelled by your manager or HR. The days went back to your balance.`, link: '/leave', entityType: 'leave_request', entityId: requestId })
     }
 
     return leaveRepository.findRequestById(requestId)

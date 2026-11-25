@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { useTeamLeaveCalendar } from '../../lib/hooks/useLeave'
+import { useTeamLeaveCalendar, useCancelLeave } from '../../lib/hooks/useLeave'
+import { useWorkingWeek } from '../../lib/hooks/useAttendance'
+import { useToast } from '../../components/ui/Toast'
 
 function getMonthRange(year: number, month: number) {
   const start = new Date(year, month - 1, 1).toISOString().split('T')[0]
@@ -17,6 +19,14 @@ export default function TeamLeaveCalendar() {
 
   const { start, end } = getMonthRange(year, month)
   const { data: leaves = [], isLoading } = useTeamLeaveCalendar(start, end)
+  const { data: week } = useWorkingWeek()
+  const toast = useToast()
+  const cancel = useCancelLeave()
+  // A manager cancels a team member's approved leave (also the way to cancel leave that starts within 2 days or has started)
+  const cancelOne = (l: any) => {
+    if (!window.confirm(`Cancel ${l.employee?.user?.fullName}'s ${l.leaveType?.name} leave (${l.startDate.slice(0, 10)} to ${l.endDate.slice(0, 10)})? The days go back to their balance and they are told.`)) return
+    cancel.mutate(l.id, { onSuccess: () => toast('Leave cancelled'), onError: (e: any) => toast(e?.response?.data?.message ?? 'Could not cancel it', 'error') })
+  }
 
   const daysInMonth = new Date(year, month, 0).getDate()
   const firstDay = new Date(year, month - 1, 1).getDay()
@@ -61,7 +71,7 @@ export default function TeamLeaveCalendar() {
           const dayLeaves = getLeavesForDay(day)
           const isToday = day === now.getDate() && month === now.getMonth() + 1 && year === now.getFullYear()
           const dow = new Date(year, month - 1, day).getDay()
-          const isWeekend = dow === 0 || dow === 6
+          const isWeekend = !(week?.days ?? [0, 1, 2, 3, 4]).includes((dow + 6) % 7)
 
           return (
             <div key={day} style={{
@@ -90,6 +100,17 @@ export default function TeamLeaveCalendar() {
           <div style={s.legendTitle}>Team on leave this month</div>
           {Array.from(new Set(leaves.map((l: any) => l.employee?.user?.fullName))).map((name: any) => (
             <span key={name} style={s.legendItem}>{name}</span>
+          ))}
+        </div>
+      )}
+      {leaves.length > 0 && (
+        <div style={{ padding: '4px 16px 14px', display: 'grid', gap: 6 }}>
+          {leaves.map((l: any) => (
+            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
+              <strong style={{ fontWeight: 500 }}>{l.employee?.user?.fullName}</strong>
+              <span style={{ color: 'var(--dim)' }}>{l.leaveType?.name} · {l.startDate.slice(0, 10)} to {l.endDate.slice(0, 10)}</span>
+              <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} disabled={cancel.isPending} onClick={() => cancelOne(l)}>Cancel leave</button>
+            </div>
           ))}
         </div>
       )}

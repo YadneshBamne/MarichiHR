@@ -8,8 +8,10 @@ import { validate } from '../../middleware/validate.middleware'
 import { asyncHandler } from '../../shared/utils/asyncHandler'
 import { AppError } from '../../shared/utils/AppError'
 import { getReportingSubtreeIds } from '../../shared/utils/access'
-import { getTenantTimezone, localTimeString } from '../../shared/utils/businessDate'
+import { getTenantTimezone, localTimeString, zonedTimeToUtc } from '../../shared/utils/businessDate'
 import { Employee, AuditLog } from '../../infrastructure/mongo/mongo'
+import { notify, userIdsWithRole } from '../../infrastructure/notifications/notify'
+import { tenantHasFeature } from '../../middleware/module.middleware.mongo'
 
 // GPS live tracking for field staff (MongoDB mode only). Built to be fair to the people tracked:
 //  - HR names who is tracked and the working hours; nobody else is ever tracked;
@@ -31,9 +33,10 @@ const MIN_GAP_MS = 10_000
 type Settings = { enabled: boolean; startTime: string; endTime: string; intervalSeconds: number; retentionDays: number; employeeIds: string[] }
 const DEFAULTS: Settings = { enabled: false, startTime: '08:00', endTime: '18:00', intervalSeconds: 60, retentionDays: 30, employeeIds: [] }
 async function settings(tenantId: string): Promise<Settings> { return { ...DEFAULTS, ...((await col('gps_settings').findOne({ _id: tenantId } as any)) ?? {}) } }
+// The working window may cross midnight (a night shift 22:00 to 06:00): then it is "after the start or before the end"
+const within = (now: string, start: string, end: string) => (start < end ? now >= start && now <= end : now >= start || now <= end)
 async function inHours(tenantId: string, s: Settings) {
-  const now = localTimeString(new Date(), await getTenantTimezone(tenantId))
-  return now >= s.startTime && now <= s.endTime
+  return within(localTimeString(new Date(), await getTenantTimezone(tenantId)), s.startTime, s.endTime)
 }
 const metres = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
   const R = 6371000, rad = (x: number) => (x * Math.PI) / 180
@@ -62,7 +65,7 @@ trackingRouter.put('/settings', validate(z.object({ body: z.object({ enabled: z.
   const { tenantId, userId, roleIds } = req.user!
   if (!isHR(roleIds)) throw new AppError('Only HR can change this', 403)
   const b = req.body
-  if (b.endTime <= b.startTime) throw new AppError('The working hours must end after they start', 400)
+  if (b.endTime === b.startTime) throw new AppError('The working hours must start and end at different times (an end earlier than the start means a night shift)', 400)
   const ids = [...new Set(b.employeeIds as string[])]
   if (ids.length && (await Employee.countDocuments({ tenantId, active: true, _id: { $in: ids } })) !== ids.length) throw new AppError('Employee not found', 404)
   const next = { ...b, employeeIds: ids }
@@ -94,12 +97,13 @@ trackingRouter.post('/ping', validate(z.object({ body: z.object({ latitude: z.nu
   if (!session) throw new AppError('Start tracking first', 409)
   if (!s.enabled || !s.employeeIds.includes(employeeId) || !(await inHours(tenantId, s))) {
     await col('gps_sessions').updateOne({ _id: session._id } as any, { $set: { endedAt: new Date(), endedBy: 'hours' } })
-    throw new AppError('Tracking has ended for today', 409)
+    throw new AppError('Tracking has ended for this shift', 409)
   }
   if (session.lastPing && Date.now() - new Date(session.lastPing).getTime() < MIN_GAP_MS) return ok(res, { stored: false })
   const at = new Date()
   await col('gps_points').insertOne({ _id: uuid(), tenantId, employeeId, sessionId: session._id, at, lat: req.body.latitude, lng: req.body.longitude, accuracy: req.body.accuracy ?? null, speed: req.body.speed ?? null } as any)
-  await col('gps_sessions').updateOne({ _id: session._id } as any, { $set: { lastPing: at } })
+  // a fresh ping clears the "stopped reporting" alert flag, so a later silence can alert again
+  await col('gps_sessions').updateOne({ _id: session._id } as any, { $set: { lastPing: at }, $unset: { staleAlertedAt: '' } })
   ok(res, { stored: true })
 }))
 
@@ -124,7 +128,7 @@ trackingRouter.get('/live', asyncHandler(async (req, res) => {
   const out = []
   for (const x of sessions) {
     const p: any = await col('gps_points').findOne({ sessionId: x._id } as any, { sort: { at: -1 } })
-    out.push({ employeeId: x.employeeId, name: nm.get(x.employeeId) ?? null, since: x.startedAt, last: p ? { latitude: p.lat, longitude: p.lng, accuracy: p.accuracy, at: p.at } : null, stale: !p || Date.now() - new Date(p.at).getTime() > s.intervalSeconds * 3000 })
+    out.push({ employeeId: x.employeeId, name: nm.get(x.employeeId) ?? null, since: x.startedAt, last: p ? { latitude: p.lat, longitude: p.lng, accuracy: p.accuracy, at: p.at } : null, stale: !p || Date.now() - new Date(p.at).getTime() > Math.max(s.intervalSeconds * 3000, 300_000) })
   }
   ok(res, out)
 }))
@@ -134,13 +138,39 @@ trackingRouter.get('/trail', validate(z.object({ query: z.object({ employeeId: z
   const { tenantId, employeeId: me } = req.user!
   const who = String(req.query.employeeId ?? me ?? '')
   if (who !== me) { const team = await visible(req); if (team && !team.includes(who)) throw new AppError('Not found', 404) }
-  const from = new Date(`${req.query.date}T00:00:00Z`), to = new Date(from.getTime() + 86400000)
+  // the company's local day (not the UTC day), so a trail matches the date a person sees on their own clock
+  const tz = await getTenantTimezone(tenantId), d0 = String(req.query.date)
+  const from = zonedTimeToUtc(d0, '00:00', tz), to = zonedTimeToUtc(new Date(Date.parse(`${d0}T00:00:00Z`) + 86400000).toISOString().slice(0, 10), '00:00', tz)
   const pts: any[] = await col('gps_points').find({ tenantId, employeeId: who, at: { $gte: from, $lt: to } } as any).sort({ at: 1 }).limit(3000).toArray()
   let km = 0
   for (let i = 1; i < pts.length; i++) km += metres({ lat: pts[i - 1].lat, lng: pts[i - 1].lng }, { lat: pts[i].lat, lng: pts[i].lng })
   if (who !== me) await AuditLog.create({ tenantId, userId: req.user!.userId, action: 'GPS_TRAIL_VIEWED', entityType: 'employee', entityId: who, newValue: { date: req.query.date } })
   ok(res, { points: pts.map((p) => ({ latitude: p.lat, longitude: p.lng, accuracy: p.accuracy, at: p.at })), distanceKm: Math.round(km / 100) / 10 })
 }))
+
+// Run every 5 minutes by the tracking-watch job: an open session whose last ping is older than max(3 x the interval, 5 minutes) has stopped
+// reporting (tab closed, phone locked, no signal). The person's manager (HR when none) is told once per silence; a fresh ping re-arms it.
+export async function trackingWatch(only?: string) {
+  const all: any[] = await col('gps_settings').find({ enabled: true, ...(only && { _id: only }) } as any).toArray()
+  let alerts = 0
+  for (const s of all) {
+    if (!(await tenantHasFeature(s._id, 'gpsTracking'))) continue
+    const gapMs = Math.max(3 * (s.intervalSeconds ?? DEFAULTS.intervalSeconds) * 1000, 5 * 60_000)
+    const stale: any[] = await col('gps_sessions').find({ tenantId: s._id, endedAt: null, staleAlertedAt: { $exists: false }, $expr: { $lt: [{ $ifNull: ['$lastPing', '$startedAt'] }, new Date(Date.now() - gapMs)] } } as any).toArray()
+    for (const x of stale) {
+      // claim the session first so two overlapping runs never alert twice
+      const claim = await col('gps_sessions').updateOne({ _id: x._id, staleAlertedAt: { $exists: false } } as any, { $set: { staleAlertedAt: new Date() } })
+      if (!claim.modifiedCount) continue
+      const e: any = await Employee.findOne({ _id: x.employeeId, tenantId: s._id }).select('firstName lastName managerId').lean()
+      const mgr: any = e?.managerId ? await Employee.findOne({ _id: e.managerId, tenantId: s._id, active: true }).select('userId').lean() : null
+      const to = mgr?.userId ? [mgr.userId as string] : [...new Set([...(await userIdsWithRole(s._id, 'hr_admin')), ...(await userIdsWithRole(s._id, 'system_admin'))])]
+      const seen = x.lastPing ?? x.startedAt
+      const tz = await getTenantTimezone(s._id)
+      try { await notify({ tenantId: s._id, userIds: to, type: 'tracking.stopped', title: `${e ? `${e.firstName} ${e.lastName}` : 'Someone'} stopped sharing their location`, body: `Last location ${localTimeString(new Date(seen), tz)} (${Math.round((Date.now() - new Date(seen).getTime()) / 60000)} min ago). The page may be closed or the phone locked.`, link: '/field-tracking', entityType: 'gps_session', entityId: x._id }); alerts++ } catch { /* best effort */ }
+    }
+  }
+  return alerts
+}
 
 // Deletes points past each company's retention period and closes sessions left open overnight (run daily by the tracking-purge job)
 export async function purgeTracking(only?: string) {

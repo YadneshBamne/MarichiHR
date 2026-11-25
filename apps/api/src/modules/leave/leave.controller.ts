@@ -34,7 +34,8 @@ export const leaveController = {
 
   applyLeave: asyncHandler(async (req: Request, res: Response) => {
     const { employeeId, tenantId } = req.user!
-    const request = await leaveService.applyLeave(employeeId!, tenantId, req.body)
+    // employees may apply up to 30 days back; HR and system admins are not limited
+    const request = await leaveService.applyLeave(employeeId!, tenantId, req.body, { limitBackdating: !req.user!.roleIds.some((r) => ['hr_admin', 'system_admin'].includes(r)) })
     res.status(201).json({ success: true, data: request })
   }),
 
@@ -63,7 +64,7 @@ export const leaveController = {
 
   cancel: asyncHandler(async (req: Request, res: Response) => {
     const { employeeId, tenantId } = req.user!
-    const result = await leaveService.cancelLeave(req.params['id'] as string, employeeId!, tenantId)
+    const result = await leaveService.cancelLeave(req.params['id'] as string, employeeId!, tenantId, req.user!)
     res.json({ success: true, data: result })
   }),
 

@@ -56,7 +56,7 @@ export default function RegularisationModal({ open, onClose, prefillDate }: Prop
     <Modal open={open} onClose={handleClose} title="Raise Attendance Regularisation" width={460}>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <p style={{ fontSize: '13px', color: 'var(--dim)', margin: 0 }}>
-          Use this if you forgot to punch in/out or the system recorded incorrect times.
+          Use this if you forgot to punch in/out or the system recorded incorrect times. For a night shift, enter the day it started (for example 22:00 to 06:00).
         </p>
 
         <FormField label="Date" required>

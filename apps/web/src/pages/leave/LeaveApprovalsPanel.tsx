@@ -1,146 +1,129 @@
 import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePendingLeaveApprovals, useApproveLeave, useRejectLeave } from '../../lib/hooks/useLeave'
-import Badge from '../../components/ui/Badge'
+import Avatar from '../../components/ui/Avatar'
+import Icon from '../../components/ui/Icon'
 import Modal from '../../components/ui/Modal'
+import { useToast } from '../../components/ui/Toast'
 import api from '../../lib/api'
 
+const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 // Opens the attached certificate (a short-lived link; managers in the reporting line and HR only)
-const openAttachment = async (id: string) => { try { window.open((await api.get(`/leave/requests/${id}/attachment`)).data.data.url, '_blank', 'noopener') } catch { window.alert('Could not open the attachment') } }
+const openAttachment = async (id: string, fail: (m: string) => void) => { try { window.open((await api.get(`/leave/requests/${id}/attachment`)).data.data.url, '_blank', 'noopener') } catch { fail('Could not open the attachment') } }
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
+
+type Ask = { id: string; name: string; kind: 'reject' | 'return' }
 
 export default function LeaveApprovalsPanel() {
+  const toast = useToast()
+  const qc = useQueryClient()
   const { data: requests = [], isLoading } = usePendingLeaveApprovals()
   const approveLeave = useApproveLeave()
   const rejectLeave = useRejectLeave()
-  const [rejectModal, setRejectModal] = useState<{ id: string; name: string } | null>(null)
-  const [rejectReason, setRejectReason] = useState('')
+  // Send back: the person is asked to change the request and send it again
+  const sendBack = useMutation({
+    mutationFn: async (v: { id: string; note: string }) => (await api.post(`/leave/requests/${v.id}/return`, { note: v.note })).data.data,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['leave-pending-approvals'] }); qc.invalidateQueries({ queryKey: ['leave-requests-me'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }) },
+  })
+  const [ask, setAsk] = useState<Ask | null>(null)
+  const [reason, setReason] = useState('')
   const [treatment, setTreatment] = useState<Record<string, 'paid' | 'unpaid'>>({})
+  const [notes, setNotes] = useState<Record<string, string | undefined>>({}) // an optional note per request on approve (undefined = field closed)
 
-  const handleApprove = async (id: string, shortfall = 0) => {
-    await approveLeave.mutateAsync({ id, comments: 'Approved', ...(shortfall > 0 && { shortfall: treatment[id] ?? 'paid' }) })
+  const approve = async (id: string, shortfall = 0) => {
+    try {
+      await approveLeave.mutateAsync({ id, comments: notes[id]?.trim() || 'Approved', ...(shortfall > 0 && { shortfall: treatment[id] ?? 'paid' }) })
+      toast('Approved')
+    } catch (e) { toast(errMsg(e), 'error') }
   }
-
-  const handleReject = async () => {
-    if (!rejectModal || !rejectReason.trim()) return
-    await rejectLeave.mutateAsync({ id: rejectModal.id, comments: rejectReason })
-    setRejectModal(null)
-    setRejectReason('')
+  const close = () => { setAsk(null); setReason('') }
+  const submitAsk = async () => {
+    if (!ask || reason.trim().length < 3) return
+    try {
+      if (ask.kind === 'reject') await rejectLeave.mutateAsync({ id: ask.id, comments: reason.trim() })
+      else await sendBack.mutateAsync({ id: ask.id, note: reason.trim() })
+      toast(ask.kind === 'reject' ? 'Rejected' : 'Sent back')
+      close()
+    } catch (e) { toast(errMsg(e), 'error') }
   }
+  const busy = rejectLeave.isPending || sendBack.isPending
 
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
-
-  if (isLoading) return <div style={{ color: 'var(--faint)', fontSize: '13px' }}>Loading...</div>
+  if (isLoading) return <div className="skeleton" style={{ height: 120, borderRadius: 18 }} />
 
   if (requests.length === 0) {
     return (
-      <div style={s.emptyState}>
-        <div style={{ fontSize: '28px', marginBottom: '8px' }}>✓</div>
-        <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--ink)' }}>All caught up</div>
-        <div style={{ fontSize: '13px', color: 'var(--faint)', marginTop: '4px' }}>No pending leave requests</div>
+      <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 20 }}>All caught up</div>
+        <div className="dim" style={{ fontSize: 13, marginTop: 4 }}>No pending leave requests</div>
       </div>
     )
   }
 
   return (
-    <div style={s.list}>
-      {requests.map((req: any) => (
-        <div key={req.id} style={s.card}>
-          <div style={s.cardTop}>
-            <div style={s.avatar}>{req.employee?.user?.fullName?.charAt(0)}</div>
-            <div style={s.info}>
-              <div style={s.name}>{req.employee?.user?.fullName}</div>
-              <div style={s.sub}>{req.leaveType?.name}</div>
+    <div style={{ display: 'grid', gap: 10 }}>
+      {requests.map((req: any) => {
+        const name = req.employee?.user?.fullName ?? 'Someone'
+        return (
+          <article key={req.id} className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Avatar name={name} size={34} />
+              <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{name}</div>
+                <div className="dim" style={{ fontSize: 12 }}>Applied {formatDate(req.appliedAt)}</div>
+              </div>
+              <span className="pill warn" style={{ textTransform: 'none' }}>{req.leaveType?.name || 'Leave'}</span>
             </div>
-            <Badge label={req.leaveType?.name || 'Leave'} variant="pending" />
-          </div>
 
-          <div style={s.dateRow}>
-            <span style={s.dates}>{formatDate(req.startDate)} → {formatDate(req.endDate)}</span>
-            <span style={s.days}>{req.totalDays} day{req.totalDays !== 1 ? 's' : ''}</span>
-          </div>
-
-          {req.shortfallDays > 0 && (
-            <div style={{ fontSize: 12.5, background: 'var(--honey-soft)', borderRadius: 10, padding: '8px 10px', margin: '6px 0', display: 'grid', gap: 6 }}>
-              <span><strong>{req.shortfallDays} day{req.shortfallDays === 1 ? '' : 's'}</strong> beyond the balance. If you approve, treat them as:</span>
-              <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="radio" name={`short-${req.id}`} checked={(treatment[req.id] ?? 'paid') === 'paid'} onChange={() => setTreatment({ ...treatment, [req.id]: 'paid' })} /> Paid (balance goes negative; HR is told)</label>
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="radio" name={`short-${req.id}`} checked={treatment[req.id] === 'unpaid'} onChange={() => setTreatment({ ...treatment, [req.id]: 'unpaid' })} /> Unpaid (deducted in payroll)</label>
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, flexWrap: 'wrap' }}>
+              <span>{formatDate(req.startDate)} → {formatDate(req.endDate)}</span>
+              <strong style={{ fontWeight: 600 }}>{req.totalDays} day{req.totalDays !== 1 ? 's' : ''}</strong>
             </div>
-          )}
-          {req.reason && <div style={s.reason}>"{req.reason}"</div>}
-          {req.attachmentUrl && <button className="link" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12, marginBottom: 6 }} onClick={() => openAttachment(req.id)}>View certificate</button>}
 
-          <div style={s.appliedAt}>Applied {formatDate(req.appliedAt)}</div>
+            {req.shortfallDays > 0 && (
+              <div className="well" style={{ fontSize: 12.5, padding: '10px 12px', display: 'grid', gap: 6, background: 'var(--honey-soft)' }}>
+                <span><strong>{req.shortfallDays} day{req.shortfallDays === 1 ? '' : 's'}</strong> beyond the balance. If you approve, treat them as:</span>
+                <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="radio" name={`short-${req.id}`} checked={(treatment[req.id] ?? 'paid') === 'paid'} onChange={() => setTreatment({ ...treatment, [req.id]: 'paid' })} /> Paid (balance goes negative; HR is told)</label>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="radio" name={`short-${req.id}`} checked={treatment[req.id] === 'unpaid'} onChange={() => setTreatment({ ...treatment, [req.id]: 'unpaid' })} /> Unpaid (deducted in payroll)</label>
+                </span>
+              </div>
+            )}
+            {req.reason && <div className="dim" style={{ fontSize: 13, fontStyle: 'italic' }}>“{req.reason}”</div>}
+            {req.attachmentUrl && <div><button type="button" className="link" onClick={() => openAttachment(req.id, (m) => toast(m, 'error'))}>View certificate</button></div>}
 
-          <div style={s.actions}>
-            <button
-              style={s.approveBtn}
-              onClick={() => handleApprove(req.id, req.shortfallDays)}
-              disabled={approveLeave.isPending}
-            >
-              ✓ Approve
-            </button>
-            <button
-              style={s.rejectBtn}
-              onClick={() => setRejectModal({ id: req.id, name: req.employee?.user?.fullName })}
-            >
-              ✕ Reject
-            </button>
-            <button
-              style={s.rejectBtn}
-              onClick={async () => { const note = window.prompt('What should they change?'); if (note && note.trim().length >= 3) { try { await api.post(`/leave/requests/${req.id}/return`, { note: note.trim() }); window.location.reload() } catch (e: any) { window.alert(e?.response?.data?.message ?? 'Could not send it back') } } }}
-            >
-              ↩ Send back
-            </button>
+            {notes[req.id] !== undefined ? (
+              <label className="field"><span>Note for {name.split(' ')[0]} (optional)</span><textarea className="input textarea" rows={2} maxLength={500} value={notes[req.id]} onChange={(e) => setNotes({ ...notes, [req.id]: e.target.value })} /></label>
+            ) : (
+              <div><button type="button" className="link" onClick={() => setNotes({ ...notes, [req.id]: '' })}>Add a note</button></div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => approve(req.id, req.shortfallDays)} disabled={approveLeave.isPending}><Icon name="checkCircle" size={14} /> Approve</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setAsk({ id: req.id, name, kind: 'return' }); setReason('') }}>Send back</button>
+              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => { setAsk({ id: req.id, name, kind: 'reject' }); setReason('') }}>Reject</button>
+            </div>
+          </article>
+        )
+      })}
+
+      {ask && (
+        <Modal open onClose={close} title={ask.kind === 'reject' ? 'Reject leave request' : 'Send the request back'} width={440}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <p className="dim" style={{ margin: 0, fontSize: 13 }}>
+              {ask.kind === 'reject' ? `Rejecting ${ask.name}'s leave request. They will see your reason.` : `${ask.name} will be asked to change the request and send it again. Say what should change.`}
+            </p>
+            <label className="field"><span>{ask.kind === 'reject' ? 'Reason' : 'What should they change?'} (at least 3 characters)</span>
+              <textarea className="input textarea" rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+            </label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={close}>Cancel</button>
+              <button className="btn btn-primary" style={ask.kind === 'reject' ? { background: 'var(--danger)', color: 'var(--night-ink)' } : undefined} disabled={reason.trim().length < 3 || busy} onClick={submitAsk}>
+                {busy ? 'Saving…' : ask.kind === 'reject' ? 'Reject request' : 'Send back'}
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
-
-      <Modal open={!!rejectModal} onClose={() => setRejectModal(null)} title="Reject Leave Request" width={420}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <p style={{ fontSize: '13px', color: 'var(--dim)', margin: 0 }}>
-            Rejecting {rejectModal?.name}'s leave request. Please provide a reason.
-          </p>
-          <textarea
-            style={{ padding: '10px 12px', borderRadius: '12px', border: '1px solid var(--line-2)', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
-            rows={3}
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Reason for rejection..."
-            autoFocus
-          />
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button onClick={() => setRejectModal(null)} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-            <button
-              onClick={handleReject}
-              disabled={!rejectReason.trim() || rejectLeave.isPending}
-              style={{ padding: '9px 18px', backgroundColor: 'var(--danger)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', cursor: 'pointer', opacity: !rejectReason.trim() ? 0.5 : 1 }}
-            >
-              {rejectLeave.isPending ? 'Rejecting...' : 'Confirm Reject'}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
     </div>
   )
-}
-
-const s: Record<string, React.CSSProperties> = {
-  list: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  card: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '16px' },
-  cardTop: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' },
-  avatar: { width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--honey-soft)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '600', flexShrink: 0 },
-  info: { flex: 1 },
-  name: { fontSize: '13px', fontWeight: '500', color: 'var(--ink)' },
-  sub: { fontSize: '12px', color: 'var(--faint)' },
-  dateRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' },
-  dates: { fontSize: '13px', color: 'var(--ink)' },
-  days: { fontSize: '13px', fontWeight: '500', color: 'var(--brand)' },
-  reason: { fontSize: '12px', color: 'var(--dim)', fontStyle: 'italic', marginBottom: '6px' },
-  appliedAt: { fontSize: '11px', color: 'var(--faint)', marginBottom: '12px' },
-  actions: { display: 'flex', gap: '8px' },
-  approveBtn: { flex: 1, padding: '8px', backgroundColor: 'var(--ok-bg)', color: 'var(--ok)', border: '1px solid var(--ok-line)', borderRadius: 999, fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
-  rejectBtn: { flex: 1, padding: '8px', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-line)', borderRadius: 999, fontSize: '13px', fontWeight: '500', cursor: 'pointer' },
-  emptyState: { textAlign: 'center', padding: '40px 20px', color: 'var(--dim)' },
 }

@@ -126,7 +126,7 @@ export default function App() {
                     <Route path="policies" element={page(<PoliciesPage />)} />
                     <Route path="policies/:id" element={page(<PolicyPage />)} />
                     <Route path="performance" element={page(<PerformancePage />)} />
-                    <Route path="rosters" element={page(guard(<RostersPage />, { roles: ['hr_admin', 'system_admin'], app: 'attendance' }))} />
+                    <Route path="rosters" element={page(guard(<RostersPage />, { roles: ['manager', 'hr_admin', 'system_admin'], app: 'attendance' }))} />
                     <Route path="attendance/qr/:token" element={page(<QrClockInPage />)} />
                     <Route path="compensation-review" element={page(guard(<PayReviewPage />, { app: 'payroll', roles: ['payroll_admin', 'manager'] }))} />
                     <Route path="community" element={page(<CommunityPage />)} />

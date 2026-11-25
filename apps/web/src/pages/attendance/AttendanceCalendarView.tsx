@@ -69,6 +69,8 @@ export default function AttendanceCalendarView() {
           const h = d.record?.workedHours
           const chip = CHIP[d.status]
           const isToday = d.date === todayStr
+          // an approved leave day with nothing recorded reads "Casual Leave" (or "Half day leave"), not an empty tile
+          const text: string = d.holiday ?? (d.status === 'on_leave' ? `${d.leave?.type ?? 'Leave'}${d.leave?.half ? ' (half)' : ''}` : null) ?? chip?.label ?? d.status
           return (
             <div key={d.date} data-day className="cal-day" style={{ border: isToday ? '1.5px solid var(--night)' : '1px solid var(--line)', background: d.isWeekend ? 'transparent' : 'var(--card-2)' }}>
               <span className="dim num" style={{ fontSize: 12 }}>{Number(d.date.slice(8))}</span>
@@ -76,7 +78,7 @@ export default function AttendanceCalendarView() {
                 // Phones get H:MM (full HH:MM:SS in the tooltip); a status without hours shrinks to its coloured dot
                 <span data-chip className={`pill ${chip.cls} cal-chip`} title={`Worked ${fmtHours(h)}`}><span className="cal-full">{fmtHours(h)}</span><span className="cal-short">{fmtHours(h).replace(/^0?(\d+:\d\d):\d\d$/, '$1')}</span></span>
               ) : (
-                <span data-chip className={`pill ${chip.cls} cal-chip`} title={d.holiday ?? chip.label ?? d.status} aria-label={d.holiday ?? chip.label ?? d.status}><span className="cal-full">{d.holiday ?? chip.label ?? d.status}</span></span>
+                <span data-chip className={`pill ${chip.cls} cal-chip`} title={text} aria-label={text}><span className="cal-full">{text}</span></span>
               ))}
             </div>
           )

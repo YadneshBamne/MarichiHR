@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
 import { useAuth } from '../../contexts/AuthContext'
 import PageHeader from '../../components/ui/PageHeader'
+import Modal from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
 import { useReveal } from '../../lib/motion'
 
@@ -35,21 +36,23 @@ export default function TimesheetsPage() {
           {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(k)}>{l}</button>)}
         </div>
       </PageHeader>
-      {tab === 'week' && <Week projects={(projects.data ?? []).filter((p) => p.active !== false)} />}
-      {tab === 'approvals' && <Approvals />}
+      {tab === 'week' && <Week projects={projects.data ?? []} />}
+      {tab === 'approvals' && <Approvals admin={admin} />}
       {tab === 'projects' && <Projects projects={projects.data ?? []} />}
     </div>
   )
 }
 
-function Week({ projects }: { projects: any[] }) {
+function Week({ projects: allProjects }: { projects: any[] }) {
   const toast = useToast()
   const qc = useQueryClient()
+  const projects = allProjects.filter((p) => p.active !== false) // only active projects are offered for new lines; archived ones still show on lines that have hours
   const [start, setStart] = useState(monday())
   const week = useQuery({ queryKey: ['ts-week', start], queryFn: async () => (await api.get('/timesheets/week', { params: { start } })).data.data })
   const [rows, setRows] = useState<Entry[]>([])
   useEffect(() => { if (week.data) setRows(week.data.entries) }, [week.data])
   const locked = week.data && ['submitted', 'approved'].includes(week.data.status)
+  const onLeave = new Set<string>(week.data?.leaveDays ?? []) // days of approved leave: no hours can be logged
   const days = DAY.map((_, i) => addDays(start, i))
   // one grid row per project and task; cells are the hours of that day
   const lines = useMemo(() => { const m = new Map<string, { projectId: string; task: string }>(); rows.forEach((e) => m.set(`${e.projectId}|${e.task}`, { projectId: e.projectId, task: e.task })); return [...m.values()] }, [rows])
@@ -64,6 +67,7 @@ function Week({ projects }: { projects: any[] }) {
   const total = rows.reduce((a, e) => a + e.hours, 0)
   const save = useMutation({ mutationFn: async () => (await api.put('/timesheets/week', { weekStart: start, entries: rows })).data.data, onSuccess: () => { toast('Saved'); qc.invalidateQueries({ queryKey: ['ts-week', start] }) }, onError: (e) => toast(errMsg(e), 'error') })
   const submit = useMutation({ mutationFn: async () => { await api.put('/timesheets/week', { weekStart: start, entries: rows }); return api.post('/timesheets/week/submit', { weekStart: start }) }, onSuccess: () => { toast('Sent for approval'); qc.invalidateQueries({ queryKey: ['ts-week', start] }) }, onError: (e) => toast(errMsg(e), 'error') })
+  const withdraw = useMutation({ mutationFn: async () => (await api.post('/timesheets/week/withdraw', { weekStart: start })).data.data, onSuccess: () => { toast('Taken back. It is a draft again.'); qc.invalidateQueries({ queryKey: ['ts-week', start] }) }, onError: (e) => toast(errMsg(e), 'error') })
   const [np, setNp] = useState('')
   const [nt, setNt] = useState('')
   const st = week.data?.status ?? 'draft'
@@ -76,15 +80,15 @@ function Week({ projects }: { projects: any[] }) {
         <span className={`pill ${STATUS[st][0]}`}>{STATUS[st][1]}</span>
         <span style={{ marginLeft: 'auto', fontWeight: 600 }}>{total} h</span>
       </div>
-      {week.data?.note && st === 'rejected' && <p className="pill danger" style={{ whiteSpace: 'normal' }}>Manager's note: {week.data.note}</p>}
+      {week.data?.note && ['rejected', 'draft'].includes(st) && <p className={`pill ${st === 'rejected' ? 'danger' : 'warn'}`} style={{ whiteSpace: 'normal' }}>{st === 'rejected' ? "Manager's note" : 'Note'}: {week.data.note}</p>}
       <div style={{ overflowX: 'auto' }}>
         <table className="tbl" style={{ minWidth: 640 }}>
-          <thead><tr><th>Project / task</th>{days.map((d, i) => <th key={d} style={{ textAlign: 'center' }}>{DAY[i]}<br /><span style={{ fontWeight: 400, fontSize: 12 }}>{d.slice(8)}</span></th>)}</tr></thead>
+          <thead><tr><th>Project / task</th>{days.map((d, i) => <th key={d} style={{ textAlign: 'center' }}>{DAY[i]}<br /><span style={{ fontWeight: 400, fontSize: 12 }}>{d.slice(8)}</span>{onLeave.has(d) && <><br /><span className="pill info" style={{ fontSize: 10 }}>On leave</span></>}</th>)}</tr></thead>
           <tbody>
             {all.map((l) => (
               <tr key={`${l.projectId}|${l.task}`}>
-                <td>{projects.find((p) => p.id === l.projectId)?.code ?? '?'} · {l.task || 'General'}</td>
-                {days.map((d) => <td key={d} style={{ textAlign: 'center' }}><input aria-label={`${l.task || 'General'} ${d}`} className="input" style={{ width: 64, height: 44, padding: 0, textAlign: 'center', borderRadius: 14 }} type="number" min={0} max={24} step={0.25} disabled={locked} value={hours(l, d) || ''} onChange={(e) => setHours(l, d, e.target.value)} /></td>)}
+                <td>{allProjects.find((p) => p.id === l.projectId)?.code ?? "?"} · {l.task || 'General'}{allProjects.find((p) => p.id === l.projectId)?.active === false && <> <span className="pill mute">Archived</span></>}</td>
+                {days.map((d) => <td key={d} style={{ textAlign: 'center' }}><input aria-label={`${l.task || 'General'} ${d}`} className="input" style={{ width: 64, height: 44, padding: 0, textAlign: 'center', borderRadius: 14 }} type="number" min={0} max={24} step={0.25} disabled={locked || onLeave.has(d)} title={onLeave.has(d) ? 'You are on approved leave this day' : undefined} value={hours(l, d) || ''} onChange={(e) => setHours(l, d, e.target.value)} /></td>)}
               </tr>
             ))}
             {all.length === 0 && <tr><td colSpan={8}>Add a project below to start logging hours.</td></tr>}
@@ -99,27 +103,51 @@ function Week({ projects }: { projects: any[] }) {
         </div>
       )}
       {!locked && <div style={{ display: 'flex', gap: 8 }}><button className="btn btn-ghost" disabled={save.isPending} onClick={() => save.mutate()}>Save draft</button><button className="btn btn-primary" disabled={submit.isPending || total === 0} onClick={() => submit.mutate()}>Submit week</button></div>}
+      {st === 'submitted' && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><button className="btn btn-ghost" disabled={withdraw.isPending} onClick={() => withdraw.mutate()}>Take it back to edit</button><span className="dim" style={{ fontSize: 13 }}>Your manager has not decided yet, so you can still change it.</span></div>}
+      {st === 'approved' && <span className="dim" style={{ fontSize: 13 }}>Approved weeks are locked. If something is wrong, ask HR to reopen it.</span>}
     </div>
   )
 }
 
-function Approvals() {
+function Approvals({ admin }: { admin: boolean }) {
   const toast = useToast()
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['ts-approvals'], queryFn: async () => (await api.get('/timesheets/approvals')).data.data as { projects: any[]; weeks: any[] } })
-  const decide = useMutation({ mutationFn: async (v: { id: string; approve: boolean }) => { const note = v.approve ? undefined : window.prompt('What needs changing?') ?? ''; if (!v.approve && !note) throw new Error('cancelled'); return api.post(`/timesheets/weeks/${v.id}/decide`, { approve: v.approve, note }) }, onSuccess: () => { toast('Done'); qc.invalidateQueries({ queryKey: ['ts-approvals'] }) }, onError: (e: any) => { if (e.message !== 'cancelled') toast(errMsg(e), 'error') } })
+  // HR can also look at weeks that are already approved (last 8 weeks) and reopen one for correction
+  const [view, setView] = useState<'waiting' | 'approved'>('waiting')
+  const [ask, setAsk] = useState<{ id: string; who: string; kind: 'back' | 'reopen' } | null>(null)
+  const [note, setNote] = useState('')
+  const q = useQuery({ queryKey: ['ts-approvals', view], queryFn: async () => (await api.get(view === 'waiting' ? '/timesheets/approvals' : '/timesheets/weeks', { params: view === 'approved' ? { status: 'approved' } : {} })).data.data as { projects: any[]; weeks: any[] } })
+  const refresh = () => qc.invalidateQueries({ queryKey: ['ts-approvals'] })
+  const decide = useMutation({ mutationFn: async (v: { id: string; approve: boolean; note?: string }) => api.post(`/timesheets/weeks/${v.id}/decide`, { approve: v.approve, note: v.note }), onSuccess: () => { toast('Done'); setAsk(null); setNote(''); refresh() }, onError: (e) => toast(errMsg(e), 'error') })
+  const reopen = useMutation({ mutationFn: async (v: { id: string; note?: string }) => api.post(`/timesheets/weeks/${v.id}/reopen`, { note: v.note || undefined }), onSuccess: () => { toast('Reopened. The person has been told.'); setAsk(null); setNote(''); refresh() }, onError: (e) => toast(errMsg(e), 'error') })
   const code = (id: string) => q.data?.projects.find((p) => p.id === id)?.code ?? '?'
+  const send = () => { if (!ask) return; ask.kind === 'back' ? decide.mutate({ id: ask.id, approve: false, note: note.trim() }) : reopen.mutate({ id: ask.id, note: note.trim() }) }
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      {q.data?.weeks.length === 0 && <div className="card" style={{ padding: 20 }}>Nothing waiting for you.</div>}
+      {admin && <div role="tablist" style={{ display: 'flex', gap: 6 }}>{([['waiting', 'Waiting for approval'], ['approved', 'Approved (last 8 weeks)']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={view === k} className={`btn btn-sm ${view === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView(k)}>{l}</button>)}</div>}
+      {q.data?.weeks.length === 0 && <div className="card" style={{ padding: 20 }}>{view === 'waiting' ? 'Nothing waiting for you.' : 'No approved weeks in the last 8 weeks.'}</div>}
       {q.data?.weeks.map((w) => (
         <div key={w.id} className="card" style={{ padding: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 220 }}><strong>{w.employeeName}</strong> · week of {w.weekStart} · {w.total} h
             <div style={{ fontSize: 13, opacity: 0.7 }}>{[...new Set(w.entries.map((e: any) => code(e.projectId)))].join(', ')}</div></div>
-          <button className="btn btn-ghost btn-sm" onClick={() => decide.mutate({ id: w.id, approve: false })}>Send back</button>
-          <button className="btn btn-primary btn-sm" onClick={() => decide.mutate({ id: w.id, approve: true })}>Approve</button>
+          {view === 'waiting' ? (<>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setNote(''); setAsk({ id: w.id, who: w.employeeName, kind: 'back' }) }}>Send back</button>
+            <button className="btn btn-primary btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: w.id, approve: true })}>Approve</button>
+          </>) : <button className="btn btn-ghost btn-sm" onClick={() => { setNote(''); setAsk({ id: w.id, who: w.employeeName, kind: 'reopen' }) }}>Reopen</button>}
         </div>
       ))}
+      {ask && (
+        <Modal open onClose={() => setAsk(null)} title={ask.kind === 'back' ? 'Send it back' : 'Reopen this week'} width={440}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <p style={{ margin: 0 }}>{ask.kind === 'back' ? `Tell ${ask.who} what needs changing.` : `${ask.who} can change the week and send it again. They are told.`}</p>
+            <label className="field"><span>{ask.kind === 'back' ? 'What needs changing?' : 'Reason (optional)'}</span><textarea className="input" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} autoFocus /></label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setAsk(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={decide.isPending || reopen.isPending || (ask.kind === 'back' && note.trim().length < 3)} onClick={send}>{ask.kind === 'back' ? 'Send back' : 'Reopen'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

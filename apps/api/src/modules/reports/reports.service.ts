@@ -3,6 +3,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { AccessUser, getReportingSubtreeIds } from '../../shared/utils/access'
 import { getTenantTimezone, localTimeString, monthRange, businessToday } from '../../shared/utils/businessDate'
 import { holidayMap, holidaysBetween } from '../../shared/utils/holidays'
+import { workDaysFrom, isoWeekday } from '../attendance/policy.service'
 import { leaveExtras } from '../leave/leave-extras.service'
 
 // Ready-made reports. Each returns summary tiles, one chart (bars), and a table; the router also turns the table
@@ -88,7 +89,7 @@ export const REPORTS: Record<string, { title: string; description: string; roles
       const [emps, recs, tz, defaultShift, holidayRows] = await Promise.all([
         prisma.employee.findMany({
           where: { tenantId: user.tenantId, active: true, hireDate: { lte: end }, ...(scope && { id: { in: scope } }), ...(f.departmentId && { orgUnitId: f.departmentId }) },
-          select: { id: true, firstName: true, lastName: true, employeeCode: true, hireDate: true, workLocationId: true, taxJurisdiction: true, workLocation: { select: { countryCode: true } }, orgUnit: { select: { name: true } }, employeeShifts: { where: { effectiveFrom: { lte: end }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: start } }] }, include: { shiftTemplate: true }, take: 1, orderBy: { effectiveFrom: 'desc' } } },
+          select: { id: true, firstName: true, lastName: true, employeeCode: true, hireDate: true, workLocationId: true, taxJurisdiction: true, workLocation: { select: { countryCode: true } }, orgUnit: { select: { name: true } }, resourceCalendar: { select: { days: { select: { dayOfWeek: true } } } }, employeeShifts: { where: { effectiveFrom: { lte: end }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: start } }] }, include: { shiftTemplate: true }, take: 1, orderBy: { effectiveFrom: 'desc' } } },
           orderBy: [{ firstName: 'asc' }],
         }),
         prisma.attendanceRecord.findMany({ where: { employee: { tenantId: user.tenantId }, date: { gte: start, lte: end } }, select: { employeeId: true, status: true, workedHours: true, checkInTime: true } }),
@@ -104,7 +105,8 @@ export const REPORTS: Record<string, { title: string; description: string; roles
         const lateAfter = sh * 60 + sm + (shift?.graceLateMinutes ?? 15)
         const holidays = holidayMap(holidayRows, { countryCode: e.workLocation?.countryCode ?? e.taxJurisdiction ?? null, workLocationId: e.workLocationId })
         let working = 0
-        for (let d = new Date(Math.max(start.getTime(), e.hireDate.getTime())); d <= lastDay; d = new Date(d.getTime() + DAY)) if (![0, 6].includes(d.getUTCDay()) && !holidays.has(ymd(d)!)) working++
+        const week = workDaysFrom(e.resourceCalendar?.days) // this person's working week
+        for (let d = new Date(Math.max(start.getTime(), e.hireDate.getTime())); d <= lastDay; d = new Date(d.getTime() + DAY)) if (week.has(isoWeekday(d)) && !holidays.has(ymd(d)!)) working++
         const list = byEmp.get(e.id) ?? []
         const count = (s: string) => list.filter((r) => r.status === s).length
         const late = list.filter((r) => r.checkInTime && (() => { const [h, mm] = localTimeString(r.checkInTime!, tz).split(':').map(Number); return h * 60 + mm > lateAfter })()).length

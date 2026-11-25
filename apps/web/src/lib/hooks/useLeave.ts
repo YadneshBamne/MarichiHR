@@ -127,6 +127,7 @@ export function useCancelLeave() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leave-requests-me'] })
       qc.invalidateQueries({ queryKey: ['leave-balances-me'] })
+      qc.invalidateQueries({ queryKey: ['team-leave-calendar'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })

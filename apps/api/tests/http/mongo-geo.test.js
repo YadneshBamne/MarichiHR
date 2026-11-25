@@ -107,7 +107,7 @@ const PNG = { bytes: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAA
     // ═════ GPS tracking ═════
     const gps = { enabled: true, startTime: '00:00', endTime: '23:59', intervalSeconds: 60, retentionDays: 30, employeeIds: [maryId] }
     check((await call('PUT', '/tracking/settings', mary, gps)).status === 403, 'an employee cannot choose who is tracked')
-    check((await call('PUT', '/tracking/settings', owner, { ...gps, startTime: '18:00', endTime: '08:00' })).status === 400, 'the hours must end after they start')
+    check((await call('PUT', '/tracking/settings', owner, { ...gps, startTime: '08:00', endTime: '08:00' })).status === 400, 'the hours must start and end at different times (an end before the start is a night shift)')
     check((await call('PUT', '/tracking/settings', owner, { ...gps, employeeIds: [crypto.randomUUID()] })).status === 404, 'an unknown employee is refused')
     check((await call('PUT', '/tracking/settings', owner, gps)).status === 200, 'HR names Mary as field staff')
     const ts = await call('GET', '/tracking/settings', mary)

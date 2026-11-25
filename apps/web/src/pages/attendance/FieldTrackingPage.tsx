@@ -8,6 +8,9 @@ import { useReveal } from '../../lib/motion'
 
 const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
 const ago = (iso: string) => { const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago` }
+// The person's own calendar day (not the UTC day, which is the wrong day for some hours in Zambia and India)
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const hoursText = (s: { startTime: string; endTime: string }) => (s.endTime < s.startTime ? `${s.startTime} and ${s.endTime} the next morning (night shift)` : `${s.startTime} and ${s.endTime}`)
 const osm = (lat: number, lng: number) => `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`
 const embed = (lat: number, lng: number) => `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.01}%2C${lat - 0.006}%2C${lng + 0.01}%2C${lat + 0.006}&layer=mapnik&marker=${lat}%2C${lng}`
 
@@ -60,25 +63,26 @@ function Mine({ s }: { s: any }) {
   useEffect(() => { if (on) begin(); else halt(); return halt }, [on]) // eslint-disable-line react-hooks/exhaustive-deps
   const start = useMutation({ mutationFn: async () => (await api.post('/tracking/start', { consent: true })).data.data, onSuccess: () => { toast('Tracking started'); refresh() }, onError: (e) => toast(errMsg(e), 'error') })
   const stop = useMutation({ mutationFn: async () => (await api.post('/tracking/stop')).data.data, onSuccess: () => { toast('Tracking stopped'); refresh() }, onError: (e) => toast(errMsg(e), 'error') })
-  const today = new Date().toISOString().slice(0, 10)
-  const trail = useQuery({ queryKey: ['my-trail', today, on], queryFn: async () => (await api.get('/tracking/trail', { params: { date: today } })).data.data as any })
+  const [day, setDay] = useState(localDay())
+  const trail = useQuery({ queryKey: ['my-trail', day, on], queryFn: async () => (await api.get('/tracking/trail', { params: { date: day } })).data.data as any })
   return (
     <div className="card" style={{ padding: 20, display: 'grid', gap: 10 }}>
       <h2 style={{ fontSize: 17 }}>My tracking {on && <span className="pill ok">On</span>}</h2>
       {on ? (
         <>
-          <span className="dim">Your location is shared every {s.intervalSeconds} seconds while this page stays open, until {s.endTime}. Your managers and HR can see it.</span>
+          <span className="dim">Your location is shared every {s.intervalSeconds} seconds while this page stays open, until {s.endTime}{s.endTime < s.startTime ? ' (the end of your night shift)' : ''}. Your managers and HR can see it.</span>
           {msg && <span role="alert" style={{ color: 'var(--danger)' }}>{msg}</span>}
           <div><button className="btn btn-ghost" disabled={stop.isPending} onClick={() => stop.mutate()}>Stop tracking</button></div>
         </>
       ) : (
         <>
-          <span className="dim">Tracking runs only between {s.startTime} and {s.endTime}{s.hoursOpenNow ? '' : ' (closed right now)'}. You start it, and you can stop it at any time. Your managers and HR can see where you are while it is on, and your own trail is always visible to you.</span>
+          <span className="dim">Tracking runs only between {hoursText(s)}{s.hoursOpenNow ? '' : ' (closed right now)'}. You start it, and you can stop it at any time. Your managers and HR can see where you are while it is on, and your own trail is always visible to you.</span>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I understand what is shared and with whom</label>
           <div><button className="btn btn-primary" disabled={!consent || !s.hoursOpenNow || start.isPending} onClick={() => start.mutate()}>Start tracking</button></div>
         </>
       )}
-      {trail.data && trail.data.points.length > 0 && <span className="dim" style={{ fontSize: 13 }}>Today: {trail.data.points.length} points · about {trail.data.distanceKm} km</span>}
+      <label className="field" style={{ maxWidth: 200 }}><span>My trail for</span><input className="input" type="date" value={day} max={localDay()} onChange={(e) => e.target.value && setDay(e.target.value)} /></label>
+      {trail.data && (trail.data.points.length > 0 ? <span className="dim" style={{ fontSize: 13 }}>{day === localDay() ? 'Today' : day}: {trail.data.points.length} points · about {trail.data.distanceKm} km</span> : <span className="dim" style={{ fontSize: 13 }}>No points on {day === localDay() ? 'today' : day}.</span>)}
     </div>
   )
 }
@@ -86,8 +90,8 @@ function Mine({ s }: { s: any }) {
 function Live() {
   const live = useQuery({ queryKey: ['tracking-live'], queryFn: async () => (await api.get('/tracking/live')).data.data as any[], refetchInterval: 30_000 })
   const [sel, setSel] = useState<any | null>(null)
-  const today = new Date().toISOString().slice(0, 10)
-  const trail = useQuery({ queryKey: ['trail', sel?.employeeId, today], enabled: !!sel, queryFn: async () => (await api.get('/tracking/trail', { params: { employeeId: sel.employeeId, date: today } })).data.data as any })
+  const [day, setDay] = useState(localDay())
+  const trail = useQuery({ queryKey: ['trail', sel?.employeeId, day], enabled: !!sel, queryFn: async () => (await api.get('/tracking/trail', { params: { employeeId: sel.employeeId, date: day } })).data.data as any })
   return (
     <div className="card" style={{ padding: 20, display: 'grid', gap: 10 }}>
       <h2 style={{ fontSize: 17 }}>Where the team is</h2>
@@ -98,10 +102,12 @@ function Live() {
           <span className={`pill ${p.stale ? 'warn' : 'ok'}`}>{p.stale ? 'Not reporting' : 'Live'}</span>
         </button>
       ))}
-      {sel?.last && (
+      {sel && (
         <div style={{ display: 'grid', gap: 8 }}>
-          <iframe title={`Map of ${sel.name}`} src={embed(sel.last.latitude, sel.last.longitude)} style={{ border: 0, width: '100%', height: 260, borderRadius: 18 }} loading="lazy" referrerPolicy="no-referrer" />
-          <span className="dim" style={{ fontSize: 13 }}>{sel.name}: {trail.data ? `${trail.data.points.length} points today, about ${trail.data.distanceKm} km. ` : ''}<a href={osm(sel.last.latitude, sel.last.longitude)} target="_blank" rel="noopener noreferrer">Open the map</a>. Looking at someone's location is logged.</span>
+          {sel.last && <><iframe title={`Map of ${sel.name}`} src={embed(sel.last.latitude, sel.last.longitude)} style={{ border: 0, width: '100%', height: 260, borderRadius: 18 }} loading="lazy" referrerPolicy="no-referrer" />
+          <span className="dim" style={{ fontSize: 13 }}>The map is loaded from OpenStreetMap, which receives this location to draw it.</span></>}
+          <label className="field" style={{ maxWidth: 200 }}><span>Trail for</span><input className="input" type="date" value={day} max={localDay()} onChange={(e) => e.target.value && setDay(e.target.value)} /></label>
+          <span className="dim" style={{ fontSize: 13 }}>{sel.name}: {trail.data ? `${trail.data.points.length} points ${day === localDay() ? 'today' : `on ${day}`}, about ${trail.data.distanceKm} km. ` : ''}{sel.last && <><a href={osm(sel.last.latitude, sel.last.longitude)} target="_blank" rel="noopener noreferrer">Open the map</a>. </>}Looking at someone's location is logged.</span>
         </div>
       )}
     </div>
@@ -124,7 +130,7 @@ function Rules({ s }: { s: any }) {
       <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}><input type="checkbox" checked={f.enabled} onChange={set('enabled')} /> Switch field tracking on</label>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <div className="field"><label htmlFor="gp-s">Working hours start</label><input id="gp-s" type="time" className="input" value={f.startTime} onChange={set('startTime')} /></div>
-        <div className="field"><label htmlFor="gp-e">End</label><input id="gp-e" type="time" className="input" value={f.endTime} onChange={set('endTime')} /></div>
+        <div className="field"><label htmlFor="gp-e">End (earlier than the start = night shift)</label><input id="gp-e" type="time" className="input" value={f.endTime} onChange={set('endTime')} /></div>
         <div className="field"><label htmlFor="gp-i">Report every (seconds)</label><input id="gp-i" className="input" inputMode="numeric" value={f.intervalSeconds} onChange={set('intervalSeconds')} /></div>
         <div className="field"><label htmlFor="gp-r">Keep points (days)</label><input id="gp-r" className="input" inputMode="numeric" value={f.retentionDays} onChange={set('retentionDays')} /></div>
       </div>

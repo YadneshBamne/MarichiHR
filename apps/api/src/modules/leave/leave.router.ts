@@ -10,7 +10,7 @@ import { contractController } from '../employees/contracts.controller'
 import { validate } from '../../middleware/validate.middleware'
 import { CreateContractSchema, ContractTransitionSchema } from '../employees/employees.schema'
 import { CreateLeaveTypeSchema, UpdateLeaveTypeSchema } from './leave.schema'
-import { leaveExtras, ApplyLeaveSchema, BlackoutBody } from './leave-extras.service'
+import { leaveExtras, ApplyLeaveSchema, BlackoutBody, BlackoutPatch } from './leave-extras.service'
 import { returnLeave } from './leave-rules'
 import { leaveService } from './leave.service'
 import { prisma } from '../../infrastructure/database/prisma'
@@ -44,6 +44,7 @@ leaveRouter.get('/requests/:id/attachment', requirePermission('leave:read'), val
 // Blackout periods: everyone sees them; HR sets them
 leaveRouter.get('/blackouts', requirePermission('leave:read'), asyncHandler(async (req, res) => { res.json({ success: true, data: await leaveExtras.blackouts(req.user!.tenantId) }) }))
 leaveRouter.post('/blackouts', requirePermission('leave:configure'), validate(z.object({ body: BlackoutBody })), asyncHandler(async (req, res) => { res.status(201).json({ success: true, data: await leaveExtras.createBlackout(req.user!, req.body) }) }))
+leaveRouter.patch('/blackouts/:id', requirePermission('leave:configure'), validate(z.object({ params: z.object({ id: z.string().uuid() }), body: BlackoutPatch })), asyncHandler(async (req, res) => { res.json({ success: true, data: await leaveExtras.updateBlackout(req.user!, String(req.params.id), req.body) }) }))
 leaveRouter.post('/blackouts/:id/remove', requirePermission('leave:configure'), validate(z.object({ params: z.object({ id: z.string().uuid() }) })), asyncHandler(async (req, res) => { res.json({ success: true, data: await leaveExtras.removeBlackout(req.user!, String(req.params.id)) }) }))
 leaveRouter.get('/requests/me', requirePermission('leave:read'), leaveController.listMyRequests)
 leaveRouter.get('/requests/pending', requirePermission('leave:approve'), leaveController.getPendingApprovals)
@@ -58,7 +59,7 @@ leaveRouter.post('/requests/:id/resubmit', requirePermission('leave:write'), val
   const u = req.user!
   const old = await prisma.leaveRequest.findFirst({ where: { id: String(req.params.id), employeeId: u.employeeId ?? '-', status: 'returned' } })
   if (!old) throw new AppError('Only your own returned request can be sent again', 404)
-  const fresh = await leaveService.applyLeave(u.employeeId!, u.tenantId, req.body)
+  const fresh = await leaveService.applyLeave(u.employeeId!, u.tenantId, req.body, { limitBackdating: !u.roleIds.some((r) => ['hr_admin', 'system_admin'].includes(r)) })
   await prisma.leaveRequest.update({ where: { id: old.id }, data: { status: 'resubmitted' } })
   res.status(201).json({ success: true, data: fresh })
 }))
