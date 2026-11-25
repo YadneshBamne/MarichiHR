@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../../lib/api'
 import { useAuth } from '../../contexts/AuthContext'
@@ -11,8 +11,9 @@ const ago = (iso: string) => { const m = Math.round((Date.now() - new Date(iso).
 // The person's own calendar day (not the UTC day, which is the wrong day for some hours in Zambia and India)
 const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const hoursText = (s: { startTime: string; endTime: string }) => (s.endTime < s.startTime ? `${s.startTime} and ${s.endTime} the next morning (night shift)` : `${s.startTime} and ${s.endTime}`)
-const osm = (lat: number, lng: number) => `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`
-const embed = (lat: number, lng: number) => `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.01}%2C${lat - 0.006}%2C${lng + 0.01}%2C${lat + 0.006}&layer=mapnik&marker=${lat}%2C${lng}`
+// The map (Mapbox, 3D buildings) is its own chunk: loaded only when someone opens this page and a route is shown
+const TrackMap = lazy(() => import('../../components/tracking/TrackMap'))
+const mapFallback = <div className="skeleton" style={{ height: 380, borderRadius: 18 }} />
 
 // GPS live tracking for field staff: the person starts and stops it, managers and HR see where the team is, HR sets who is tracked and when.
 export default function FieldTrackingPage() {
@@ -64,7 +65,7 @@ function Mine({ s }: { s: any }) {
   const start = useMutation({ mutationFn: async () => (await api.post('/tracking/start', { consent: true })).data.data, onSuccess: () => { toast('Tracking started'); refresh() }, onError: (e) => toast(errMsg(e), 'error') })
   const stop = useMutation({ mutationFn: async () => (await api.post('/tracking/stop')).data.data, onSuccess: () => { toast('Tracking stopped'); refresh() }, onError: (e) => toast(errMsg(e), 'error') })
   const [day, setDay] = useState(localDay())
-  const trail = useQuery({ queryKey: ['my-trail', day, on], queryFn: async () => (await api.get('/tracking/trail', { params: { date: day } })).data.data as any })
+  const trail = useQuery({ queryKey: ['my-trail', day, on], refetchInterval: on && day === localDay() ? 30_000 : false, queryFn: async () => (await api.get('/tracking/trail', { params: { date: day } })).data.data as any })
   return (
     <div className="card" style={{ padding: 20, display: 'grid', gap: 10 }}>
       <h2 style={{ fontSize: 17 }}>My tracking {on && <span className="pill ok">On</span>}</h2>
@@ -83,6 +84,7 @@ function Mine({ s }: { s: any }) {
       )}
       <label className="field" style={{ maxWidth: 200 }}><span>My trail for</span><input className="input" type="date" value={day} max={localDay()} onChange={(e) => e.target.value && setDay(e.target.value)} /></label>
       {trail.data && (trail.data.points.length > 0 ? <span className="dim" style={{ fontSize: 13 }}>{day === localDay() ? 'Today' : day}: {trail.data.points.length} points · about {trail.data.distanceKm} km</span> : <span className="dim" style={{ fontSize: 13 }}>No points on {day === localDay() ? 'today' : day}.</span>)}
+      {trail.data?.points.length > 0 && <Suspense fallback={mapFallback}><TrackMap points={trail.data.points} viewKey={`me-${day}`} name="Your" height={320} /></Suspense>}
     </div>
   )
 }
@@ -91,7 +93,8 @@ function Live() {
   const live = useQuery({ queryKey: ['tracking-live'], queryFn: async () => (await api.get('/tracking/live')).data.data as any[], refetchInterval: 30_000 })
   const [sel, setSel] = useState<any | null>(null)
   const [day, setDay] = useState(localDay())
-  const trail = useQuery({ queryKey: ['trail', sel?.employeeId, day], enabled: !!sel, queryFn: async () => (await api.get('/tracking/trail', { params: { employeeId: sel.employeeId, date: day } })).data.data as any })
+  // today's route grows while the person is out, so it is refreshed with the list
+  const trail = useQuery({ queryKey: ['trail', sel?.employeeId, day], enabled: !!sel, refetchInterval: day === localDay() ? 30_000 : false, queryFn: async () => (await api.get('/tracking/trail', { params: { employeeId: sel.employeeId, date: day } })).data.data as any })
   return (
     <div className="card" style={{ padding: 20, display: 'grid', gap: 10 }}>
       <h2 style={{ fontSize: 17 }}>Where the team is</h2>
@@ -104,10 +107,9 @@ function Live() {
       ))}
       {sel && (
         <div style={{ display: 'grid', gap: 8 }}>
-          {sel.last && <><iframe title={`Map of ${sel.name}`} src={embed(sel.last.latitude, sel.last.longitude)} style={{ border: 0, width: '100%', height: 260, borderRadius: 18 }} loading="lazy" referrerPolicy="no-referrer" />
-          <span className="dim" style={{ fontSize: 13 }}>The map is loaded from OpenStreetMap, which receives this location to draw it.</span></>}
-          <label className="field" style={{ maxWidth: 200 }}><span>Trail for</span><input className="input" type="date" value={day} max={localDay()} onChange={(e) => e.target.value && setDay(e.target.value)} /></label>
-          <span className="dim" style={{ fontSize: 13 }}>{sel.name}: {trail.data ? `${trail.data.points.length} points ${day === localDay() ? 'today' : `on ${day}`}, about ${trail.data.distanceKm} km. ` : ''}{sel.last && <><a href={osm(sel.last.latitude, sel.last.longitude)} target="_blank" rel="noopener noreferrer">Open the map</a>. </>}Looking at someone's location is logged.</span>
+          <label className="field" style={{ maxWidth: 200 }}><span>Route for</span><input className="input" type="date" value={day} max={localDay()} onChange={(e) => e.target.value && setDay(e.target.value)} /></label>
+          <Suspense fallback={mapFallback}><TrackMap points={trail.data?.points ?? []} current={day === localDay() ? sel.last : null} viewKey={`${sel.employeeId}-${day}`} name={sel.name} /></Suspense>
+          <span className="dim" style={{ fontSize: 13 }}>{sel.name}: {trail.data ? `${trail.data.points.length} points ${day === localDay() ? 'today' : `on ${day}`}, about ${trail.data.distanceKm} km. ` : ''}Looking at someone's location is logged.</span>
         </div>
       )}
     </div>

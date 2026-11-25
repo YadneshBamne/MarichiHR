@@ -145,8 +145,16 @@ trackingRouter.get('/trail', validate(z.object({ query: z.object({ employeeId: z
   let km = 0
   for (let i = 1; i < pts.length; i++) km += metres({ lat: pts[i - 1].lat, lng: pts[i - 1].lng }, { lat: pts[i].lat, lng: pts[i].lng })
   if (who !== me) await AuditLog.create({ tenantId, userId: req.user!.userId, action: 'GPS_TRAIL_VIEWED', entityType: 'employee', entityId: who, newValue: { date: req.query.date } })
-  ok(res, { points: pts.map((p) => ({ latitude: p.lat, longitude: p.lng, accuracy: p.accuracy, at: p.at })), distanceKm: Math.round(km / 100) / 10 })
+  // sessionId lets the map break the route where tracking was stopped and started again
+  ok(res, { points: pts.map((p) => ({ latitude: p.lat, longitude: p.lng, accuracy: p.accuracy, speed: p.speed ?? null, at: p.at, sessionId: p.sessionId })), distanceKm: Math.round(km / 100) / 10 })
 }))
+
+// The map in the browser needs a Mapbox PUBLIC token (pk.…); it is meant to be seen by the browser, so it is handed to people who may use
+// tracking. A secret token (sk.…) must never leave the server, so it is refused. Set MAPBOX_TOKEN on the host (restrict the token to the site's URL in Mapbox).
+export const publicMapToken = (raw: string | undefined) => (raw && /^pk\.[\w.-]+$/.test(raw.trim()) ? raw.trim() : null)
+trackingRouter.get('/map-config', (_req, res) => {
+  ok(res, { token: publicMapToken(process.env.MAPBOX_TOKEN) })
+})
 
 // Run every 5 minutes by the tracking-watch job: an open session whose last ping is older than max(3 x the interval, 5 minutes) has stopped
 // reporting (tab closed, phone locked, no signal). The person's manager (HR when none) is told once per silence; a fresh ping re-arms it.
@@ -182,4 +190,15 @@ export async function purgeTracking(only?: string) {
   }
   await col('gps_sessions').updateMany({ endedAt: null, startedAt: { $lt: new Date(Date.now() - 20 * 3600000) } } as any, { $set: { endedAt: new Date(), endedBy: 'purge' } })
   return removed
+}
+
+// Self-check: node -r dotenv/config -r ts-node/register/transpile-only src/modules/tracking/tracking.mongo.router.ts
+if (require.main === module) {
+  console.assert(publicMapToken('pk.abc.DEF-123_x') === 'pk.abc.DEF-123_x', 'a public token is passed on')
+  console.assert(publicMapToken(' pk.abc.def ') === 'pk.abc.def', 'spaces are trimmed')
+  console.assert(publicMapToken('sk.abc.def') === null, 'a secret token is never handed to the browser')
+  console.assert(publicMapToken('') === null && publicMapToken(undefined) === null, 'no token, no map')
+  console.assert(publicMapToken('pk.abc def') === null && publicMapToken('abc') === null, 'odd values are refused')
+  console.log('map token check done')
+  process.exit(0)
 }
