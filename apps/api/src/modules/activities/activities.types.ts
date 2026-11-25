@@ -1,7 +1,7 @@
 export interface CreateActivityDto {
   activityTypeId: string
-  entityType: 'employee' | 'leave_request' | 'contract' | 'grievance' | 'attendance_regularisation'
-  entityId: string
+  entityType?: string // what the task is about; left out = nothing in particular ('general')
+  entityId?: string
   title: string
   note?: string
   assignedToId: string

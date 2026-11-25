@@ -133,6 +133,11 @@ export const JOBS: Record<string, { pattern: string; description: string; run: (
     description: 'Deletes GPS points older than each company\'s retention period and closes sessions left open (MongoDB API)',
     run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/tracking/tracking.mongo.router').purgeTracking(t) : 0),
   },
+  'helpdesk-maintenance': {
+    pattern: '10 * * * *',
+    description: 'Helpdesk: tickets resolved for 7 days close by themselves; a ticket past its response target is flagged and HR is told once (MongoDB API)',
+    run: async (t) => (process.env.DB_PROVIDER === 'mongo' ? require('../../modules/helpdesk/helpdesk.mongo.router').helpdeskMaintenance(t) : 0),
+  },
   'leave-accrual': {
     pattern: '0 2 * * *',
     description: 'Leave credits due: monthly accrual (once per person, type and month) and yearly lump sums (once per leave year, pro-rated for joiners)',

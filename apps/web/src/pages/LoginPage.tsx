@@ -76,6 +76,15 @@ export default function LoginPage() {
     if (formRef.current && !reduced()) gsap.fromTo(formRef.current.querySelectorAll('[data-rise]'), { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.05, ease: 'power3.out', clearProps: 'opacity,transform' })
   }, [mode])
 
+  const [forgotSent, setForgotSent] = useState(false)
+  const sendReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(''); setLoading(true)
+    try {
+      await api.post('/auth/forgot-password', { email: form.email.trim(), ...(showOrg && form.tenantSlug.trim() ? { tenantSlug: form.tenantSlug.trim().toLowerCase() } : {}) })
+      setForgotSent(true)
+    } catch (err: any) { setError(err?.response?.data?.message || 'Could not send the link. Try again.') } finally { setLoading(false) }
+  }
   const shake = () => { if (formRef.current && !reduced()) gsap.fromTo(formRef.current, { x: -8 }, { x: 0, duration: 0.5, ease: 'elastic.out(1.2, .3)' }) }
 
   const submit = async (e: React.FormEvent) => {
@@ -242,10 +251,22 @@ export default function LoginPage() {
             <div>
               <span data-rise style={iconBubble}><Icon name="key" size={22} /></span>
               <h1 data-rise style={{ fontSize: 38, marginTop: 18 }}>Reset your password</h1>
-              <p data-rise className="dim" style={{ marginTop: 10, lineHeight: 1.6 }}>
-                Self-service password reset by email is coming soon. Until then, your HR administrator can set a new password for you, or you can sign in with Google if your organisation uses it.
-              </p>
-              <button data-rise className="btn btn-primary" style={{ width: '100%', height: 46, marginTop: 26 }} onClick={() => setMode('signin')}><Icon name="chevronLeft" size={16} /> Back to sign in</button>
+              {forgotSent ? (
+                <p data-rise className="dim" style={{ marginTop: 10, lineHeight: 1.6 }}>
+                  If <strong>{form.email}</strong> has a MarichiHR account, we have sent it a link to choose a new password. It works once and for one hour. Check your spam folder if it does not arrive.
+                </p>
+              ) : (
+                <form onSubmit={sendReset}>
+                  <p data-rise className="dim" style={{ marginTop: 10, marginBottom: 18, lineHeight: 1.6 }}>Enter your work email and we will send you a link to choose a new password.</p>
+                  <div data-rise className="field" style={{ marginBottom: 14 }}>
+                    <label htmlFor="fp-email">Work email</label>
+                    <input id="fp-email" className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" autoComplete="username" autoFocus required />
+                  </div>
+                  {error && <div role="alert" style={{ ...errBox, marginBottom: 14 }}><Icon name="alert" size={16} /> {error}</div>}
+                  <button data-rise className="btn btn-primary" type="submit" disabled={loading || !form.email} style={{ width: '100%', height: 46 }}>{loading ? <span className="spinner" style={{ borderTopColor: 'var(--night-ink)' }} /> : 'Send me the link'}</button>
+                </form>
+              )}
+              <button data-rise className={`btn ${forgotSent ? 'btn-primary' : 'btn-ghost'}`} style={{ width: '100%', height: 46, marginTop: 14 }} onClick={() => { setMode('signin'); setForgotSent(false); setError('') }}><Icon name="chevronLeft" size={16} /> Back to sign in</button>
             </div>
           )}
         </div>

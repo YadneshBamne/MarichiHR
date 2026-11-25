@@ -3,7 +3,8 @@ import { CreateActivityDto, CompleteActivityDto, CreateChatterMessageDto } from 
 import { AppError } from '../../shared/utils/AppError'
 import { prisma } from '../../infrastructure/database/prisma'
 import { businessToday } from '../../shared/utils/businessDate'
-import { AccessUser, assertProfileAccess, assertCompensationAccess } from '../../shared/utils/access'
+import { AccessUser, assertProfileAccess, assertCompensationAccess, getReportingSubtreeIds } from '../../shared/utils/access'
+import { notify } from '../../infrastructure/notifications/notify'
 
 interface ResolvedEntity {
   tenantId: string
@@ -54,18 +55,59 @@ async function assertEntityAccess(user: AccessUser, entityType: string, entityId
   if (!isHR) throw new AppError('Not found', 404)
 }
 
+const isHrUser = (u: AccessUser) => u.roleIds.some((r) => ['hr_admin', 'system_admin'].includes(r))
+// Where a task's "about" record lives in the app
+const ABOUT_PATH: Record<string, (id: string) => string | null> = { employee: (id) => `/employees/${id}`, leave_request: () => '/leave', attendance_regularisation: () => '/attendance', contract: () => '/compensation' }
+
+// Adds who made each task and what it is about, so the screen can say "From Dan · about Mary" and link to the record
+async function describeTasks(user: AccessUser, rows: any[]) {
+  const tenantId = user.tenantId
+  const creators = [...new Set(rows.map((r) => r.createdBy).filter((c) => c && c !== 'system'))]
+  const aboutIds = [...new Set(rows.filter((r) => r.entityType === 'employee').map((r) => r.entityId))]
+  const [users, emps] = await Promise.all([
+    creators.length ? prisma.user.findMany({ where: { id: { in: creators }, tenantId }, select: { id: true, fullName: true } }) : [],
+    aboutIds.length ? prisma.employee.findMany({ where: { id: { in: aboutIds }, tenantId }, select: { id: true, firstName: true, lastName: true } }) : [],
+  ])
+  return rows.map((r) => ({
+    ...r,
+    canCancel: ['planned', 'overdue'].includes(r.status) && (r.createdBy === user.userId || (r.createdBy === 'system' && (r.assignedToId === user.employeeId || isHrUser(user)))),
+    createdByName: r.createdBy === 'system' ? 'Automatic' : users.find((u) => u.id === r.createdBy)?.fullName ?? null,
+    about: r.entityType && r.entityType !== 'general' ? { type: r.entityType, id: r.entityId, label: r.entityType === 'employee' ? (() => { const e = emps.find((x) => x.id === r.entityId); return e ? `${e.firstName} ${e.lastName}` : 'Employee' })() : String(r.entityType).replace(/_/g, ' '), path: ABOUT_PATH[r.entityType]?.(r.entityId) ?? null } : null,
+  }))
+}
+
 export const activitiesService = {
-  async createActivity(tenantId: string, createdBy: string, data: CreateActivityDto) {
+  async types(tenantId: string) {
+    return prisma.activityType.findMany({ where: { tenantId }, select: { id: true, name: true, icon: true }, orderBy: { name: 'asc' } })
+  },
+
+  // Everyone can make a task for themselves; a manager also for the people under them; HR for anyone. It may be about a record the
+  // person can see (their own, their team's), and it always has a due date.
+  async createActivity(user: AccessUser, data: CreateActivityDto) {
+    const { tenantId } = user
     const activityType = await prisma.activityType.findFirst({ where: { id: data.activityTypeId, tenantId }, select: { id: true } })
     if (!activityType) throw new AppError('Activity type not found', 404)
-    const assignee = await prisma.employee.findFirst({ where: { id: data.assignedToId, tenantId }, select: { id: true } })
+    const assignee = await prisma.employee.findFirst({ where: { id: data.assignedToId, tenantId, active: true }, select: { id: true, userId: true } })
     if (!assignee) throw new AppError('Assignee not found', 404)
-
-    if (['employee', 'contract', 'leave_request', 'attendance_regularisation'].includes(data.entityType)) {
-      const entity = await resolveEntity(data.entityType, data.entityId)
-      if (!entity || entity.tenantId !== tenantId) throw new AppError('Related record not found', 404)
+    if (!user.employeeId && !isHrUser(user)) throw new AppError('You need an employee record to make tasks', 403)
+    if (assignee.id !== user.employeeId && !isHrUser(user)) {
+      const team = user.roleIds.includes('manager') && user.employeeId ? await getReportingSubtreeIds(user.employeeId, tenantId) : []
+      if (!team.includes(assignee.id)) throw new AppError('You can make tasks for yourself and the people who report to you', 403)
     }
-    return activitiesRepository.create(tenantId, createdBy, data)
+    const due = new Date(data.dueDate)
+    if (Number.isNaN(due.getTime())) throw new AppError('Choose a due date', 400)
+    let entityType = data.entityType ?? 'general', entityId = data.entityId ?? assignee.id
+    if (entityType !== 'general') {
+      if (!['employee', 'leave_request', 'contract', 'attendance_regularisation'].includes(entityType)) throw new AppError('That kind of record cannot be linked', 400)
+      const entity = await resolveEntity(entityType, entityId)
+      if (!entity || entity.tenantId !== tenantId) throw new AppError('Related record not found', 404)
+      await assertEntityAccess(user, entityType, entityId) // 404 when the person may not see that record
+    } else entityId = assignee.id
+    const created = await activitiesRepository.create(tenantId, user.userId, { ...data, entityType, entityId })
+    if (assignee.id !== user.employeeId && assignee.userId) {
+      try { await notify({ tenantId, userIds: [assignee.userId], type: 'task.assigned', title: `New task for you: ${data.title}`, body: `Due ${data.dueDate.slice(0, 10)}.${data.note ? ` ${data.note}` : ''}`, link: '/activities', entityType: 'activity', entityId: created.id }) } catch { /* best effort */ }
+    }
+    return created
   },
 
   async listForEntity(entityType: string, entityId: string, user: AccessUser) {
@@ -73,8 +115,12 @@ export const activitiesService = {
     return activitiesRepository.listForEntity(entityType, entityId, user.tenantId)
   },
 
-  async listMyActivities(assignedToId: string, status?: string) {
-    return activitiesRepository.listMyActivities(assignedToId, status)
+  async listMyActivities(user: AccessUser, status?: string) {
+    return describeTasks(user, await activitiesRepository.listMyActivities(user.employeeId!, status))
+  },
+  // Tasks I made for other people (so I can follow and cancel them)
+  async listCreated(user: AccessUser, status?: string) {
+    return describeTasks(user, await activitiesRepository.listCreated(user.tenantId, user.userId, user.employeeId ?? '', status))
   },
 
   async completeActivity(id: string, employeeId: string, tenantId: string, data: CompleteActivityDto) {
@@ -95,9 +141,14 @@ export const activitiesService = {
     return completed
   },
 
-  async cancelActivity(id: string, tenantId: string) {
+  // The person who made a task can cancel it. A task the system made (an automatic follow-up) can be dismissed by whoever it is for, or HR.
+  async cancelActivity(id: string, user: AccessUser) {
     const activity = await prisma.activity.findUnique({ where: { id } })
-    if (!activity || activity.tenantId !== tenantId) throw new AppError('Activity not found', 404)
+    if (!activity || activity.tenantId !== user.tenantId) throw new AppError('Activity not found', 404)
+    const mine = activity.createdBy === user.userId
+    const dismiss = activity.createdBy === 'system' && (activity.assignedToId === user.employeeId || isHrUser(user))
+    if (!mine && !dismiss) throw new AppError(activity.createdBy === 'system' ? 'Only the person it is for, or HR, can dismiss this task' : 'Only the person who made this task can cancel it', 403)
+    if (activity.status !== 'planned' && activity.status !== 'overdue') throw new AppError(`This task is already ${activity.status}`, 400)
     return activitiesRepository.cancel(id)
   },
 

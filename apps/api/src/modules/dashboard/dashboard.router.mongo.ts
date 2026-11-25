@@ -10,14 +10,27 @@ import { validate } from '../../middleware/validate.middleware'
 import { CATEGORIES } from '../../infrastructure/notifications/preferences'
 import { pushPublicKey, subscribe, unsubscribe } from '../../infrastructure/notifications/push'
 import { prisma as mongoPrisma } from '../../infrastructure/database/prisma.mongo'
+import { prisma } from '../../infrastructure/database/prisma.stub' // a .mongo file needs the stub to get the Prisma-compatible client
 import { Employee, OrgUnit, User, PayrollCycle, PayrollInput, Payslip, Notification } from '../../infrastructure/mongo/mongo'
+import { businessToday, monthRange } from '../../shared/utils/businessDate'
+import { holidayMap, holidaysBetween, holidayTargetOf } from '../../shared/utils/holidays'
+import { announcementService } from '../announcements/announcements.service'
+import { policyService } from '../policies/policies.service'
+import { buildInbox } from '../approvals/inbox.mongo'
 
-// MongoDB version of the home dashboard, the sidebar counts and the notification bell. Only what is ported is shown: the
-// people and payroll sections are real; leave, attendance, tasks and holidays come back empty until those modules are ported.
+// MongoDB version of the home dashboard, the sidebar counts and the notification bell. Each section is returned only when the caller's roles
+// (and the company's installed apps) allow it:
+//   self    – anyone with an employee record: today's clock-in, hours, leave, tasks, holidays, latest payslip
+//   team    – managers (their direct reports) and HR (everyone): who is in today, who is off this week, everything waiting for them
+//   company – HR / system admins: headcount, joiners, exits, people without a login
+//   payroll – payroll staff: the cycle in flight and what needs approving
+// Approvals come from the unified inbox (modules/approvals/inbox.mongo.ts), so the dashboard and the Approvals page never disagree.
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10)
+const dayMs = 86_400_000
 type U = { tenantId: string; userId: string; employeeId?: string; roleIds: string[] }
 
+// limited = an HR Business Partner (HR admin limited to departments): no company-wide sections
 function scopes(u: U, limited = false) {
   const r = u.roleIds
   const hr = !limited && (r.includes('hr_admin') || r.includes('system_admin'))
@@ -26,21 +39,7 @@ function scopes(u: U, limited = false) {
     payroll: r.some((x) => ['payroll_admin', 'compliance_officer'].includes(x)), finance: r.some((x) => ['hr_admin', 'payroll_admin'].includes(x)), hr,
   }
 }
-
-// Payroll runs waiting for a System admin's sign-off (a System admin sees totals only)
-async function signoffsWaiting(u: U) {
-  if (!u.roleIds.includes('system_admin')) return 0
-  const t: any = await mongoose.connection.collection('tenants').findOne({ _id: u.tenantId } as any)
-  if (t?.payrollSignoffAbove == null) return 0
-  const threshold = Number(t.payrollSignoffAbove.toString())
-  const cycles: any[] = await PayrollCycle.find({ tenantId: u.tenantId, status: 'approved', financeApprovedBy: { $ne: null }, signoffBy: { $in: [null, undefined] } }).select('_id').lean()
-  let n = 0
-  for (const c of cycles) {
-    const [r]: any[] = await Payslip.aggregate([{ $match: { payrollCycleId: c._id } }, { $group: { _id: null, net: { $sum: '$netPay' } } }])
-    if ((r?.net ?? 0) > threshold) n++
-  }
-  return n
-}
+const teamWhere = (u: U, hr: boolean) => (hr ? { tenantId: u.tenantId, active: true } : { tenantId: u.tenantId, active: true, managerId: u.employeeId })
 
 export const dashboardRouter = Router()
 dashboardRouter.use(authenticate)
@@ -48,32 +47,115 @@ dashboardRouter.use(authenticate)
 // Lightweight numbers for the sidebar badges
 dashboardRouter.get('/counts', asyncHandler(async (req, res) => {
   const u = req.user as U
-  const signoffs = await signoffsWaiting(u)
-  res.json({ success: true, data: { approvals: signoffs, tasks: 0, announcements: 0, policies: 0 } })
+  const [inbox, tasks, announcements, policies] = await Promise.all([
+    buildInbox(u as any).then((i) => i.total).catch(() => 0),
+    u.employeeId ? prisma.activity.count({ where: { tenantId: u.tenantId, assignedToId: u.employeeId, status: { in: ['planned', 'overdue'] } } }) : 0,
+    announcementService.unreadCount(u as any).catch(() => 0),
+    policyService.pendingCount(u as any).catch(() => 0),
+  ])
+  res.json({ success: true, data: { approvals: inbox, tasks, announcements, policies } })
+}))
+
+// Each person's own arrangement of their dashboard cards: which card sits in which slot ({ 'half-0': 'approvals', ... }). null = the default.
+const layouts = () => mongoose.connection.collection('dashboard_layouts')
+// It also holds which cards the person chose to hide (`hidden`, a list of card ids). Each field is saved on its own: leaving one out leaves it as it was.
+dashboardRouter.get('/layout', asyncHandler(async (req, res) => {
+  const d: any = await layouts().findOne({ _id: req.user!.userId } as any)
+  res.json({ success: true, data: { slots: d?.slots ?? null, hidden: d?.hidden ?? [] } })
+}))
+const CardId = z.string().regex(/^[a-z0-9_-]{1,30}$/)
+const Slots = z.record(z.string().regex(/^slot-\d{1,2}$/), CardId).refine((o) => Object.keys(o).length <= 40, 'Too many slots')
+dashboardRouter.put('/layout', validate(z.object({ body: z.object({ slots: Slots.nullable().optional(), hidden: z.array(CardId).max(40).optional() }).strict() })), asyncHandler(async (req, res) => {
+  const { userId, tenantId } = req.user!
+  const { slots, hidden } = req.body
+  const set: any = { tenantId, updatedAt: new Date() }, unset: any = {}
+  if (slots === null) unset.slots = ''; else if (slots) set.slots = slots
+  if (hidden) set.hidden = [...new Set(hidden)]
+  await layouts().updateOne({ _id: userId } as any, { $set: set, ...(Object.keys(unset).length && { $unset: unset }) }, { upsert: true })
+  const d: any = await layouts().findOne({ _id: userId } as any)
+  res.json({ success: true, data: { slots: d?.slots ?? null, hidden: d?.hidden ?? [] } })
 }))
 
 dashboardRouter.get('/', asyncHandler(async (req, res) => {
   const u = req.user as U
   const sc = scopes(u, !!(await hrScope(u)))
   const apps = await tenantModules(u.tenantId)
-  const today = new Date(`${ymd(new Date())}T00:00:00.000Z`)
-  const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
-  const monthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0))
+  const today = await businessToday(u.tenantId)
+  const todayStr = ymd(today)
+  const { start: monthStart, end: monthEnd } = monthRange(today.getUTCFullYear(), today.getUTCMonth() + 1)
+  const weekStart = new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * dayMs)
+  const weekEnd = new Date(weekStart.getTime() + 6 * dayMs)
+  const has = (a: string) => apps.includes(a)
 
-  const self = sc.self ? await (async () => {
-    const latest: any = apps.includes('payroll') ? await (async () => {
-      const cycles: any[] = await PayrollCycle.find({ tenantId: u.tenantId, status: { $in: ['disbursed', 'locked'] }, payPeriodEnd: { $lte: today } }).sort({ payPeriodEnd: -1 }).lean()
-      for (const c of cycles) {
-        const p: any = await Payslip.findOne({ payrollCycleId: c._id, employeeId: u.employeeId, withheld: { $ne: true } }).lean()
-        if (p) return { id: p._id, net: p.netPay, currency: p.currency, start: ymd(c.payPeriodStart), end: ymd(c.payPeriodEnd) }
-      }
-      return null
-    })() : null
-    return { leave: null, attendance: null, holidays: [], tasks: { open: 0, overdue: 0, items: [] }, payslip: latest }
+  const self = sc.self ? (async () => {
+    const me = u.employeeId!
+    const [balances, upcoming, att7, todayRec, monthRecs, tasks, payslip, holidayRows, target] = await Promise.all([
+      has('leave') ? prisma.leaveBalance.findMany({ where: { employeeId: me, leaveType: { active: true } }, select: { balanceDays: true, usedDays: true, pendingDays: true, leaveType: { select: { name: true, code: true } } } }) : [],
+      has('leave') ? prisma.leaveRequest.findMany({ where: { employeeId: me, status: { in: ['approved', 'pending'] }, endDate: { gte: today } }, select: { id: true, startDate: true, endDate: true, totalDays: true, status: true, leaveType: { select: { name: true } } }, orderBy: { startDate: 'asc' }, take: 4 }) : [],
+      has('attendance') ? prisma.attendanceRecord.findMany({ where: { employeeId: me, date: { gte: new Date(today.getTime() - 6 * dayMs), lte: today } }, select: { date: true, workedHours: true, status: true } }) : [],
+      has('attendance') ? prisma.attendanceRecord.findUnique({ where: { employeeId_date: { employeeId: me, date: today } }, select: { checkInTime: true, checkOutTime: true, workedHours: true, status: true } }) : null,
+      has('attendance') ? prisma.attendanceRecord.findMany({ where: { employeeId: me, date: { gte: monthStart, lt: today } }, select: { status: true, workedHours: true } }) : [],
+      prisma.activity.findMany({ where: { tenantId: u.tenantId, assignedToId: me, status: { in: ['planned', 'overdue'] } }, select: { id: true, title: true, dueDate: true, activityType: { select: { name: true } } }, orderBy: { dueDate: 'asc' }, take: 8 }),
+      has('payroll') ? (async () => {
+        const cycles: any[] = await PayrollCycle.find({ tenantId: u.tenantId, status: { $in: ['disbursed', 'locked'] }, payPeriodEnd: { $lte: today } }).sort({ payPeriodEnd: -1 }).lean()
+        for (const c of cycles) {
+          const p: any = await Payslip.findOne({ payrollCycleId: c._id, employeeId: me, withheld: { $ne: true } }).lean()
+          if (p) return { id: p._id, net: p.netPay, currency: p.currency, start: ymd(c.payPeriodStart), end: ymd(c.payPeriodEnd) }
+        }
+        return null
+      })() : null,
+      holidaysBetween(u.tenantId, monthStart.getTime() < weekStart.getTime() ? monthStart : weekStart, new Date(today.getTime() + 120 * dayMs)),
+      holidayTargetOf(me),
+    ])
+    const myHolidays = holidayMap(holidayRows, target)
+    let workingSoFar = 0
+    for (let d = new Date(monthStart); d < today; d = new Date(d.getTime() + dayMs)) if (![0, 6].includes(d.getUTCDay()) && !myHolidays.has(ymd(d))) workingSoFar++
+    const present = monthRecs.filter((r: any) => ['present', 'half_day', 'on_leave'].includes(r.status)).length
+    return {
+      leave: has('leave') ? {
+        balances: balances.map((b: any) => ({ name: b.leaveType.name, code: b.leaveType.code, total: b.balanceDays, used: b.usedDays, pending: b.pendingDays, available: Math.max(0, b.balanceDays - b.usedDays - b.pendingDays) })),
+        upcoming: upcoming.map((l: any) => ({ id: l.id, type: l.leaveType.name, start: ymd(l.startDate), end: ymd(l.endDate), days: l.totalDays, status: l.status })),
+      } : null,
+      attendance: has('attendance') ? {
+        today: { clockedIn: !!todayRec?.checkInTime, clockedOut: !!todayRec?.checkOutTime, checkInTime: todayRec?.checkInTime ?? null, workedHours: todayRec?.workedHours ?? 0, status: todayRec?.status ?? 'not_started' },
+        last7: Array.from({ length: 7 }, (_, i) => { const d = ymd(new Date(today.getTime() - (6 - i) * dayMs)); const r = att7.find((x: any) => ymd(x.date) === d); return { date: d, hours: r?.workedHours ?? 0, status: r?.status ?? null } }),
+        month: { workingDays: workingSoFar, present, hours: monthRecs.reduce((a: number, r: any) => a + (r.workedHours || 0), 0) },
+      } : null,
+      holidays: [...myHolidays].filter(([d]) => d >= todayStr).slice(0, 3).map(([date, name]) => ({ date, name })),
+      tasks: { open: tasks.length, overdue: tasks.filter((t: any) => ymd(t.dueDate) < todayStr).length, items: tasks.map((t: any) => ({ id: t.id, title: t.title, due: ymd(t.dueDate), type: t.activityType?.name ?? null })) },
+      payslip,
+    }
   })() : null
 
-  const company = sc.company ? await (async () => {
-    const [headcount, joiners, noLogin, units, heads]: any[] = await Promise.all([
+  const team = sc.team ? (async () => {
+    const where = teamWhere(u, sc.hr)
+    const [members, recsToday, leaveToday, leaveWeek, inbox, weekHolidayRows, viewer] = await Promise.all([
+      prisma.employee.findMany({ where: { ...where, NOT: { id: u.employeeId ?? '' } }, select: { id: true, firstName: true, lastName: true, user: { select: { avatarUrl: true } }, jobPosition: { select: { title: true } } }, orderBy: { firstName: 'asc' }, take: 500 }),
+      has('attendance') ? prisma.attendanceRecord.findMany({ where: { date: today, employee: where }, select: { employeeId: true, status: true, checkInTime: true } }) : [],
+      has('leave') ? prisma.leaveRequest.findMany({ where: { status: 'approved', startDate: { lte: today }, endDate: { gte: today }, employee: where }, select: { employeeId: true } }) : [],
+      has('leave') ? prisma.leaveRequest.findMany({ where: { status: 'approved', startDate: { lte: weekEnd }, endDate: { gte: weekStart }, employee: where }, select: { id: true, startDate: true, endDate: true, employee: { select: { id: true, firstName: true, lastName: true } }, leaveType: { select: { name: true } } }, orderBy: { startDate: 'asc' }, take: 30 }) : [],
+      buildInbox(u as any).catch(() => ({ items: [], groups: { time: 0, money: 0, people: 0, review: 0 }, total: 0 })),
+      holidaysBetween(u.tenantId, weekStart, weekEnd),
+      u.employeeId ? holidayTargetOf(u.employeeId) : Promise.resolve({ countryCode: null, workLocationId: null }),
+    ])
+    const weekHolidays = [...holidayMap(weekHolidayRows, viewer)].map(([date, name]) => ({ date, name }))
+    const onLeave = new Set(leaveToday.map((l: any) => l.employeeId))
+    const rec = new Map(recsToday.map((r: any) => [r.employeeId, r]))
+    const statusOf = (id: string) => (onLeave.has(id) ? 'on_leave' : (rec.get(id) as any)?.checkInTime ? 'in' : (rec.get(id) as any)?.status === 'absent' ? 'absent' : 'not_in')
+    const people = members.map((m: any) => ({ id: m.id, name: `${m.firstName} ${m.lastName}`, title: m.jobPosition?.title ?? null, avatarUrl: m.user?.avatarUrl ?? null, status: statusOf(m.id) }))
+    const tally = (s: string) => people.filter((p: any) => p.status === s).length
+    return {
+      scope: sc.hr ? 'company' : 'reports',
+      size: people.length,
+      today: has('attendance') ? { in: tally('in'), onLeave: tally('on_leave'), absent: tally('absent'), notIn: tally('not_in') } : null,
+      people: people.sort((a: any, b: any) => ['in', 'on_leave', 'not_in', 'absent'].indexOf(a.status) - ['in', 'on_leave', 'not_in', 'absent'].indexOf(b.status)).slice(0, 10),
+      week: { start: ymd(weekStart), end: ymd(weekEnd), holidays: weekHolidays, leave: leaveWeek.map((l: any) => ({ id: l.id, name: `${l.employee.firstName} ${l.employee.lastName}`, employeeId: l.employee.id, type: l.leaveType.name, start: ymd(l.startDate), end: ymd(l.endDate) })) },
+      approvals: { total: inbox.total, groups: inbox.groups, items: inbox.items.slice(0, 6).map((a: any) => ({ key: a.key, type: a.type, label: a.label, who: a.employee, summary: a.summary, count: a.count, at: a.at, link: a.link })) },
+    }
+  })() : null
+
+  const company = sc.company ? (async () => {
+    const [headcount, joiners, noLogin, units, heads, exitsOpen]: any[] = await Promise.all([
       Employee.countDocuments({ tenantId: u.tenantId, active: true }),
       Employee.countDocuments({ tenantId: u.tenantId, active: true, hireDate: { $gte: monthStart, $lte: monthEnd } }),
       (async () => {
@@ -82,15 +164,17 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
       })(),
       OrgUnit.find({ tenantId: u.tenantId, active: true }).sort({ name: 1 }).limit(8).select('name').lean(),
       Employee.aggregate([{ $match: { tenantId: u.tenantId, active: true } }, { $group: { _id: '$orgUnitId', n: { $sum: 1 } } }]),
+      has('exits') ? prisma.employeeExit.count({ where: { tenantId: u.tenantId, status: { notIn: ['paid', 'cancelled'] } } }) : 0,
     ])
     const H = new Map<string, number>(heads.map((h: any) => [h._id, h.n]))
-    return { headcount, joiners, exitsOpen: 0, noLogin, departments: units.map((d: any) => ({ name: d.name, count: H.get(d._id) ?? 0 })).filter((d: any) => d.count) }
+    return { headcount, joiners, exitsOpen, noLogin, departments: units.map((d: any) => ({ name: d.name, count: H.get(d._id) ?? 0 })).filter((d: any) => d.count) }
   })() : null
 
-  const payroll = sc.payroll && apps.includes('payroll') ? await (async () => {
-    const [cycles, inputs]: any[] = await Promise.all([
+  const payroll = sc.payroll && has('payroll') ? (async () => {
+    const [cycles, inputs, finance]: any[] = await Promise.all([
       PayrollCycle.find({ tenantId: u.tenantId }).sort({ payPeriodStart: -1 }).limit(12).lean(),
       PayrollInput.countDocuments({ tenantId: u.tenantId, approvedBy: { $in: [null, undefined] } }),
+      has('expenses') && sc.finance ? prisma.reimbursementClaim.count({ where: { tenantId: u.tenantId, status: 'manager_approved' } }) : 0,
     ])
     const counts: any[] = await Payslip.aggregate([{ $match: { payrollCycleId: { $in: cycles.map((c: any) => c._id) } } }, { $group: { _id: '$payrollCycleId', n: { $sum: 1 } } }])
     const N = new Map<string, number>(counts.map((c: any) => [c._id, c.n]))
@@ -99,12 +183,11 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
     const focus = open[open.length - 1] ?? chrono[chrono.length - 1] ?? null
     const last = cycles.find((c: any) => c.status === 'disbursed') ?? null
     const shape = (c: any) => c && { id: c._id, start: ymd(c.payPeriodStart), end: ymd(c.payPeriodEnd), status: c.status, payslips: N.get(c._id) ?? 0 }
-    return { current: shape(focus), lastPaid: shape(last), openCycles: open.length, inputsToApprove: inputs, expensesAwaitingFinance: 0 }
+    return { current: shape(focus), lastPaid: shape(last), openCycles: open.length, inputsToApprove: inputs, expensesAwaitingFinance: finance }
   })() : null
 
-  const team = sc.team ? { scope: sc.hr ? 'company' : 'reports', size: await Employee.countDocuments({ tenantId: u.tenantId, active: true, ...(sc.hr ? {} : { managerId: u.employeeId }) }), today: null, people: [], week: { start: ymd(today), end: ymd(today), holidays: [], leave: [] }, approvals: { leave: 0, attendance: 0, expenses: 0, finance: 0, signoffs: await signoffsWaiting(u), total: await signoffsWaiting(u), items: [] } } : null
-
-  res.json({ success: true, data: { today: ymd(today), apps, scopes: sc, self, team, company, payroll } })
+  const [s, t, c, p] = await Promise.all([self, team, company, payroll])
+  res.json({ success: true, data: { today: todayStr, apps, scopes: sc, self: s, team: t, company: c, payroll: p } })
 }))
 
 // ─── Notification bell ───

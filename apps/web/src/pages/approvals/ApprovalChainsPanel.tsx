@@ -79,7 +79,7 @@ export function Monitor() {
   )
 }
 
-function Delegations() {
+export function Delegations() {
   const toast = useToast()
   const qc = useQueryClient()
   const { data = [] } = useQuery({ queryKey: ['delegations'], queryFn: async () => (await api.get('/approvals/delegations')).data.data as { id: string; from: string; to: string; startDate: string; endDate: string; reason: string | null; active: boolean }[] })

@@ -43,9 +43,9 @@ async function login(owner, id, email, roles) {
     check(t.status === 201 && t.data.number === 'HD-0001' && t.data.status === 'open', 'Mary raises a ticket HD-0001')
     const tid = t.data.id
     check((await call('GET', `/helpdesk/tickets/${tid}`, paul)).status === 404, 'Paul cannot see Mary\'s ticket (404)')
-    check((await call('GET', '/helpdesk/tickets?scope=all', mary)).data.length === 1, 'an employee asking for scope=all still sees only their own')
+    check((await call('GET', '/helpdesk/tickets?scope=all', mary)).data.items.length === 1, 'an employee asking for scope=all still sees only their own')
     const all = await call('GET', '/helpdesk/tickets?scope=all', owner)
-    check(all.data.length === 1 && all.data[0].requesterName === 'Mary Banda', 'HR sees all tickets with the requester name')
+    check(all.data.items.length === 1 && all.data.items[0].requesterName === 'Mary Banda', 'HR sees all tickets with the requester name')
     check((await call('POST', `/helpdesk/tickets/${tid}/comments`, mary, { body: 'secret', internal: true })).status === 403, 'an employee cannot write an internal note')
     check((await call('POST', `/helpdesk/tickets/${tid}/comments`, owner, { body: 'Checking with payroll', internal: true })).status === 201, 'HR adds an internal note')
     const rep = await call('POST', `/helpdesk/tickets/${tid}/comments`, owner, { body: 'Looking into it now' })

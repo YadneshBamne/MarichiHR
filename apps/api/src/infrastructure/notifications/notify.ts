@@ -16,6 +16,8 @@ export interface OutboundMessage {
   attachments?: { filename: string; content: Buffer }[] // email only
   type?: string // notification type: picks the WhatsApp template
   link?: string | null // page in the app: the WhatsApp button opens it
+  button?: string // email only: the button label (default "Open in MarichiHR")
+  footer?: string // email only: the small print (default: notification settings)
 }
 
 export interface Transport {
@@ -38,16 +40,27 @@ export function smtpClient() {
   smtp ??= nodemailer.createTransport({ host: SMTP_HOST, port: Number(SMTP_PORT) || 587, secure: SMTP_SECURE === 'true', auth: { user: SMTP_USER, pass: SMTP_PASS }, pool: true, maxConnections: 3 })
   return smtp
 }
+// The email people get: a greeting, the message, and a button that opens the page in the app (APP_URL, else CLIENT_URL).
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+export function renderEmail(msg: OutboundMessage, base = process.env.APP_URL || process.env.CLIENT_URL || '') {
+  const url = msg.link && base ? `${base.replace(/\/$/, '')}${msg.link.startsWith('/') ? '' : '/'}${msg.link}` : null
+  const first = msg.to.name.split(' ')[0] || msg.to.name
+  const text = `Hi ${first},\n\n${msg.subject}\n${msg.text}${url ? `\n\nOpen it here: ${url}` : ''}\n\n— MarichiHR`
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#252523"><p style="font-size:16px;margin:0 0 14px">Hi ${esc(first)},</p><p style="font-size:15px;line-height:1.55;margin:0 0 18px"><strong>${esc(msg.subject)}</strong><br>${esc(msg.text).replace(/\n/g, '<br>')}</p>${url ? `<p style="margin:0 0 22px"><a href="${esc(url)}" style="display:inline-block;background:#f6c343;color:#252523;padding:11px 22px;border-radius:999px;text-decoration:none;font-weight:600">${esc(msg.button ?? 'Open in MarichiHR')}</a></p>` : ''}<p style="font-size:12px;color:#8a877e;margin:0">${esc(msg.footer ?? 'You get this email because of your notification settings in MarichiHR. You can change them under your account.')}</p></div>`
+  return { text, html }
+}
 export const smtpTransport: Transport = {
   name: 'smtp',
   async send(msg) {
     if (!process.env.SMTP_FROM) throw new Error('SMTP_FROM is not set')
     if (!msg.to.email) throw new Error('Recipient has no email address')
+    const body = renderEmail(msg)
     await smtpClient().sendMail({
       from: { name: process.env.SMTP_FROM_NAME || 'MarichiHR', address: process.env.SMTP_FROM },
       to: { name: msg.to.name, address: msg.to.email },
       subject: msg.subject,
-      text: `${msg.text}\n\n— MarichiHR`,
+      text: body.text,
+      html: body.html,
       ...(msg.attachments?.length && { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content })) }),
     })
   },
@@ -96,11 +109,14 @@ export const whatsappTransport: Transport = {
   },
 }
 
+// The email transport chosen by EMAIL_TRANSPORT (also used by mails that are not notifications: password reset, welcome)
+export const emailTransport = (): Transport => process.env.EMAIL_TRANSPORT === 'smtp' ? smtpTransport : process.env.EMAIL_TRANSPORT === 'resend' ? resendTransport : logTransport
+
 function transportsFor(): Record<string, Transport> {
   const channels = (process.env.NOTIFY_CHANNELS || 'email').split(',').map((c) => c.trim()).filter(Boolean)
   const out: Record<string, Transport> = {}
   for (const c of channels) {
-    if (c === 'email') out.email = process.env.EMAIL_TRANSPORT === 'smtp' ? smtpTransport : process.env.EMAIL_TRANSPORT === 'resend' ? resendTransport : logTransport
+    if (c === 'email') out.email = emailTransport()
     if (c === 'whatsapp') out.whatsapp = whatsappTransport
   }
   return out
@@ -196,4 +212,12 @@ export async function userIdOfEmployee(tenantId: string, employeeId?: string | n
   if (!employeeId) return null
   const emp = await prisma.employee.findFirst({ where: { id: employeeId, tenantId }, select: { userId: true } })
   return emp?.userId ?? null
+}
+
+if (require.main === module) {
+  const m = renderEmail({ to: { name: 'Dan Zulu' }, subject: 'Leave <request> waiting', text: 'Open Approvals.', link: '/approvals' }, 'https://app.example.com/')
+  console.assert(m.html.includes('href="https://app.example.com/approvals"') && m.text.includes('https://app.example.com/approvals'), 'the button and the text both carry the full link')
+  console.assert(!m.html.includes('<request>') && m.html.includes('&lt;request&gt;'), 'message text is escaped in the html')
+  console.assert(!renderEmail({ to: { name: 'A' }, subject: 's', text: 't' }, '').html.includes('<a '), 'no link, no button')
+  console.log('notify email self-check done')
 }

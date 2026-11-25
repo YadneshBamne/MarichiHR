@@ -7,6 +7,7 @@ import { authRepository, completeLogin } from '../auth/auth.mongo'
 import { bootstrapCompany } from './company.bootstrap.mongo'
 import { APP_KEYS } from './company.catalog'
 import { PLANS, ADDONABLE, entitlements } from './plans.catalog'
+import { sendWelcomeEmail } from '../auth/password-reset.mongo'
 import { Tenant, OrgUnit, ResourceCalendar, AuditLog } from '../../infrastructure/mongo/mongo'
 
 // MongoDB version of company.service.ts: self-serve signup (the whole workspace in one transaction), company profile,
@@ -51,6 +52,7 @@ export const companyService = {
     const { tenantId } = await bootstrapCompany({ companyName: body.companyName.trim(), slug, email, fullName: body.fullName, passwordHash })
     void creditLeave(tenantId).catch((e: any) => console.error('[signup] leave credit failed:', e?.message))
     const [tenant, owner] = await Promise.all([load(tenantId), authRepository.findUserByEmail(email, tenantId)])
+    void sendWelcomeEmail(owner!.id, 'owner')
     return { workspace: tenant.slug, ...(await completeLogin(owner!, tenant)) }
   },
 

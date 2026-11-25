@@ -1,88 +1,146 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import api from '../../lib/api'
 import { useAuth } from '../../contexts/AuthContext'
-import LeaveApprovalsPanel from '../leave/LeaveApprovalsPanel'
-import { AllocationRequestsPanel, usePendingAllocationRequests } from '../leave/LeaveBalancesPanel'
-import ApprovalsPanel from '../attendance/ApprovalsPanel'
-import { WaitingForMe, Monitor, ChainsSetup, usePendingChain } from './ApprovalChainsPanel'
-import { usePendingLeaveApprovals } from '../../lib/hooks/useLeave'
-import {
-  usePendingRegularisations as useAttPendingReg,
-  usePendingOvertime as useAttPendingOT,
-} from '../../lib/hooks/useAttendance'
+import PageHeader, { SearchField, EmptyState } from '../../components/ui/PageHeader'
+import Avatar from '../../components/ui/Avatar'
+import Icon from '../../components/ui/Icon'
+import { useToast } from '../../components/ui/Toast'
+import { useReveal } from '../../lib/motion'
+import { Delegations, Monitor, ChainsSetup } from './ApprovalChainsPanel'
 import PayrollSignoff from './PayrollSignoff'
 
-type Tab = 'leave' | 'attendance' | 'mine' | 'monitor' | 'chains' | 'signoff'
+// One inbox for everything waiting on you. The server gathers it (leave, attendance fixes, overtime, expenses, timesheets, pre-approvals, ...)
+// and says, for each item, which endpoint approves or rejects it, so this screen has no per-type code. Some things are decided on their own page
+// (a payroll run, flagged clock-ins): they show as a counted line with an Open button.
+type Act = { path: string; body?: Record<string, unknown>; noteField?: string; needsNote?: boolean; label?: string }
+type Item = { key: string; type: string; group: 'time' | 'money' | 'people' | 'review'; label: string; count: number; employeeId: string | null; employee: string | null; summary: string; detail: string | null; step: string | null; at: string | null; link: string; approve?: Act; reject?: Act; extra?: Act[]; shortfallDays?: number }
+type Inbox = { items: Item[]; groups: Record<string, number>; total: number }
+const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
+const GROUPS: [string, string][] = [['all', 'Everything'], ['time', 'Leave and time'], ['money', 'Money'], ['people', 'People'], ['review', 'To review']]
+const hours = (iso: string | null) => (iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 3_600_000)) : 0)
+const waited = (iso: string | null) => { const h = hours(iso); return !iso ? '' : h < 1 ? 'just now' : h < 24 ? `${h} h` : `${Math.round(h / 24)} d` }
+type Tab = 'inbox' | 'delegation' | 'monitor' | 'chains' | 'signoff'
 
 export default function ApprovalsPage() {
-  const { isManager, hasApp, hasRole } = useAuth()
+  const { hasRole, hasApp } = useAuth()
   const hr = hasRole('hr_admin') || hasRole('system_admin')
-  const lv = hasApp('leave'), att = hasApp('attendance')
-  const [activeTab, setActiveTab] = useState<Tab>(!isManager ? 'mine' : lv ? 'leave' : 'attendance')
-  const { data: chainPending = [] } = usePendingChain()
-
-  const { data: pendingLeave = [] } = usePendingLeaveApprovals(isManager && lv)
-  const { data: pendingReg = [] } = useAttPendingReg(isManager && att)
-  const { data: pendingOT = [] } = useAttPendingOT(isManager && att)
-
-  const { data: pendingAlloc = [] } = usePendingAllocationRequests(isManager && lv)
-  const leaveCount = (Array.isArray(pendingLeave) ? pendingLeave.length : 0) + pendingAlloc.length
-  const attendanceCount = (Array.isArray(pendingReg) ? pendingReg.length : 0) + (Array.isArray(pendingOT) ? pendingOT.length : 0)
-  const totalCount = leaveCount + attendanceCount + chainPending.length
-
-  const TABS = [
-    ...(lv ? [{ key: 'leave' as Tab, label: 'Leave requests', count: leaveCount }] : []),
-    ...(att ? [{ key: 'attendance' as Tab, label: 'Attendance', count: attendanceCount }] : []),
-    { key: 'mine' as Tab, label: 'Approval chains & delegation', count: chainPending.length },
-    ...(hr ? [{ key: 'monitor' as Tab, label: 'Monitor', count: 0 }, { key: 'chains' as Tab, label: 'Set up chains', count: 0 }] : []),
-    ...(hasRole('system_admin') && hasApp('payroll') ? [{ key: 'signoff' as Tab, label: 'Payroll sign-off', count: 0 }] : []),
-  ].filter((t) => isManager || ['mine', 'signoff'].includes(t.key))
-
+  const sys = hasRole('system_admin') && hasApp('payroll')
+  const [params, setParams] = useSearchParams()
+  const tab = (params.get('tab') as Tab) || 'inbox'
+  const root = useReveal<HTMLDivElement>(tab)
+  const { data } = useQuery({ queryKey: ['inbox'], queryFn: async () => (await api.get('/approvals/inbox')).data.data as Inbox, refetchInterval: 60_000 })
+  const tabs: [Tab, string][] = [['inbox', data?.total ? `Inbox (${data.total})` : 'Inbox'], ['delegation', 'Delegation'], ...(hr ? [['monitor', 'Monitor'] as [Tab, string], ['chains', 'Set up chains'] as [Tab, string]] : []), ...(sys ? [['signoff', 'Payroll sign-off'] as [Tab, string]] : [])]
   return (
-    <div style={s.page}>
-      <div style={s.header}>
-        <div>
-          <h2 style={s.title}>Approvals</h2>
-          <p style={s.sub}>
-            {totalCount === 0
-              ? 'All caught up — no pending approvals'
-              : `${totalCount} item${totalCount !== 1 ? 's' : ''} waiting for your action`}
-          </p>
-        </div>
-      </div>
-
-      <div style={s.tabs}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            style={{ ...s.tab, ...(activeTab === tab.key ? s.tabActive : {}) }}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            {tab.label}
-            {tab.count > 0 && (
-              <span style={s.badge}>{tab.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'mine' && <WaitingForMe />}
-      {activeTab === 'monitor' && hr && <Monitor />}
-      {activeTab === 'chains' && hr && <ChainsSetup />}
-      {activeTab === 'signoff' && hasRole('system_admin') && <PayrollSignoff />}
-      {activeTab === 'leave' && lv && isManager && <><LeaveApprovalsPanel /><AllocationRequestsPanel /></>}
-      {activeTab === 'attendance' && att && isManager && <ApprovalsPanel />}
-      {!lv && !att && <div className="card" style={{ padding: 40, textAlign: 'center' }}><div className="display" style={{ fontSize: 22 }}>Nothing to approve here yet</div><p className="dim" style={{ marginTop: 6, fontSize: 13 }}>Approvals come from the Leave and Attendance apps. Expense approvals live in Expenses.</p></div>}
+    <div ref={root}>
+      <PageHeader title="Approvals" sub={data ? (data.total ? `${data.total} thing${data.total === 1 ? '' : 's'} waiting for you` : 'All caught up. Nothing is waiting for you.') : 'Loading…'}>
+        <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={`btn btn-sm ${tab === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setParams(k === 'inbox' ? {} : { tab: k })}>{l}</button>)}</div>
+      </PageHeader>
+      {tab === 'inbox' && <InboxList data={data} />}
+      {tab === 'delegation' && <Delegations />}
+      {tab === 'monitor' && hr && <Monitor />}
+      {tab === 'chains' && hr && <ChainsSetup />}
+      {tab === 'signoff' && sys && <PayrollSignoff />}
     </div>
   )
 }
 
-const s: Record<string, React.CSSProperties> = {
-  page: {},
-  header: { marginBottom: '20px' },
-  title: { fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', fontWeight: 400, color: 'var(--ink)', margin: 0 },
-  sub: { fontSize: '13px', color: 'var(--faint)', marginTop: '2px' },
-  tabs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  tab: { display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 999, background: 'var(--card-2)', border: '1px solid var(--hair)', fontSize: 12, fontWeight: 500, color: 'var(--dim)', cursor: 'pointer', transition: 'background-color .35s var(--ease), color .35s var(--ease)' },
-  tabActive: { background: 'var(--night)', color: 'var(--night-ink)', borderColor: 'var(--night)' },
-  badge: { backgroundColor: 'var(--danger)', color: 'var(--night-ink)', fontSize: '10px', fontWeight: '600', padding: '1px 6px', borderRadius: 'var(--r-card)', minWidth: '16px', textAlign: 'center' },
+function InboxList({ data }: { data?: Inbox }) {
+  const toast = useToast()
+  const qc = useQueryClient()
+  const [group, setGroup] = useState('all')
+  const [q, setQ] = useState('')
+  const [newest, setNewest] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [asking, setAsking] = useState<{ key: string; act: Act } | null>(null)
+  const [note, setNote] = useState('')
+  const [shortfall, setShortfall] = useState<Record<string, 'paid' | 'unpaid'>>({})
+  const refresh = () => ['inbox', 'dashboard', 'nav-counts', 'leave', 'attendance', 'expenses', 'timesheets', 'approvals-pending'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }))
+  const send = (it: Item, act: Act, text?: string) => api.post(act.path, { ...(act.body ?? {}), ...(text && act.noteField ? { [act.noteField]: text } : {}), ...(act === it.approve && it.shortfallDays ? { shortfall: shortfall[it.key] ?? 'paid' } : {}) })
+  const decide = useMutation({
+    mutationFn: ({ it, act, text }: { it: Item; act: Act; text?: string }) => send(it, act, text),
+    onSuccess: (_r, v) => { toast(v.act === v.it.approve ? 'Approved' : v.act === v.it.reject ? 'Rejected' : 'Done'); setAsking(null); setNote(''); setPicked((p) => { const n = new Set(p); n.delete(v.it.key); return n }); refresh() },
+    onError: (e) => toast(errMsg(e), 'error'),
+  })
+  const items = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    const list = (data?.items ?? []).filter((i) => (group === 'all' || i.group === group) && (!s || `${i.employee ?? ''} ${i.summary} ${i.label} ${i.detail ?? ''}`.toLowerCase().includes(s)))
+    return newest ? [...list].reverse() : list
+  }, [data, group, q, newest])
+  // bulk: items that approve with one click (no note, no choice to make)
+  const bulkable = (i: Item) => !!i.approve && !i.shortfallDays
+  const selected = items.filter((i) => picked.has(i.key) && bulkable(i))
+  const bulk = async () => {
+    let ok = 0, failed = 0, why = ''
+    for (const it of selected) { try { await send(it, it.approve!); ok++ } catch (e) { failed++; why = errMsg(e) } }
+    toast(`Approved ${ok}${failed ? `, ${failed} could not be approved: ${why}` : ''}`, failed ? 'error' : undefined)
+    setPicked(new Set()); refresh()
+  }
+  const toggle = (k: string) => setPicked((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n })
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {GROUPS.map(([k, l]) => { const n = k === 'all' ? data?.total ?? 0 : data?.groups?.[k] ?? 0; return <button key={k} className={`btn btn-sm ${group === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setGroup(k)}>{l}{n ? ` (${n})` : ''}</button> })}
+        <span style={{ flex: 1 }} />
+        <SearchField value={q} onChange={setQ} placeholder="Search by person or request" width={240} />
+        <button className="btn btn-ghost btn-sm" onClick={() => setNewest((v) => !v)} title="Change the order">{newest ? 'Newest first' : 'Oldest first'}</button>
+      </div>
+      {selected.length > 0 && (
+        <div className="card" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <strong>{selected.length} selected</strong>
+          <button className="btn btn-primary btn-sm" onClick={bulk}>Approve {selected.length}</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPicked(new Set())}>Clear</button>
+        </div>
+      )}
+      {!data && <div className="skeleton" style={{ height: 120, borderRadius: 18 }} />}
+      {data && items.length === 0 && <div className="card"><EmptyState icon={<Icon name="checkCircle" size={26} />} title={data.total ? 'Nothing matches' : "You're all caught up"} body={data.total ? 'Try another filter or clear the search.' : 'When someone asks for leave, a fix, overtime, an expense and so on, it appears here.'} /></div>}
+      {items.map((it) => it.approve ? (
+        <article key={it.key} className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {bulkable(it) && <input type="checkbox" aria-label={`Select ${it.employee ?? it.label}`} checked={picked.has(it.key)} onChange={() => toggle(it.key)} style={{ marginTop: 10 }} />}
+            <Avatar name={it.employee ?? it.label} size={38} />
+            <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {it.employeeId ? <Link className="link" to={`/employees/${it.employeeId}`} style={{ fontWeight: 600 }}>{it.employee}</Link> : <strong>{it.employee}</strong>}
+                <span className="pill mute" style={{ textTransform: 'none' }}>{it.label}</span>
+                {it.step && <span className="pill info" style={{ textTransform: 'none' }}>{it.step}</span>}
+              </div>
+              <div style={{ marginTop: 3 }}>{it.summary}</div>
+              {it.detail && <div className="dim" style={{ fontSize: 13, marginTop: 2 }}>“{it.detail}”</div>}
+            </div>
+            <span className={`pill ${hours(it.at) > 72 ? 'danger' : hours(it.at) > 24 ? 'warn' : 'mute'}`} style={{ textTransform: 'none' }} title="How long it has been waiting">Waiting {waited(it.at)}</span>
+          </div>
+          {it.shortfallDays ? (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+              <span className="dim">{it.shortfallDays} day{it.shortfallDays === 1 ? ' is' : 's are'} beyond the balance. If you approve, treat them as</span>
+              <select className="input" style={{ width: 'auto' }} value={shortfall[it.key] ?? 'paid'} onChange={(e) => setShortfall({ ...shortfall, [it.key]: e.target.value as 'paid' | 'unpaid' })} aria-label="Treat days beyond the balance as">
+                <option value="paid">Paid (the balance goes negative; HR is told)</option><option value="unpaid">Unpaid (deducted in payroll)</option>
+              </select>
+            </label>
+          ) : null}
+          {asking?.key === it.key ? (
+            <form onSubmit={(e) => { e.preventDefault(); decide.mutate({ it, act: asking.act, text: note.trim() }) }} style={{ display: 'grid', gap: 8 }}>
+              <label className="field"><span>{asking.act === it.reject ? 'Why are you saying no?' : 'What should change?'}</span><textarea className="input" rows={2} autoFocus required minLength={asking.act === it.reject && it.type === 'overtime' ? 1 : 2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></label>
+              <div style={{ display: 'flex', gap: 8 }}><button className="btn btn-primary btn-sm" disabled={decide.isPending || note.trim().length < 2}>{asking.act === it.reject ? 'Reject' : asking.act.label ?? 'Send'}</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAsking(null); setNote('') }}>Cancel</button></div>
+            </form>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" disabled={decide.isPending} onClick={() => decide.mutate({ it, act: it.approve! })}>Approve</button>
+              {it.reject && <button className="btn btn-ghost btn-sm" onClick={() => { setAsking({ key: it.key, act: it.reject! }); setNote('') }}>Reject</button>}
+              {it.extra?.map((x) => <button key={x.path} className="btn btn-ghost btn-sm" onClick={() => { setAsking({ key: it.key, act: x }); setNote('') }}>{x.label}</button>)}
+            </div>
+          )}
+        </article>
+      ) : (
+        <Link key={it.key} to={it.link} className="card lift" style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--well)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Icon name="checkCircle" size={17} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}><strong style={{ fontWeight: 600 }}>{it.label}</strong><span className="dim" style={{ display: 'block', fontSize: 13 }}>{it.summary}</span></span>
+          <span className="pill honey">{it.count}</span>
+          <span className="btn btn-ghost btn-sm">Open</span>
+        </Link>
+      ))}
+    </div>
+  )
 }

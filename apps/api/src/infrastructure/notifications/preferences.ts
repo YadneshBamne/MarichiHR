@@ -6,7 +6,7 @@ export const CATEGORIES = [
   { key: 'performance', label: 'Goals and reviews', hint: 'Goals to accept, reviews and acknowledgements', prefixes: ['performance.'], mandatory: false },
   { key: 'people', label: 'People and records', hint: 'Profile requests, documents, contracts, hiring and exits', prefixes: ['profile.', 'document.', 'contract.', 'recruitment.', 'exit.'], mandatory: false },
   { key: 'policies', label: 'Policies', hint: 'New policies to read and acknowledge', prefixes: ['policy.'], mandatory: true },
-  { key: 'workplace', label: 'Workplace', hint: 'Announcements, grievances, forums and recognition', prefixes: ['announcement', 'grievance.', 'forum.', 'kudos.'], mandatory: false },
+  { key: 'workplace', label: 'Workplace', hint: 'Announcements, grievances, helpdesk tickets, forums and recognition', prefixes: ['announcement', 'grievance.', 'helpdesk.', 'forum.', 'kudos.'], mandatory: false },
   { key: 'other', label: 'Everything else', hint: 'Reminders and automation alerts', prefixes: [], mandatory: false },
 ] as const
 

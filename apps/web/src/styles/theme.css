@@ -299,6 +299,19 @@ th { text-transform: none !important; letter-spacing: 0 !important; background-c
 .dgrid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); align-items: stretch; }
 .dgrid.row { margin-bottom: var(--gap); }
 .span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; } .span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
+/* Rearrangeable dashboard cards (SwapGrid): a slot holds one card; the card fills it; the grip at the top is the drag handle */
+.swapy-slot { display: flex; min-width: 0; border-radius: var(--r-card, 28px); }
+.swapy-item { position: relative; flex: 1; min-width: 0; display: flex; }
+.swapy-item > .card { flex: 1; min-width: 0; }
+/* dashboard cards get a real shadow and edge so they stand out from the paper background */
+.swapy-item > .card { box-shadow: 0 1px 2px rgba(60, 50, 20, 0.10), 0 14px 30px -12px rgba(60, 50, 20, 0.34); border-color: rgba(60, 50, 20, 0.13); cursor: grab; }
+.swapy-item > .card:active { cursor: grabbing; }
+.swapy-item[data-swapy-dragging] > .card, .swapy-item:active > .card { box-shadow: 0 2px 4px rgba(60, 50, 20, 0.12), 0 26px 50px -14px rgba(60, 50, 20, 0.5); }
+.swapy-item { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.swapy-item input, .swapy-item textarea { user-select: text; -webkit-user-select: text; }
+[data-swapy-highlighted] { outline: 2px dashed var(--honey); outline-offset: 3px; }
+/* while a card is being dragged, nothing on the page may be selected (no blue text highlight) */
+body.swapping, body.swapping * { user-select: none !important; -webkit-user-select: none !important; cursor: grabbing !important; }
 @media (max-width: 1279px) { .span-3 { grid-column: span 6; } .span-4 { grid-column: span 6; } .span-8 { grid-column: span 12; } }
 @media (max-width: 699px) { .span-3, .span-4, .span-6, .span-8 { grid-column: span 12; } }
 

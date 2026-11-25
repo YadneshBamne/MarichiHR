@@ -13,7 +13,7 @@ import { hrAdminsFor } from '../../shared/utils/access'
 export type RequestType = 'leave' | 'regularisation' | 'overtime' | 'pre_approval' | 'policy_exception'
 const LABEL: Record<RequestType, string> = { leave: 'leave', regularisation: 'attendance', overtime: 'overtime', pre_approval: 'pre-approval', policy_exception: 'policy exception' }
 export interface Level { kind: 'manager' | 'skip_manager' | 'hr' | 'user'; userId?: string }
-const isHR = (u: { roleIds: string[] }) => u.roleIds.includes('hr_admin')
+const isHR = (u: { roleIds: string[] }) => u.roleIds.includes('hr_admin') || u.roleIds.includes('system_admin')
 const today = () => new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`)
 
 // The chain for a request: the first active one (lowest priority) whose leave filters match

@@ -1,198 +1,143 @@
 import { useState } from 'react'
-import { useMyActivities, useCompleteActivity, useCancelActivity } from '../../lib/hooks/useActivities'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import api from '../../lib/api'
+import { useAuth } from '../../contexts/AuthContext'
+import PageHeader, { EmptyState } from '../../components/ui/PageHeader'
 import Modal from '../../components/ui/Modal'
-import Badge from '../../components/ui/Badge'
+import Icon, { type IconName } from '../../components/ui/Icon'
+import { useToast } from '../../components/ui/Toast'
+import { useReveal } from '../../lib/motion'
+import { useMyActivities, useCreatedActivities, useActivityTypes, useCreateActivity, useCompleteActivity, useCancelActivity } from '../../lib/hooks/useActivities'
 
-type Filter = 'planned' | 'done' | 'cancelled' | 'all'
+// Tasks: things to do. Everyone makes tasks for themselves; a manager also for the people under them; HR for anyone. A task has a due date and
+// can point at a record (a person's profile). Whoever made a task can cancel it; the person it is for marks it done.
+type Filter = 'open' | 'assigned' | 'done' | 'cancelled'
+const errMsg = (e: any) => e?.response?.data?.message || 'Something went wrong'
+const ICON: Record<string, IconName> = { email: 'mail', 'phone call': 'phone', call: 'phone', meeting: 'users', 'to-do': 'checkCircle', todo: 'checkCircle', document: 'file', upload: 'file' }
+const day = (iso: string) => new Date(iso).toISOString().slice(0, 10)
+const todayStr = () => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10) }
+function due(iso: string) {
+  const diff = Math.round((new Date(`${day(iso)}T00:00:00Z`).getTime() - new Date(`${todayStr()}T00:00:00Z`).getTime()) / 86400000)
+  if (diff < 0) return { label: `${-diff} day${diff === -1 ? '' : 's'} overdue`, tone: 'danger' }
+  if (diff === 0) return { label: 'Due today', tone: 'warn' }
+  if (diff === 1) return { label: 'Due tomorrow', tone: 'warn' }
+  return { label: `Due ${new Date(`${day(iso)}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', day: 'numeric', month: 'short' })}`, tone: 'mute' }
+}
 
 export default function ActivitiesPage() {
-  const [filter, setFilter] = useState<Filter>('planned')
-  const [completeModal, setCompleteModal] = useState<{ id: string; title: string } | null>(null)
-  const [doneNote, setDoneNote] = useState('')
-
-  const { data: activities = [], isLoading } = useMyActivities(
-    filter === 'all' ? undefined : filter
-  )
-  const completeActivity = useCompleteActivity()
-  const cancelActivity = useCancelActivity()
-
-  const handleComplete = async () => {
-    if (!completeModal || !doneNote.trim()) return
-    await completeActivity.mutateAsync({ id: completeModal.id, doneNote })
-    setCompleteModal(null)
-    setDoneNote('')
+  const toast = useToast()
+  const { hasRole } = useAuth()
+  const root = useReveal<HTMLDivElement>('tasks')
+  const [filter, setFilter] = useState<Filter>('open')
+  const [making, setMaking] = useState(false)
+  const [finishing, setFinishing] = useState<{ id: string; title: string } | null>(null)
+  const [note, setNote] = useState('')
+  const mine = useMyActivities(filter === 'open' ? undefined : filter === 'assigned' ? 'planned' : filter)
+  const created = useCreatedActivities(filter === 'assigned')
+  const complete = useCompleteActivity()
+  const cancel = useCancelActivity()
+  const list = (filter === 'assigned' ? created.data : mine.data) ?? []
+  const loading = filter === 'assigned' ? created.isLoading : mine.isLoading
+  const tabs: [Filter, string][] = [['open', 'To do'], ['assigned', 'Assigned by me'], ['done', 'Done'], ['cancelled', 'Cancelled']]
+  const finish = async () => {
+    if (!finishing) return
+    try { await complete.mutateAsync({ id: finishing.id, doneNote: note.trim() }); toast('Marked done'); setFinishing(null); setNote('') } catch (e) { toast(errMsg(e), 'error') }
   }
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso)
-    const now = new Date()
-    const diff = d.getTime() - now.getTime()
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-    if (days < 0) return { label: `${Math.abs(days)}d overdue`, color: 'var(--danger)', bg: 'var(--danger-bg)' }
-    if (days === 0) return { label: 'Due today', color: 'var(--warn)', bg: 'var(--warn-bg)' }
-    if (days === 1) return { label: 'Due tomorrow', color: 'var(--warn)', bg: 'var(--warn-bg)' }
-    return { label: `Due ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`, color: 'var(--dim)', bg: 'var(--well)' }
-  }
-
-  const FILTERS: { key: Filter; label: string }[] = [
-    { key: 'planned', label: 'Pending' },
-    { key: 'done', label: 'Done' },
-    { key: 'cancelled', label: 'Cancelled' },
-    { key: 'all', label: 'All' },
-  ]
-
   return (
-    <div style={s.page}>
-      <div style={s.header}>
-        <div>
-          <h2 style={s.title}>Tasks</h2>
-          <p style={s.sub}>Tasks and follow-ups assigned to you</p>
-        </div>
-      </div>
-
-      <div style={s.filterRow}>
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            style={{ ...s.filterBtn, ...(filter === f.key ? s.filterActive : {}) }}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {isLoading ? (
-        <div style={s.loading}>Loading activities...</div>
-      ) : activities.length === 0 ? (
-        <div style={s.empty}>
-          <div style={{ fontSize: '28px', marginBottom: '8px' }}>
-            {filter === 'planned' ? '✓' : '📋'}
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--ink)', marginBottom: '4px' }}>
-            {filter === 'planned' ? 'No pending activities' : `No ${filter} activities`}
-          </div>
-          <div style={{ fontSize: '13px', color: 'var(--faint)' }}>
-            {filter === 'planned' ? 'All your tasks are up to date.' : ''}
-          </div>
-        </div>
-      ) : (
-        <div style={s.list}>
-          {activities.map((act: any) => {
-            const due = act.dueDate ? formatDate(act.dueDate) : null
-            return (
-              <div key={act.id} style={s.card}>
-                <div style={s.cardTop}>
-                  <div style={s.activityIcon}>
-                    {act.activityType?.icon === 'phone' ? '📞' :
-                     act.activityType?.icon === 'mail' ? '✉️' :
-                     act.activityType?.icon === 'users' ? '👥' :
-                     act.activityType?.icon === 'file' ? '📄' :
-                     act.activityType?.icon === 'clock' ? '⏰' :
-                     act.activityType?.icon === 'eye' ? '👁' :
-                     act.activityType?.icon === 'file-text' ? '📋' :
-                     act.activityType?.icon === 'check-square' ? '✅' : '📌'}
-                  </div>
-                  <div style={s.cardInfo}>
-                    <div style={s.actTitle}>{act.title}</div>
-                    {act.note && <div style={s.actNote}>{act.note}</div>}
-                    <div style={s.actMeta}>
-                      <span style={s.actType}>{act.activityType?.name}</span>
-                      <span style={s.dot}>·</span>
-                      <span style={s.actEntity}>{act.entityType?.replace(/_/g, ' ')}</span>
-                    </div>
-                  </div>
-                  <div style={s.cardRight}>
-                    {due && (
-                      <span style={{ ...s.duePill, backgroundColor: due.bg, color: due.color }}>
-                        {due.label}
-                      </span>
-                    )}
-                    <Badge label={act.status} />
+    <div ref={root}>
+      <PageHeader title="Tasks" sub="Things to do, with a due date. Make one for yourself, or for your team if you manage people." actions={<button className="btn btn-primary" onClick={() => setMaking(true)}><Icon name="plus" size={15} /> New task</button>}>
+        <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={filter === k} className={`btn btn-sm ${filter === k ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter(k)}>{l}</button>)}</div>
+      </PageHeader>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {loading && <div className="skeleton" style={{ height: 90, borderRadius: 18 }} />}
+        {!loading && list.length === 0 && <div className="card"><EmptyState icon={<Icon name="checkCircle" size={26} />} title={filter === 'open' ? 'Nothing to do' : filter === 'assigned' ? 'You have not assigned anything' : `No ${filter} tasks`} body={filter === 'open' ? 'Tasks you make, tasks from your manager or HR, and automatic reminders show up here.' : undefined} action={filter === 'open' ? <button className="btn btn-primary btn-sm" onClick={() => setMaking(true)}>Make a task</button> : undefined} /></div>}
+        {list.map((t: any) => {
+          const dd = due(t.dueDate)
+          const forOther = filter === 'assigned' && t.assignee
+          return (
+            <article key={t.id} className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <span style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--well)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Icon name={ICON[(t.activityType?.name ?? '').toLowerCase()] ?? 'checkCircle'} size={17} /></span>
+                <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                  <strong style={{ fontWeight: 600 }}>{t.title}</strong>
+                  {t.note && <div className="dim" style={{ fontSize: 13, marginTop: 2 }}>{t.note}</div>}
+                  <div className="dim" style={{ fontSize: 12, marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {t.activityType?.name && <span>{t.activityType.name}</span>}
+                    {forOther ? <span>· For {t.assignee.firstName} {t.assignee.lastName}</span> : t.createdByName && t.createdByName !== 'Automatic' ? <span>· From {t.createdByName}</span> : t.createdByName === 'Automatic' ? <span>· Automatic reminder</span> : null}
+                    {t.about && (t.about.path ? <Link className="link" to={t.about.path}>· About {t.about.label}</Link> : <span>· About {t.about.label}</span>)}
                   </div>
                 </div>
-
-                {act.status === 'done' && act.doneNote && (
-                  <div style={s.doneNote}>✓ {act.doneNote}</div>
-                )}
-
-                {act.status === 'planned' && (
-                  <div style={s.cardActions}>
-                    <button
-                      style={s.completeBtn}
-                      onClick={() => setCompleteModal({ id: act.id, title: act.title })}
-                    >
-                      Mark as Done
-                    </button>
-                    <button
-                      style={s.cancelBtn}
-                      onClick={() => cancelActivity.mutate(act.id)}
-                      disabled={cancelActivity.isPending}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
+                <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{t.status === 'done' ? <span className="pill ok">Done</span> : t.status === 'cancelled' ? <span className="pill mute">Cancelled</span> : <span className={`pill ${dd.tone}`} style={{ textTransform: 'none' }}>{dd.label}</span>}</span>
               </div>
-            )
-          })}
-        </div>
-      )}
+              {t.status === 'done' && t.doneNote && <div className="well" style={{ padding: '8px 12px', fontSize: 13 }}>{t.doneNote}</div>}
+              {['planned', 'overdue'].includes(t.status) && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {!forOther && <button className="btn btn-primary btn-sm" onClick={() => { setFinishing({ id: t.id, title: t.title }); setNote('') }}>Mark done</button>}
+                  {t.canCancel && <button className="btn btn-ghost btn-sm" disabled={cancel.isPending} onClick={() => cancel.mutate(t.id, { onSuccess: () => toast(forOther || t.createdBy !== 'system' ? 'Task cancelled' : 'Dismissed'), onError: (e) => toast(errMsg(e), 'error') })}>{t.createdBy === 'system' ? 'Dismiss' : 'Cancel task'}</button>}
+                </div>
+              )}
+            </article>
+          )
+        })}
+      </div>
 
-      <Modal open={!!completeModal} onClose={() => setCompleteModal(null)} title="Complete Activity" width={420}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <p style={{ fontSize: '13px', color: 'var(--dim)', margin: 0 }}>
-            Completing: <strong>{completeModal?.title}</strong>
-          </p>
-          <textarea
-            style={{ padding: '10px 12px', borderRadius: '12px', border: '1px solid var(--line-2)', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
-            rows={3}
-            value={doneNote}
-            onChange={(e) => setDoneNote(e.target.value)}
-            placeholder="What did you do? Add a completion note..."
-            autoFocus
-          />
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button onClick={() => setCompleteModal(null)} style={{ padding: '9px 18px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: '12px', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-            <button
-              onClick={handleComplete}
-              disabled={!doneNote.trim() || completeActivity.isPending}
-              style={{ padding: '9px 18px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', opacity: !doneNote.trim() ? 0.5 : 1 }}
-            >
-              {completeActivity.isPending ? 'Completing...' : 'Mark Done'}
-            </button>
+      {finishing && (
+        <Modal open onClose={() => setFinishing(null)} title="Mark done" width={440}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <p style={{ margin: 0 }}><strong>{finishing.title}</strong></p>
+            <label className="field"><span>Add a note (optional)</span><textarea className="input" rows={3} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} autoFocus /></label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="btn btn-ghost" onClick={() => setFinishing(null)}>Cancel</button><button className="btn btn-primary" disabled={complete.isPending} onClick={finish}>{complete.isPending ? 'Saving…' : 'Mark done'}</button></div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
+      {making && <NewTask onClose={() => setMaking(false)} manager={hasRole('manager') || hasRole('hr_admin') || hasRole('system_admin')} onMade={(forSelf) => { setMaking(false); setFilter(forSelf ? 'open' : 'assigned') }} />}
     </div>
   )
 }
 
-const s: Record<string, React.CSSProperties> = {
-  page: {},
-  header: { marginBottom: '16px' },
-  title: { fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', fontWeight: 400, color: 'var(--ink)', margin: 0 },
-  sub: { fontSize: '13px', color: 'var(--faint)', marginTop: '2px' },
-  filterRow: { display: 'flex', gap: '6px', marginBottom: '20px' },
-  filterBtn: { padding: '6px 16px', borderRadius: '16px', border: '1px solid var(--line)', backgroundColor: 'var(--card-2)', fontSize: '12px', cursor: 'pointer', color: 'var(--dim)' },
-  filterActive: { backgroundColor: 'var(--brand)', color: 'var(--night-ink)', borderColor: 'var(--brand)' },
-  loading: { color: 'var(--faint)', fontSize: '13px' },
-  empty: { textAlign: 'center', padding: '60px 20px', color: 'var(--dim)' },
-  list: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  card: { backgroundColor: 'var(--card)', backdropFilter: 'blur(18px)', border: '1px solid var(--hair)', boxShadow: 'var(--shadow)', borderRadius: 'var(--r-card)', padding: '16px' },
-  cardTop: { display: 'flex', gap: '12px', alignItems: 'flex-start' },
-  activityIcon: { fontSize: '20px', flexShrink: 0, marginTop: '2px' },
-  cardInfo: { flex: 1 },
-  actTitle: { fontSize: '14px', fontWeight: '500', color: 'var(--ink)', marginBottom: '3px' },
-  actNote: { fontSize: '12px', color: 'var(--dim)', marginBottom: '4px' },
-  actMeta: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', color: 'var(--faint)' },
-  actType: { color: 'var(--brand)' },
-  dot: { color: 'var(--line-2)' },
-  actEntity: {},
-  cardRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 },
-  duePill: { padding: '2px 8px', borderRadius: 'var(--r-card)', fontSize: '11px', fontWeight: '500', whiteSpace: 'nowrap' },
-  doneNote: { marginTop: '10px', fontSize: '12px', color: 'var(--ok)', backgroundColor: 'var(--ok-bg)', padding: '8px 10px', borderRadius: '12px' },
-  cardActions: { display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--well)' },
-  completeBtn: { padding: '7px 16px', backgroundColor: 'var(--brand)', color: 'var(--night-ink)', border: 'none', borderRadius: 999, fontSize: '12px', fontWeight: '500', cursor: 'pointer' },
-  cancelBtn: { padding: '7px 14px', backgroundColor: 'var(--well)', border: '1px solid var(--line)', borderRadius: 999, fontSize: '12px', cursor: 'pointer', color: 'var(--dim)' },
+function NewTask({ onClose, onMade, manager }: { onClose: () => void; onMade: (forSelf: boolean) => void; manager: boolean }) {
+  const toast = useToast()
+  const { user } = useAuth()
+  const types = useActivityTypes()
+  const create = useCreateActivity()
+  // the people this person may make tasks for (managers: their team; HR: anyone); an employee can only choose themselves
+  const people = useQuery({ queryKey: ['task-people'], enabled: manager, retry: false, queryFn: async () => (await api.get('/employees', { params: { limit: 200 } })).data.data as any[] })
+  const me = user?.employee?.id ?? ''
+  const [f, setF] = useState({ title: '', note: '', typeId: '', dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10), assignedToId: me, about: '' })
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value })
+  const typeId = f.typeId || types.data?.find((t) => /follow/i.test(t.name))?.id || types.data?.find((t) => /to-?do/i.test(t.name))?.id || types.data?.[0]?.id || ''
+  const submit = async () => {
+    try {
+      await create.mutateAsync({ activityTypeId: typeId, title: f.title.trim(), note: f.note.trim() || undefined, assignedToId: f.assignedToId || me, dueDate: f.dueDate, ...(f.about ? { entityType: 'employee', entityId: f.about } : {}) })
+      toast('Task made')
+      onMade((f.assignedToId || me) === me)
+    } catch (e) { toast(errMsg(e), 'error') }
+  }
+  const ok = f.title.trim().length >= 2 && !!typeId && !!f.dueDate && !!(f.assignedToId || me)
+  return (
+    <Modal open onClose={onClose} title="New task" width={480}>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <label className="field"><span>What needs doing?</span><input className="input" value={f.title} onChange={set('title')} maxLength={140} autoFocus /></label>
+        <label className="field"><span>Details (optional)</span><textarea className="input" rows={2} maxLength={1000} value={f.note} onChange={set('note')} /></label>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <label className="field" style={{ flex: '1 1 150px' }}><span>Due</span><input className="input" type="date" value={f.dueDate} onChange={set('dueDate')} /></label>
+          <label className="field" style={{ flex: '1 1 150px' }}><span>Kind</span><select className="input" value={typeId} onChange={set('typeId')}>{types.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+        </div>
+        {manager && (
+          <>
+            <label className="field"><span>For</span><select className="input" value={f.assignedToId || me} onChange={set('assignedToId')}>
+              {me && <option value={me}>Me</option>}
+              {people.data?.filter((p) => p.id !== me).map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+            </select></label>
+            <label className="field"><span>About a person (optional, adds a link to their profile)</span><select className="input" value={f.about} onChange={set('about')}>
+              <option value="">Nobody in particular</option>
+              {people.data?.map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+            </select></label>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={!ok || create.isPending} onClick={submit}>{create.isPending ? 'Saving…' : 'Make task'}</button></div>
+      </div>
+    </Modal>
+  )
 }

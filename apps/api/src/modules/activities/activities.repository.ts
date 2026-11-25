@@ -3,7 +3,7 @@ import { CreateActivityDto } from './activities.types'
 
 export const activitiesRepository = {
   // ─── ACTIVITIES ───────────────────────────────────────────
-  async create(tenantId: string, createdBy: string, data: CreateActivityDto) {
+  async create(tenantId: string, createdBy: string, data: CreateActivityDto & { entityType: string; entityId: string }) {
     return prisma.activity.create({
       data: {
         tenantId,
@@ -43,6 +43,16 @@ export const activitiesRepository = {
       },
       include: { activityType: true },
       orderBy: { dueDate: 'asc' },
+    })
+  },
+
+  // Tasks the person made for someone else (not their own)
+  async listCreated(tenantId: string, createdBy: string, ownEmployeeId: string, status?: string) {
+    return prisma.activity.findMany({
+      where: { tenantId, createdBy, assignedToId: { not: ownEmployeeId }, ...(status ? { status } : { status: { in: ['planned', 'overdue'] } }) },
+      include: { activityType: true, assignee: { select: { firstName: true, lastName: true } } },
+      orderBy: { dueDate: 'asc' },
+      take: 200,
     })
   },
 

@@ -5,6 +5,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { eventBus } from '../../infrastructure/events/eventBus'
 import { prisma } from '../../infrastructure/database/prisma'
 import { attendanceExtras } from './attendance-extras.service'
+import { tellApprovers, tellRequester } from './attendance.notify'
 import {
   businessToday, getTenantTimezone, normaliseDateInput, monthRange, zonedTimeToUtc, localTimeString, dateOnly, localDateString,
 } from '../../shared/utils/businessDate'
@@ -329,7 +330,7 @@ export const attendanceService = {
       expectedIn: record?.checkInTime ? localTimeString(record.checkInTime, tz) : undefined,
       expectedOut: record?.checkOutTime ? localTimeString(record.checkOutTime, tz) : undefined,
     })
-    await startApproval(tenantId, 'regularisation', created.id, employeeId)
+    if (!(await startApproval(tenantId, 'regularisation', created.id, employeeId))) await tellApprovers(tenantId, employeeId, 'regularisation', created.id)
     return created
   },
 
@@ -391,6 +392,7 @@ export const attendanceService = {
       },
     })
 
+    await tellRequester(tenantId, reg.employeeId, 'regularisation', id, true, opts.comments)
     return attendanceRepository.findRegularisationById(id)
   },
 
@@ -402,6 +404,7 @@ export const attendanceService = {
     const approverId = user.employeeId
     if (reg.status !== 'pending') throw new AppError(`Already ${reg.status}`, 400)
     await actOnApproval(user, 'regularisation', id, reg.employeeId, false, opts.comments, opts)
+    await tellRequester(tenantId, reg.employeeId, 'regularisation', id, false, opts.comments)
 
     return attendanceRepository.rejectRegularisation(id, approverId)
   },
@@ -428,7 +431,7 @@ export const attendanceService = {
       overtimeHours: data.overtimeHours,
       reason: data.reason,
     })
-    await startApproval(tenantId, 'overtime', ot.id, employeeId)
+    if (!(await startApproval(tenantId, 'overtime', ot.id, employeeId))) await tellApprovers(tenantId, employeeId, 'overtime', ot.id)
     return ot
   },
 
@@ -446,7 +449,9 @@ export const attendanceService = {
     const step = await actOnApproval(user, 'overtime', id, req.employeeId, true, opts.comments, opts)
     if (!step.final) return prisma.overtimeRequest.findUnique({ where: { id } })
 
-    return attendanceRepository.approveOvertimeRequest(id, approverId, approvedRate)
+    const approved = await attendanceRepository.approveOvertimeRequest(id, approverId, approvedRate)
+    await tellRequester(tenantId, req.employeeId, 'overtime', id, true, opts.comments)
+    return approved
   },
 
   async rejectOvertime(id: string, user: AccessUser, opts: { override?: boolean; comments?: string } = {}) {
@@ -457,6 +462,7 @@ export const attendanceService = {
     const approverId = user.employeeId
     if (req.status !== 'pending') throw new AppError(`Already ${req.status}`, 400)
     await actOnApproval(user, 'overtime', id, req.employeeId, false, opts.comments, opts)
+    await tellRequester(tenantId, req.employeeId, 'overtime', id, false, opts.comments)
 
     return attendanceRepository.rejectOvertimeRequest(id, approverId)
   },

@@ -9,10 +9,17 @@ export const activitiesController = {
     res.json({ success: true, data: result })
   }),
 
+  types: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await activitiesService.types(req.user!.tenantId) })
+  }),
+
   create: asyncHandler(async (req: Request, res: Response) => {
-    const { tenantId, userId } = req.user!
-    const result = await activitiesService.createActivity(tenantId, userId, req.body)
+    const result = await activitiesService.createActivity(req.user!, req.body)
     res.status(201).json({ success: true, data: result })
+  }),
+
+  listCreated: asyncHandler(async (req: Request, res: Response) => {
+    res.json({ success: true, data: await activitiesService.listCreated(req.user!, req.query['status'] as string) })
   }),
 
   listForEntity: asyncHandler(async (req: Request, res: Response) => {
@@ -22,8 +29,7 @@ export const activitiesController = {
   }),
 
   listMine: asyncHandler(async (req: Request, res: Response) => {
-    const { employeeId } = req.user!
-    const result = await activitiesService.listMyActivities(employeeId!, req.query['status'] as string)
+    const result = await activitiesService.listMyActivities(req.user!, req.query['status'] as string)
     res.json({ success: true, data: result })
   }),
 
@@ -34,8 +40,7 @@ export const activitiesController = {
   }),
 
   cancel: asyncHandler(async (req: Request, res: Response) => {
-    const { tenantId } = req.user!
-    const result = await activitiesService.cancelActivity(req.params['id'] as string, tenantId)
+    const result = await activitiesService.cancelActivity(req.params['id'] as string, req.user!)
     res.json({ success: true, data: result })
   }),
 

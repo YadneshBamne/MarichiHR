@@ -8,6 +8,7 @@ import { AppError } from '../../shared/utils/AppError'
 import { buildMeta, getPagination } from '../../shared/utils/pagination'
 import { encryptField, decryptField, last4 } from '../../shared/utils/crypto'
 import { AccessUser } from '../../shared/utils/access'
+import { sendWelcomeEmail } from '../auth/password-reset.mongo'
 import { assertProfileAccess, getReportingSubtreeIds, hrScope, clearHrScope } from '../../shared/utils/access.mongo'
 import {
   connectMongo, syncMongoIndexes, Tenant, Role, User, OrgUnit, Employee, RefreshToken, JobPosition, AuditLog, WorkLocation, LegalEntity,
@@ -367,6 +368,8 @@ export const accessService = {
           oldValue: { roles: currentNames }, newValue: { roles: roles ?? currentNames, loginEnabled: body.loginEnabled, passwordIssued: !!issuedPassword } }], o)
       })
     } finally { await session.endSession() }
+    // First time this person gets a password: tell them by email, with a link to choose their own
+    if (issuedPassword && !target.passwordHash && !target.lastLoginAt) void sendWelcomeEmail(emp.userId, 'invite')
     const view = await this.get(employeeId, actor.tenantId)
     return { ...view, ...(issuedPassword && { temporaryPassword: issuedPassword }) }
   },

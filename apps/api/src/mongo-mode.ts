@@ -9,7 +9,7 @@ import path from 'path'
 process.env.DB_PROVIDER = 'mongo'
 process.env.JOBS_ENABLED ??= 'false' // scheduled jobs are opt-in on MongoDB: set JOBS_ENABLED=true to run the ones listed in JOBS_ONLY
 // webhook-retry is left out: the in-process event pump retries webhooks itself
-process.env.JOBS_ONLY ??= 'events-sweep,people-dates,leave-sla-escalation,absent-marking,contracts,position-changes,document-expiry,leave-year-end,absence-flags,leave-attendance-check,carry-forward-expiry,declaration-window,leave-accrual,geomark-purge,tracking-purge'
+process.env.JOBS_ONLY ??= 'events-sweep,people-dates,leave-sla-escalation,absent-marking,contracts,position-changes,document-expiry,leave-year-end,absence-flags,leave-attendance-check,carry-forward-expiry,declaration-window,leave-accrual,geomark-purge,tracking-purge,helpdesk-maintenance'
 
 const SWAPS: Record<string, string> = {
   'infrastructure/database/prisma': 'infrastructure/database/prisma.stub',
@@ -20,6 +20,7 @@ const SWAPS: Record<string, string> = {
   'modules/auth/auth.repository': 'modules/auth/auth.mongo',
   'modules/company/company.service': 'modules/company/company.mongo',
   'modules/company/company.bootstrap': 'modules/company/company.bootstrap.mongo',
+  'modules/company/setup.service': 'modules/company/setup.service.mongo',
   'modules/employees/employees.service': 'modules/employees/employees.service.mongo',
   'modules/employees/employees.repository': 'modules/employees/employees.mongo',
   'modules/employees/contracts.service': 'modules/employees/contracts.mongo',

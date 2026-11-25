@@ -63,12 +63,14 @@ export function createApp() {
   if (process.env.DB_PROVIDER === 'mongo') app.use('/api/v1', require('./mongo-extras.router').mongoExtras)
   // New apps built on MongoDB only (no Postgres version): helpdesk and timesheets
   if (process.env.DB_PROVIDER === 'mongo') {
+    app.use('/api/v1/auth', require('./modules/auth/password-reset.mongo').passwordResetRouter)
     app.use('/api/v1/helpdesk', require('./modules/helpdesk/helpdesk.mongo.router').helpdeskRouter)
     app.use('/api/v1/alumni', require('./modules/alumni/alumni.mongo.router').alumniRouter)
     app.use('/api/v1/sso', require('./modules/auth/oidc.sso').ssoRouter)
     app.use('/api/v1/geomark', require('./modules/geomark/geomark.mongo.router').geomarkRouter)
     app.use('/api/v1/tracking', require('./modules/tracking/tracking.mongo.router').trackingRouter)
     app.use('/api/v1/devices', require('./modules/devices/devices.mongo.router').devicesRouter)
+    app.use('/api/v1/approvals/inbox', require('./modules/approvals/inbox.mongo').inboxRouter)
     app.use('/api/v1/appraisal', require('./modules/performance/appraisal.mongo.router').appraisalRouter)
     app.use('/api/v1/confirmation', require('./modules/employees/confirmation.mongo.router').confirmationRouter)
     app.use('/api/v1/assistant', require('./modules/assistant/assistant.mongo.router').assistantRouter)

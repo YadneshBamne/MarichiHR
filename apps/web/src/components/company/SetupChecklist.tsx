@@ -10,7 +10,8 @@ export function useSetupStatus(enabled = true) {
 }
 
 export default function SetupChecklist({ app, title = 'Next steps', compact }: { app?: string; title?: string; compact?: boolean }) {
-  const { data } = useSetupStatus()
+  const { data, isError, refetch } = useSetupStatus()
+  if (isError) return <div><h3 style={{ fontSize: compact ? 15 : 16 }}>{title}</h3><p className="dim" style={{ fontSize: 13, marginTop: 8 }}>The checklist could not be loaded. <button type="button" className="link" onClick={() => refetch()}>Try again</button></p></div>
   if (!data) return <div className="skeleton" style={{ height: 120, borderRadius: 14 }} />
   const steps = app ? data.steps.filter((s) => s.app === app) : data.steps
   const left = steps.filter((s) => !s.done && !s.optional).length
