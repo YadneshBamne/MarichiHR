@@ -9,7 +9,7 @@ import { prisma } from '../../infrastructure/database/prisma'
 import { JOBS, getCronQueue } from '../../infrastructure/jobs/jobs'
 import { CATEGORIES, Prefs } from '../../infrastructure/notifications/preferences'
 import { pushPublicKey, subscribe, unsubscribe } from '../../infrastructure/notifications/push'
-import { smtpClient } from '../../infrastructure/notifications/notify'
+import { smtpClient, mandrillPing } from '../../infrastructure/notifications/notify'
 
 // ─── IN-APP NOTIFICATIONS (/notifications) ─────────────────────
 export const notificationsRouter = Router()
@@ -103,6 +103,9 @@ systemRouter.get('/email-check', asyncHandler(async (_req, res) => {
   const out: Record<string, unknown> = {
     transport: process.env.EMAIL_TRANSPORT || 'log (not set)', channels: process.env.NOTIFY_CHANNELS || 'email (default)', appUrl: process.env.APP_URL || process.env.CLIENT_URL || null,
     smtp: { host: process.env.SMTP_HOST || null, port: process.env.SMTP_PORT || null, secure: process.env.SMTP_SECURE || null, user: set('SMTP_USER'), pass: set('SMTP_PASS'), from: process.env.SMTP_FROM || null },
+  }
+  if (process.env.EMAIL_TRANSPORT === 'mandrill') {
+    try { await mandrillPing(); out.mandrillLogin = 'ok' } catch (e: any) { out.mandrillLogin = `failed: ${String(e?.message).slice(0, 160)}` }
   }
   if (process.env.EMAIL_TRANSPORT === 'smtp') {
     try { await Promise.race([smtpClient().verify(), new Promise((_, no) => setTimeout(() => no(new Error('timed out after 12 s: the host cannot reach the SMTP server')), 12000))]); out.smtpLogin = 'ok' } catch (e: any) { out.smtpLogin = `failed: ${String(e?.message).slice(0, 160)}` }

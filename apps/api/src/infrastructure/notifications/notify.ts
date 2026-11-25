@@ -5,7 +5,7 @@ import { pushEnabled, pushTo } from './push'
 import { templateFor, waVar, detailFor } from './whatsapp-templates'
 
 // In-app notification rows plus outbound delivery over pluggable transports.
-// Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | smtp | resend.
+// Channels: NOTIFY_CHANNELS (default "email"). Email transport: EMAIL_TRANSPORT = log (default) | smtp | mandrill (HTTPS, for hosts that block SMTP) | resend.
 // SMTP (e.g. Mandrill): SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM.
 // WhatsApp is an adapter that needs WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID (Meta Cloud API) before it can send.
 
@@ -66,6 +66,42 @@ export const smtpTransport: Transport = {
   },
 }
 
+// Mandrill over HTTPS (messages/send): the same account and API key as SMTP, for hosts that block SMTP ports (Railway's Hobby plan blocks 587).
+// The key is MANDRILL_API_KEY, else SMTP_PASS (a Mandrill SMTP password is an API key).
+const mandrillKey = () => process.env.MANDRILL_API_KEY || process.env.SMTP_PASS
+export function mandrillPayload(msg: OutboundMessage) {
+  const body = renderEmail(msg)
+  return {
+    key: mandrillKey(),
+    message: {
+      from_email: process.env.SMTP_FROM, from_name: process.env.SMTP_FROM_NAME || 'MarichiHR',
+      to: [{ email: msg.to.email, name: msg.to.name, type: 'to' }],
+      subject: msg.subject, text: body.text, html: body.html,
+      ...(msg.attachments?.length && { attachments: msg.attachments.map((a) => ({ type: /\.pdf$/i.test(a.filename) ? 'application/pdf' : 'application/octet-stream', name: a.filename, content: a.content.toString('base64') })) }),
+    },
+  }
+}
+export const mandrillTransport: Transport = {
+  name: 'mandrill',
+  async send(msg) {
+    if (!mandrillKey()) throw new Error('Mandrill is not configured (MANDRILL_API_KEY or SMTP_PASS)')
+    if (!process.env.SMTP_FROM) throw new Error('SMTP_FROM is not set')
+    if (!msg.to.email) throw new Error('Recipient has no email address')
+    const res = await fetch('https://mandrillapp.com/api/1.0/messages/send.json', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mandrillPayload(msg)), signal: AbortSignal.timeout(15000) })
+    const out: any = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(`Mandrill responded ${res.status}${out?.message ? `: ${out.message}` : ''}`)
+    // one entry per recipient: sent and queued are fine, rejected and invalid are not
+    const r = Array.isArray(out) ? out[0] : null
+    if (r && ['rejected', 'invalid'].includes(r.status)) throw new Error(`Mandrill ${r.status}${r.reject_reason ? ` (${r.reject_reason})` : ''}`)
+  },
+}
+// Login check without sending anything (for the admin email check)
+export async function mandrillPing() {
+  const res = await fetch('https://mandrillapp.com/api/1.0/users/ping2.json', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: mandrillKey() }), signal: AbortSignal.timeout(12000) })
+  const out: any = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(`${res.status}${out?.message ? `: ${out.message}` : ''}`)
+}
+
 export const resendTransport: Transport = {
   name: 'resend',
   async send(msg) {
@@ -110,7 +146,7 @@ export const whatsappTransport: Transport = {
 }
 
 // The email transport chosen by EMAIL_TRANSPORT (also used by mails that are not notifications: password reset, welcome)
-export const emailTransport = (): Transport => process.env.EMAIL_TRANSPORT === 'smtp' ? smtpTransport : process.env.EMAIL_TRANSPORT === 'resend' ? resendTransport : logTransport
+export const emailTransport = (): Transport => process.env.EMAIL_TRANSPORT === 'smtp' ? smtpTransport : process.env.EMAIL_TRANSPORT === 'mandrill' ? mandrillTransport : process.env.EMAIL_TRANSPORT === 'resend' ? resendTransport : logTransport
 
 function transportsFor(): Record<string, Transport> {
   const channels = (process.env.NOTIFY_CHANNELS || 'email').split(',').map((c) => c.trim()).filter(Boolean)
