@@ -66,7 +66,7 @@ export const contractService = {
     if (data.salaryStructureId && !(await SalaryStructure.exists({ _id: data.salaryStructureId, tenantId }))) throw new AppError('Salary structure not found', 404)
     if (data.gradeBandId && !(await GradeBand.exists({ _id: data.gradeBandId, tenantId }))) throw new AppError('Grade band not found', 404)
     const created: any = (await EmployeeContract.create({
-      tenantId, employeeId: data.employeeId, ctcAnnual: data.ctcAnnual, wageMonthly: data.wageMonthly, currency: data.currency, variablePayPercent: data.variablePayPercent ?? 0,
+      tenantId, employeeId: data.employeeId, ctcAnnual: data.ctcAnnual, wageMonthly: data.wageMonthly, currency: data.currency, variablePayPercent: data.variablePayPercent ?? 0, components: data.components,
       noticePeriodDays: data.noticePeriodDays ?? 30, effectiveFrom: dateOnly(data.effectiveFrom), effectiveUntil: data.effectiveUntil ? dateOnly(data.effectiveUntil) : undefined,
       salaryStructureId: data.salaryStructureId, gradeBandId: data.gradeBandId, revisionReason: data.revisionReason, status: 'new',
     })).toObject()

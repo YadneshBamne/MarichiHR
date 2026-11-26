@@ -186,6 +186,8 @@ export const CreateContractSchema = z.object({
     wageMonthly: z.number().positive(),
     currency: z.string().regex(/^[A-Z]{3}$/, 'Use a 3-letter currency code'),
     variablePayPercent: z.number().min(0).max(100).optional(),
+    // per-person fixed pay amounts a salary rule can read as contract.comp.<CODE> (e.g. TRANSPORT, LUNCH)
+    components: z.record(z.string().regex(/^[A-Z][A-Z0-9_]{0,24}$/), z.number().min(0).max(100000000)).optional(),
     noticePeriodDays: z.number().int().min(0).max(365).optional(),
     effectiveFrom: ymdDate,
     effectiveUntil: ymdDate.optional(),

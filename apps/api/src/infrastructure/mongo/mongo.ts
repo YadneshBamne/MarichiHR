@@ -131,7 +131,7 @@ export const GradeBand = model('GradeBand', 'grade_bands', {
 const TransitionSub = new Schema<any>({ _id: { type: S, default: uuid }, fromState: S, toState: S, transitionedBy: S, reason: S, createdAt: { type: D, default: Date.now } })
 export const EmployeeContract = model('EmployeeContract', 'employee_contracts', {
   tenantId: { type: S, required: true }, employeeId: { type: S, required: true }, ctcAnnual: { type: N, required: true }, wageMonthly: { type: N, required: true }, currency: { type: S, required: true },
-  variablePayPercent: { type: N, default: 0 }, noticePeriodDays: { type: N, default: 30 }, effectiveFrom: { type: D, required: true }, effectiveUntil: D, salaryStructureId: S, gradeBandId: S,
+  variablePayPercent: { type: N, default: 0 }, components: Schema.Types.Mixed, noticePeriodDays: { type: N, default: 30 }, effectiveFrom: { type: D, required: true }, effectiveUntil: D, salaryStructureId: S, gradeBandId: S,
   revisionReason: S, status: { type: S, default: 'new' }, stateChangedAt: D, stateChangedBy: S, expiryAlertSent: { type: B, default: false }, active: { type: B, default: true },
   stateTransitions: { type: [TransitionSub], default: [] },
 }, [[{ tenantId: 1, status: 1 }], [{ employeeId: 1, status: 1 }], [{ salaryStructureId: 1 }]])

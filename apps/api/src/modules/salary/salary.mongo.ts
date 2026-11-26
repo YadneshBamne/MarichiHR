@@ -63,7 +63,7 @@ async function dryRun(tenantId: string, structureId: string, candidate: RuleInpu
   try {
     const result = runPayrollEngine({
       rules: [...others.map((r: any) => toEngine(r, r.categoryCode)), toEngine({ ...candidate, id: replaceRuleId }, category.code)],
-      contract: { wageMonthly: sampleWage, fullWageMonthly: sampleWage, ctcAnnual: sampleWage * 12, variablePayPercent: 0 },
+      contract: { wageMonthly: sampleWage, fullWageMonthly: sampleWage, ctcAnnual: sampleWage * 12, variablePayPercent: 0, comp: { BASIC: sampleWage * 0.6, TRANSPORT: sampleWage * 0.1, LUNCH: sampleWage * 0.1, OTHER: sampleWage * 0.1, NHIS_BASE: sampleWage * 0.6, NO_NAPSA: 0 } },
       factor: 1, workingDays: 22, paidDays: 22, lwpDays: 0, extraLines: [],
       inputsByCode: Object.fromEntries(inputCodes.map((c) => [c, 0])),
       statutory: { at: today, tables: await statutoryFor(today, tenantId) },

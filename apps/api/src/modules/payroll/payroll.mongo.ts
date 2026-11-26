@@ -186,12 +186,12 @@ export async function computeEmployeePayslip(emp: any, cycle: any, cycleInputs: 
     amountPercentageBase: r.amountPercentageBase, pythonCode: r.pythonCode, conditionSelect: r.conditionSelect, conditionExpr: r.conditionExpr, appearsOnPayslip: r.appearsOnPayslip, ...extra,
   }))
   const result = runPayrollEngine({
-    rules: engineRules(), contract: { wageMonthly: proratedWage, fullWageMonthly: fullWage, ctcAnnual: contract.ctcAnnual, variablePayPercent: contract.variablePayPercent },
+    rules: engineRules(), contract: { wageMonthly: proratedWage, fullWageMonthly: fullWage, ctcAnnual: contract.ctcAnnual, variablePayPercent: contract.variablePayPercent, comp: Object.fromEntries(Object.entries(contract.components ?? {}).map(([k, v]) => [k, round2(Number(v) * factor)])) },
     factor, workingDays: periodWorking.length, paidDays, lwpDays, extraLines, inputsByCode, reimbursementLines, statutory,
   } as any)
   warnings.push(...result.warnings)
   const fullMonth = runPayrollEngine({
-    rules: engineRules(), contract: { wageMonthly: fullWage, fullWageMonthly: fullWage, ctcAnnual: contract.ctcAnnual, variablePayPercent: contract.variablePayPercent },
+    rules: engineRules(), contract: { wageMonthly: fullWage, fullWageMonthly: fullWage, ctcAnnual: contract.ctcAnnual, variablePayPercent: contract.variablePayPercent, comp: { ...(contract.components ?? {}) } },
     factor: 1, workingDays: periodWorking.length, paidDays: periodWorking.length, lwpDays: 0, extraLines: [], inputsByCode, statutory,
   } as any)
 
