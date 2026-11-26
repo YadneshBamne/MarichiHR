@@ -142,7 +142,10 @@ export default function EmployeeListPage() {
                         </span>
                       </span>
                     </td>
-                    <td>{e.jobPosition?.title || <span className="muted">—</span>}</td>
+                    <td>
+                      {e.jobPosition?.title || <span className="muted">—</span>}
+                      {isHR && e.user?.roleNames?.length > 0 && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{e.user.roleNames.map((r: string) => r.replace(/_/g, ' ')).join(', ')}</span>}
+                    </td>
                     <td>{e.orgUnit?.name || '—'}</td>
                     <td>{e.workLocation?.city || e.workLocation?.name || <span className="muted">—</span>}</td>
                     <td className="num">{since(e.hireDate)}</td>

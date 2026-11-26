@@ -62,7 +62,7 @@ async function related(emps: any[], full = false) {
     const mu = m && MU.get(m.userId)
     return {
       ...ser(e),
-      user: u && (full ? { id: u._id, email: u.email, avatarUrl: u.avatarUrl, lastLoginAt: u.lastLoginAt, mfaEnabled: u.mfaEnabled, userRoles: (u.userRoles || []).map((r: any) => ({ role: { id: r.roleId, name: r.roleName } })) } : { email: u.email, avatarUrl: u.avatarUrl, lastLoginAt: u.lastLoginAt }),
+      user: u && (full ? { id: u._id, email: u.email, avatarUrl: u.avatarUrl, lastLoginAt: u.lastLoginAt, mfaEnabled: u.mfaEnabled, userRoles: (u.userRoles || []).map((r: any) => ({ role: { id: r.roleId, name: r.roleName } })) } : { email: u.email, avatarUrl: u.avatarUrl, lastLoginAt: u.lastLoginAt, roleNames: (u.userRoles || []).map((r: any) => r.roleName) }),
       orgUnit: o && { id: o._id, name: o.name, type: o.type },
       jobPosition: j && { id: j._id, title: j.title, ...(full && { gradeBand: j.gradeBand }) },
       workLocation: l ? (full ? ser(l) : { id: l._id, name: l.name, city: l.city }) : null,
