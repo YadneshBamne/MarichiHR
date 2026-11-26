@@ -107,7 +107,10 @@ export const ACCOUNT_ITEMS: NavItem[] = [
 export const ALL_ITEMS = SECTIONS.flatMap((s) => s.items.map((i) => ({ ...i, section: s })))
 
 // `features` are the plan features; left out (still loading) it hides nothing
-export const canSee = (item: NavItem, roleNames: string[], apps?: string[], features?: string[]) =>
+// `hidden`: menu paths the company chose not to show (Settings, Company profile); the dashboard and settings can never be hidden
+export const HIDEABLE = ['/activities', '/holidays', '/org-chart', '/requests', '/announcements', '/community', '/policies', '/grievances', '/reports', '/audit']
+export const canSee = (item: NavItem, roleNames: string[], apps?: string[], features?: string[], hidden?: string[]) =>
+  !(hidden && HIDEABLE.includes(item.path) && hidden.includes(item.path)) &&
   (!item.roles || item.roles.some((r) => roleNames.includes(r))) && (!item.app || !apps || apps.includes(item.app)) && (!item.feature || !features || features.includes(item.feature))
 
 // People who only see their own records get "My …" labels
@@ -125,9 +128,9 @@ const englishLabel = (item: NavItem, roleNames: string[]) => {
 // A former employee sees one page only
 export const isAlumniOnly = (roleNames: string[]) => roleNames.length > 0 && roleNames.every((r) => r === 'alumni')
 
-export function visibleSections(roleNames: string[], apps?: string[], features?: string[]) {
+export function visibleSections(roleNames: string[], apps?: string[], features?: string[], hidden?: string[]) {
   if (isAlumniOnly(roleNames)) return [{ key: 'alumni', label: 'Alumni', icon: 'door' as const, items: [{ label: 'My alumni page', path: '/alumni', icon: 'door' as const }] }]
-  return SECTIONS.map((s) => ({ ...s, label: tr(s.label), items: s.items.filter((i) => canSee(i, roleNames, apps, features)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
+  return SECTIONS.map((s) => ({ ...s, label: tr(s.label), items: s.items.filter((i) => canSee(i, roleNames, apps, features, hidden)).map((i) => ({ ...i, label: labelFor(i, roleNames) })) })).filter((s) => s.items.length)
 }
 
 // Most specific match wins (/settings/apps before /settings)

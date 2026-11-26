@@ -27,6 +27,14 @@ export const UpdateCompanySchema = z.object({
     logoUrl: logo.nullable().optional(),
     employeeCodePrefix: z.string().trim().toUpperCase().regex(/^[A-Z][A-Z0-9-]{0,9}$/, 'Start with a letter; letters, digits and - only, up to 10').optional(),
     employeeCodeDigits: z.number().int().min(3).max(8).optional(),
+    // address and contacts (shown on payslips) and the menu items the company does not want to see (paths such as /community)
+    address: z.string().trim().max(240).nullable().optional(),
+    poBox: z.string().trim().max(40).nullable().optional(),
+    phone: z.string().trim().max(40).nullable().optional(),
+    mobile: z.string().trim().max(40).nullable().optional(),
+    contactEmail: z.string().trim().toLowerCase().email().max(120).nullable().optional(),
+    website: z.string().trim().max(120).nullable().optional(),
+    hiddenNav: z.array(z.string().regex(/^\/[a-z0-9/-]{1,40}$/)).max(40).optional(),
   }).strict(),
 })
 

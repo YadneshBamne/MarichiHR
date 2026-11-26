@@ -32,7 +32,16 @@ const GROUPS: { title: string; cats: string[]; sign: string; muted?: boolean }[]
   { title: 'Employer contributions (not deducted from your pay)', cats: ['EMP_CONTRIB'], sign: '', muted: true },
 ]
 
-export function renderPayslipHtml(payslip: any, tenantName: string): string {
+// details: the company's logo (a small data URL), address and contacts, printed under the company name when set
+export type PayslipCompany = { logoUrl?: string | null; address?: string | null; poBox?: string | null; phone?: string | null; mobile?: string | null; contactEmail?: string | null; website?: string | null }
+const companyBlock = (d?: PayslipCompany) => {
+  if (!d) return ''
+  const logo = d.logoUrl && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(d.logoUrl) ? `<img src="${d.logoUrl}" alt="" style="height:44px;margin-bottom:6px;display:block"/>` : ''
+  const lines = [d.address, d.poBox ? `P.O. Box ${d.poBox}` : '', [d.phone ? `Tel ${d.phone}` : '', d.mobile ? `Cell ${d.mobile}` : ''].filter(Boolean).join(' · '), [d.contactEmail, d.website].filter(Boolean).join(' · ')].filter(Boolean)
+  return `${logo}${lines.length ? `<div style="font-size:10px;color:#6b6a65;line-height:1.5;margin-top:2px">${lines.map((l) => escapeHtml(String(l))).join('<br>')}</div>` : ''}`
+}
+
+export function renderPayslipHtml(payslip: any, tenantName: string, details?: PayslipCompany): string {
   const cur: string = payslip.currency || 'USD'
   const lines: any[] = payslip.lines || []
   const emp = payslip.employee || {}
@@ -82,7 +91,8 @@ export function renderPayslipHtml(payslip: any, tenantName: string): string {
 </style></head><body>
   <div class="head">
     <div>
-      <div class="tenant">${escapeHtml(tenantName)}</div>
+      ${companyBlock({ logoUrl: details?.logoUrl })}<div class="tenant">${escapeHtml(tenantName)}</div>
+      ${companyBlock({ ...details, logoUrl: null })}
       <div class="label" style="margin-top:6px">Payslip</div>
       <div class="big">${escapeHtml(emp.firstName)} ${escapeHtml(emp.lastName)}</div>
       <div>${escapeHtml(emp.employeeCode)}</div>

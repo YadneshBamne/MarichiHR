@@ -19,7 +19,7 @@ export default function CommandPalette({ open, onClose, onTour }: { open: boolea
   const roles = user?.roles?.map((r) => r.name) ?? []
 
   const cmds: Cmd[] = useMemo(() => [
-    ...ALL_ITEMS.filter((it) => canSee(it, roles, user?.tenant?.modules ?? [], company?.entitlements?.features)).map((it) => ({
+    ...ALL_ITEMS.filter((it) => canSee(it, roles, user?.tenant?.modules ?? [], company?.entitlements?.features, company?.hiddenNav)).map((it) => ({
       id: it.path, label: labelFor(it, roles), hint: it.section.label, icon: it.icon, soon: !!it.soon, keywords: it.keywords,
       run: () => navigate(it.path),
     })),

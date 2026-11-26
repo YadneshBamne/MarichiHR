@@ -555,8 +555,8 @@ export const payrollService = {
 
   async getPayslipPdf(payslipId: string, user: { tenantId: string; employeeId: string; roleIds: string[]; userId?: string }) {
     const payslip: any = await payrollService.getPayslip(payslipId, user)
-    const tenant: any = await Tenant.findById(user.tenantId).select('name').lean()
-    const pdf = await generatePayslipPdf(renderPayslipHtml(payslip, tenant?.name || ''))
+    const tenant: any = await Tenant.findById(user.tenantId).select('name logoUrl address poBox phone mobile contactEmail website').lean()
+    const pdf = await generatePayslipPdf(renderPayslipHtml(payslip, tenant?.name || '', tenant))
     await audit({ tenantId: user.tenantId, userId: user.userId, action: 'PAYSLIP_PDF_DOWNLOADED', entityType: 'payslip', entityId: payslipId })
     return { pdf, filename: `payslip-${payslip.employee.employeeCode}-${dstr(new Date(payslip.payrollCycle.payPeriodStart)).slice(0, 7)}.pdf` }
   },

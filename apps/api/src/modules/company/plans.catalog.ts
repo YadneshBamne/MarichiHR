@@ -40,6 +40,7 @@ const starter = ['payroll', 'leave', 'selfOnboarding', 'exits', 'helpdesk']
 const growth = [...starter, 'attendance', 'advancedAttendance', 'confirmation']
 const enterprise = [...growth, 'expenses', 'pms', 'pmsAdvanced', 'geomark', 'api', 'sso', 'multiCompany', 'timesheets', 'assistant']
 export const PLANS: Plan[] = [
+  { key: 'payroll', name: 'Payroll only', tagline: 'Payroll and statutory tax for your people, and nothing else', features: ['payroll'] },
   { key: 'starter', name: 'Starter', tagline: 'Payroll, leave and the basics', features: starter },
   { key: 'growth', name: 'Growth', tagline: 'Adds attendance, shifts and confirmations', features: growth },
   { key: 'enterprise', name: 'Enterprise', tagline: 'Everything, including performance, expenses, API and multi-company', features: enterprise },

@@ -31,7 +31,7 @@ export default function AppShell() {
   const roles = user?.roles?.map((r) => r.name) ?? []
   const apps = user?.tenant?.modules ?? []
   const { data: company } = useCompany()
-  const sections = visibleSections(roles, apps, company?.entitlements?.features)
+  const sections = visibleSections(roles, apps, company?.entitlements?.features, company?.hiddenNav)
   const companyName = user?.tenant?.name || 'MarichiHR'
   const current = itemFor(location.pathname)
   const [palette, setPalette] = useState(false)
