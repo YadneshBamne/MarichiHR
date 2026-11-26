@@ -49,7 +49,8 @@ export function holidayTemplate(country: keyof typeof HOLIDAY_COUNTRIES, y: numb
       { name: 'Good Friday', date: addDays(e, -2) }, { name: 'Holy Saturday', date: addDays(e, -1) }, { name: 'Easter Monday', date: addDays(e, 1) },
       { name: 'Kenneth Kaunda Day', date: iso(y, 4, 28) }, { name: 'Labour Day', date: iso(y, 5, 1) }, { name: 'Africa Freedom Day', date: iso(y, 5, 25) },
       { name: "Heroes' Day", date: heroes }, { name: 'Unity Day', date: addDays(heroes, 1) }, { name: "Farmers' Day", date: nthWeekday(y, 8, 1, 1) },
-      { name: 'National Day of Prayer', date: iso(y, 10, 18) }, { name: 'Independence Day', date: iso(y, 10, 24) }, { name: 'Christmas Day', date: iso(y, 12, 25) },
+      // 18 October was cancelled as a public holiday in 2026 and replaced by 29 December (reported by the Zambian press; confirm against the Gazette)
+      y >= 2026 ? { name: 'National Day of Prayer and Christian Heritage', date: iso(y, 12, 29) } : { name: 'National Day of Prayer', date: iso(y, 10, 18) }, { name: 'Independence Day', date: iso(y, 10, 24) }, { name: 'Christmas Day', date: iso(y, 12, 25) },
     ])
   }
   if (country === 'KE') return sundayToMonday([
@@ -75,7 +76,8 @@ export function holidayTemplate(country: keyof typeof HOLIDAY_COUNTRIES, y: numb
 if (require.main === module) {
   const zm = holidayTemplate('ZM', 2026)
   console.assert(zm.some((h) => h.name === "International Women's Day (observed)" && h.date === '2026-03-09'), 'ZM 8 Mar 2026 Sunday -> 9 Mar')
-  console.assert(zm.some((h) => h.name === 'National Day of Prayer (observed)' && h.date === '2026-10-19'), 'ZM 18 Oct 2026 Sunday -> 19 Oct')
+  console.assert(!zm.some((h) => h.date === '2026-10-18' || h.date === '2026-10-19') && zm.some((h) => h.date === '2026-12-29'), 'ZM 2026: prayer day is 29 Dec, not 18 Oct')
+  console.assert(holidayTemplate('ZM', 2025).some((h) => h.date === '2025-10-18'), 'ZM 2025 keeps 18 Oct')
   const ke = holidayTemplate('KE', 2027)
   console.assert(!ke.some((h) => h.date === '2027-12-27' && h.name.startsWith('Christmas')) || ke.some((h) => h.date === '2027-12-28'), 'KE 2027: Boxing Day Sunday -> next free day')
   console.log('holiday templates ok')

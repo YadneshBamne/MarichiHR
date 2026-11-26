@@ -33,6 +33,7 @@ export const Tenant = model('Tenant', 'tenants', {
   name: { type: S, required: true }, slug: { type: S, required: true }, countryCodes: { type: [S], default: [] },
   baseCurrency: { type: S, default: 'USD' }, fiscalYearStart: { type: D, required: true }, timezone: { type: S, default: 'UTC' },
   logoUrl: S, ssoProvider: S, legalName: S, industry: S, companySize: S, primaryCountry: S,
+  attendanceStartsOn: S, // YYYY-MM-DD: the nightly job marks nobody absent before this day
   address: S, poBox: S, phone: S, mobile: S, contactEmail: S, website: S, hiddenNav: { type: [S], default: [] }, // shown on payslips; hiddenNav = menu items this company does not want
   modules: { type: [S], default: [] }, plan: S, addons: { type: [S], default: [] }, employeeCodePrefix: { type: S, default: 'EMP' }, employeeCodeDigits: { type: N, default: 4 },
   ownerUserId: S, onboardedAt: D, active: { type: B, default: true }, payrollSignoffAbove: Schema.Types.Decimal128,

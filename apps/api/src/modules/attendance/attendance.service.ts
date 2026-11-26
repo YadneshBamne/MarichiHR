@@ -17,6 +17,7 @@ import { AccessUser, assertCanApprove, assertProfileAccess, getReportingSubtreeI
 import { PAYROLL_CONFIG } from '../payroll/payroll.config'
 import { calendarApplies, holidayMap, holidaysBetween, holidayTargetOf, HolidayTarget } from '../../shared/utils/holidays'
 import { optionalPickDays, optionalPicksFor } from '../../shared/utils/optional-holidays'
+import { attendanceStartsOn } from '../../shared/utils/attendance-start'
 import { policyFor, policyResolver, minutesOf, isWorkingDay, isoWeekday, workDaysFrom, workDaysOf, PolicyRules } from './policy.service'
 
 const ymdOf = (d: Date) => d.toISOString().slice(0, 10)
@@ -664,6 +665,7 @@ export const attendanceService = {
     const isHoliday = (who: HolidayTarget, d: string) => holidays.some((h) => !h.isOptional && ymdOf(h.date) === d && calendarApplies(h.calendar, who))
     const picked = await optionalPicksFor(tenantId, employees.map((e) => e.id), from, to) // optional holidays people picked: their day off
 
+    const startsOn = await attendanceStartsOn(tenantId) // before this day nobody is marked absent
     const created: { employeeId: string; date: string }[] = []
     for (const emp of employees) {
       // dayOfWeek in resource calendars: 0 = Monday ... 6 = Sunday
@@ -672,7 +674,7 @@ export const attendanceService = {
       const who = { countryCode: emp.workLocation?.countryCode || emp.taxJurisdiction || null, workLocationId: emp.workLocationId ?? null }
       const marked: string[] = []
       for (const d of dates) {
-        if (d < ymdOf(emp.hireDate) || (emp.exitDate && d > ymdOf(emp.exitDate))) continue
+        if (d < ymdOf(emp.hireDate) || (emp.exitDate && d > ymdOf(emp.exitDate)) || (startsOn && d < startsOn)) continue
         if (!workDays.has((normaliseDateInput(d).getUTCDay() + 6) % 7)) continue
         if (isHoliday(who, d) || picked.has(`${emp.id}|${d}`) || recorded.has(`${emp.id}|${d}`) || onLeave(emp.id, d) || locked(d)) continue
         const res = await prisma.attendanceRecord.createMany({

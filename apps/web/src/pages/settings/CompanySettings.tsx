@@ -36,6 +36,7 @@ export function CompanySettingsPage() {
         </section>
       )}
       {company && <ContactCard company={company} />}
+      {company && (company.entitlements?.apps ?? []).includes('attendance') && <AttendanceStartCard company={company} />}
       {company && <MenuCard company={company} />}
       {d && <EntitiesSection country={d.primaryCountry} currency={d.baseCurrency} />}
     </div>
@@ -68,6 +69,26 @@ function ContactCard({ company }: { company: any }) {
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn btn-primary" disabled={!dirty || update.isPending} onClick={save}>{update.isPending ? 'Saving…' : 'Save address and contacts'}</button>
         {dirty && <button className="btn btn-ghost" onClick={() => setF(from())}>Discard</button>}
+      </div>
+    </section>
+  )
+}
+
+// Attendance start: until this day nobody is marked absent by the nightly job, so pay is not reduced before people use attendance
+function AttendanceStartCard({ company }: { company: any }) {
+  const { update } = useCompanyWrite()
+  const toast = useToast()
+  const current: string = company.attendanceStartsOn ?? ''
+  const [v, setV] = useState(current)
+  useEffect(() => setV(current), [current])
+  const save = async () => { try { await update.mutateAsync({ attendanceStartsOn: v || null }); toast('Attendance start date saved') } catch (e) { toast(errMsg(e), 'error') } }
+  return (
+    <section data-card className="card" style={{ padding: 24, display: 'grid', gap: 12, marginTop: 'var(--gap)' }}>
+      <div><h2 style={{ fontSize: 18 }}>Attendance starts on</h2><p className="dim" style={{ fontSize: 13, marginTop: 2 }}>Nobody is marked absent before this day. Set it to the day your people start clocking in. Leave it empty to mark absences every night from now on.</p></div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input className="input" type="date" style={{ maxWidth: 200 }} value={v} onChange={(e) => setV(e.target.value)} />
+        <button className="btn btn-primary" disabled={v === current || update.isPending} onClick={save}>{update.isPending ? 'Saving…' : 'Save'}</button>
+        {v && <button className="btn btn-ghost" onClick={() => setV('')}>Clear</button>}
       </div>
     </section>
   )

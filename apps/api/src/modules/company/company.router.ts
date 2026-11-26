@@ -34,6 +34,7 @@ export const UpdateCompanySchema = z.object({
     mobile: z.string().trim().max(40).nullable().optional(),
     contactEmail: z.string().trim().toLowerCase().email().max(120).nullable().optional(),
     website: z.string().trim().max(120).nullable().optional(),
+    attendanceStartsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').nullable().optional(),
     hiddenNav: z.array(z.string().regex(/^\/[a-z0-9/-]{1,40}$/)).max(40).optional(),
   }).strict(),
 })

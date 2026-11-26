@@ -36,7 +36,7 @@ export function shape(t: any) {
     plan: entitlements(t.plan, t.addons).plan, addons: t.addons ?? [], entitlements: entitlements(t.plan, t.addons),
     onboardedAt: t.onboardedAt, employeeCodePrefix: t.employeeCodePrefix, employeeCodeDigits: t.employeeCodeDigits,
     address: t.address ?? null, poBox: t.poBox ?? null, phone: t.phone ?? null, mobile: t.mobile ?? null, contactEmail: t.contactEmail ?? null, website: t.website ?? null,
-    hiddenNav: t.hiddenNav ?? [],
+    hiddenNav: t.hiddenNav ?? [], attendanceStartsOn: t.attendanceStartsOn ?? null,
   }
 }
 
@@ -63,7 +63,7 @@ export const companyService = {
   async update(tenantId: string, userId: string, body: Record<string, any>) {
     const before = await load(tenantId)
     const set: Record<string, unknown> = {}
-    for (const k of ['name', 'legalName', 'industry', 'companySize', 'primaryCountry', 'baseCurrency', 'timezone', 'logoUrl', 'employeeCodePrefix', 'employeeCodeDigits', 'address', 'poBox', 'phone', 'mobile', 'contactEmail', 'website', 'hiddenNav']) if (body[k] !== undefined) set[k] = body[k]
+    for (const k of ['name', 'legalName', 'industry', 'companySize', 'primaryCountry', 'baseCurrency', 'timezone', 'logoUrl', 'employeeCodePrefix', 'employeeCodeDigits', 'address', 'poBox', 'phone', 'mobile', 'contactEmail', 'website', 'hiddenNav', 'attendanceStartsOn']) if (body[k] !== undefined) set[k] = body[k]
     const update: any = { $set: set }
     if (body.primaryCountry) update.$addToSet = { countryCodes: body.primaryCountry }
     if (body.fiscalYearStartMonth) set.fiscalYearStart = new Date(Date.UTC(new Date().getUTCFullYear(), body.fiscalYearStartMonth - 1, 1))
