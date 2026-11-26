@@ -2,9 +2,39 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
 import api from '../lib/api'
+import { useAuth } from '../contexts/AuthContext'
 import { errMsg } from '../lib/hooks/useSalary'
 import { inputStyle } from '../components/ui/FormField'
 import { card, primaryBtn, ghostBtn, errorBox } from './salary/styles'
+
+// Change your own password (signing you out everywhere else is done by the server)
+function ChangePasswordBox() {
+  const { changePassword } = useAuth()
+  const [f, setF] = useState({ current: '', next: '', confirm: '' })
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const strong = f.next.length >= 10 && /[A-Za-z]/.test(f.next) && /\d/.test(f.next)
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => { setDone(false); setF({ ...f, [k]: e.target.value }) }
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (f.next !== f.confirm) return setError('The two new passwords do not match')
+    setError(''); setBusy(true)
+    try { await changePassword(f.current, f.next); setF({ current: '', next: '', confirm: '' }); setDone(true) } catch (err) { setError(errMsg(err)) } finally { setBusy(false) }
+  }
+  return (
+    <form onSubmit={submit} style={{ ...card, padding: 20, marginBottom: 16, display: 'grid', gap: 10, maxWidth: 440 }}>
+      <strong style={{ fontSize: 14, fontWeight: 500 }}>Change password</strong>
+      <p style={{ fontSize: 13, color: 'var(--dim)', margin: 0 }}>At least 10 characters, with a letter and a number.</p>
+      <input style={inputStyle} type="password" autoComplete="current-password" placeholder="Current password" aria-label="Current password" value={f.current} onChange={set('current')} />
+      <input style={inputStyle} type="password" autoComplete="new-password" placeholder="New password" aria-label="New password" value={f.next} onChange={set('next')} />
+      <input style={inputStyle} type="password" autoComplete="new-password" placeholder="Repeat new password" aria-label="Repeat new password" value={f.confirm} onChange={set('confirm')} />
+      <div><button style={primaryBtn} disabled={busy || !f.current || !strong || !f.confirm}>{busy ? 'Saving…' : 'Change password'}</button></div>
+      {done && <div style={{ fontSize: 13, color: 'var(--ok)' }}>Password changed.</div>}
+      {error && <div style={errorBox}>{error}</div>}
+    </form>
+  )
+}
 
 // Two-factor sign-in with any authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, ...)
 export default function SecurityPage() {
@@ -53,7 +83,8 @@ export default function SecurityPage() {
   return (
     <div>
       <h2 style={{ fontSize: 'clamp(32px, 4vw, 46px)', fontFamily: 'var(--font-display)', fontWeight: 400, letterSpacing: '-0.02em', margin: 0 }}>Security</h2>
-      <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2, marginBottom: 20 }}>Protect your account with a second step at sign-in.</p>
+      <p style={{ fontSize: 13, color: 'var(--faint)', marginTop: 2, marginBottom: 20 }}>Change your password and protect your account with a second step at sign-in.</p>
+      <ChangePasswordBox />
       <div style={{ ...card, padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <strong style={{ fontSize: 14, fontWeight: 500 }}>Two-factor authentication</strong>
